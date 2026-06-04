@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="theme-color" content="#1a0a00"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Central"/>
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Central Panadería&quot;,&quot;short_name&quot;:&quot;Central&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#1a0a00&quot;,&quot;theme_color&quot;:&quot;#1a0a00&quot;,&quot;icons&quot;:[{&quot;src&quot;:&quot;data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏭</text></svg>&quot;,&quot;sizes&quot;:&quot;192x192&quot;}]}"/>
+<title>Central — Gestión General</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root {
+  --bg: #0f0800;
+  --bg2: #1a1000;
+  --bg3: #251800;
+  --border: #3d2800;
+  --border2: #5a3d00;
+  --gold: #f5a623;
+  --gold2: #ffcc66;
+  --gold-dim: #7a5010;
+  --text: #f0e0c0;
+  --text2: #a08060;
+  --text3: #604030;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --pan: #f57f17;
+  --past: #c2185b;
+  --coc: #2e7d32;
+  --dep: #1565c0;
+  --sal: #6a1b9a;
+  --r: 10px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Georgia',serif;overflow-x:hidden;}
+
+/* ── HEADER ── */
+#header {
+  position:sticky;top:0;z-index:50;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  padding:10px 16px;
+  display:flex;align-items:center;gap:10px;
+}
+#header .logo{font-size:22px;line-height:1;}
+#header .title{flex:1;}
+#header .title h1{font-size:16px;font-weight:700;color:var(--gold);letter-spacing:.5px;}
+#header .title p{font-size:10px;color:var(--text2);font-family:system-ui,sans-serif;margin-top:1px;}
+#sync-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--gold-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s;}
+#sync-btn:hover{background:var(--bg3);color:var(--gold);}
+#sync-btn.spinning i{animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0;}
+.sync-dot.warn{background:var(--warn);animation:pulse 1.5s infinite;}
+.sync-dot.err{background:var(--danger);}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ── TABS ── */
+#tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;position:sticky;top:57px;z-index:40;}
+#tabs::-webkit-scrollbar{display:none;}
+.tab{flex-shrink:0;padding:10px 14px;font-size:11px;font-family:system-ui,sans-serif;color:var(--text3);border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
+.tab i{font-size:17px;}
+.tab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--danger);color:#fff;font-size:9px;font-weight:700;position:absolute;top:3px;right:3px;animation:pulse 2s infinite;}
+.tab{position:relative;}
+
+/* ── PANELS ── */
+.panel{display:none;padding:12px;flex-direction:column;gap:10px;padding-bottom:20px;}
+.panel.active{display:flex;}
+
+/* ── SECTION TITLE ── */
+.sec-title{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.1em;font-family:system-ui,sans-serif;padding:4px 0 6px;}
+
+/* ── SECTOR CARDS ── */
+.sector-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.sector-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden;}
+.sector-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);}
+.sector-card:hover{border-color:var(--border2);background:var(--bg3);}
+.sector-card .sc-icon{font-size:22px;margin-bottom:6px;}
+.sector-card .sc-name{font-size:12px;font-weight:700;color:var(--text);font-family:system-ui,sans-serif;}
+.sector-card .sc-sub{font-size:10px;color:var(--text2);font-family:system-ui,sans-serif;margin-top:2px;}
+.sector-card .sc-alerts{margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;}
+.sc-alert-chip{font-size:9px;padding:2px 6px;border-radius:10px;font-family:system-ui,sans-serif;font-weight:600;}
+.sc-alert-chip.ok{background:#14532d;color:#86efac;}
+.sc-alert-chip.warn{background:#451a03;color:#fcd34d;}
+.sc-alert-chip.danger{background:#450a0a;color:#fca5a5;}
+.sc-alert-chip.info{background:#1e3a5f;color:#93c5fd;}
+
+/* ── ALERTAS ── */
+.alerta-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;display:flex;align-items:flex-start;gap:10px;}
+.alerta-item.danger{border-color:#7f1d1d;background:#1c0a0a;}
+.alerta-item.warn{border-color:#78350f;background:#1c1005;}
+.alerta-item.info{border-color:#1e3a5f;background:#0a1020;}
+.alerta-icon{font-size:18px;flex-shrink:0;line-height:1.4;}
+.alerta-body{flex:1;min-width:0;}
+.alerta-msg{font-size:13px;color:var(--text);font-family:system-ui,sans-serif;line-height:1.4;}
+.alerta-meta{font-size:10px;color:var(--text2);margin-top:3px;font-family:system-ui,sans-serif;}
+.alerta-sector-tag{display:inline-block;font-size:9px;padding:1px 6px;border-radius:8px;font-weight:700;font-family:system-ui,sans-serif;margin-right:4px;}
+.mark-read-btn{background:transparent;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:4px 8px;font-size:10px;cursor:pointer;font-family:system-ui,sans-serif;white-space:nowrap;flex-shrink:0;}
+.mark-read-btn:hover{color:var(--gold);border-color:var(--gold-dim);}
+
+/* ── PEDIDOS ── */
+.pedido-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:8px;}
+.pedido-card.urgente{border-color:#7f1d1d;background:#1c0a0a;}
+.pedido-header{display:flex;align-items:center;gap:8px;}
+.pedido-icon{font-size:20px;}
+.pedido-info{flex:1;min-width:0;}
+.pedido-prod{font-size:14px;font-weight:600;color:var(--text);font-family:system-ui,sans-serif;}
+.pedido-meta{font-size:11px;color:var(--text2);font-family:system-ui,sans-serif;margin-top:1px;}
+.pedido-qty{font-size:20px;font-weight:700;color:var(--gold);font-family:system-ui,sans-serif;}
+.pedido-footer{display:flex;gap:6px;align-items:center;}
+.estado-badge{font-size:10px;padding:3px 8px;border-radius:10px;font-weight:600;font-family:system-ui,sans-serif;}
+.estado-badge.pendiente{background:#451a03;color:#fcd34d;}
+.estado-badge.en_proceso{background:#1e3a5f;color:#93c5fd;}
+.estado-badge.listo{background:#14532d;color:#86efac;}
+.pedido-btns{display:flex;gap:4px;margin-left:auto;}
+.pedido-btn{padding:5px 10px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:system-ui,sans-serif;transition:all .15s;}
+.pedido-btn:hover{background:var(--bg3);color:var(--text);}
+.pedido-btn.primary{background:var(--gold);color:#000;border-color:var(--gold);font-weight:700;}
+.pedido-btn.primary:hover{background:var(--gold2);}
+.pedido-btn.danger{border-color:#7f1d1d;color:#fca5a5;}
+
+/* ── STOCK CONSOLIDADO ── */
+.stock-table{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.stock-table-header{display:grid;grid-template-columns:1fr auto;padding:8px 12px;font-size:10px;color:var(--text2);font-family:system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);}
+.stock-row{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-family:system-ui,sans-serif;}
+.stock-row:last-child{border-bottom:none;}
+.stock-row.low{background:#1c0a0a;}
+.stock-row.zero{background:#200000;}
+.stock-sector-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.stock-nombre{flex:1;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-qty{font-size:14px;font-weight:700;min-width:32px;text-align:right;}
+.stock-qty.ok{color:var(--ok);}
+.stock-qty.warn{color:var(--warn);}
+.stock-qty.danger{color:var(--danger);}
+.stock-unit{font-size:10px;color:var(--text2);min-width:20px;}
+
+/* ── NUEVO PEDIDO MODAL ── */
+#pedido-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:flex-end;}
+#pedido-modal-overlay.open{display:flex;}
+#pedido-modal{background:var(--bg2);border-radius:16px 16px 0 0;border-top:1px solid var(--border2);padding:20px;width:100%;max-height:85vh;overflow-y:auto;}
+#pedido-modal h3{font-size:16px;color:var(--gold);margin-bottom:16px;}
+.modal-label{font-size:12px;color:var(--text2);font-family:system-ui,sans-serif;margin-bottom:4px;display:block;}
+.modal-input{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:14px;font-family:system-ui,sans-serif;outline:none;margin-bottom:12px;}
+.modal-input:focus{border-color:var(--gold-dim);}
+.modal-select{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:14px;font-family:system-ui,sans-serif;outline:none;margin-bottom:12px;-webkit-appearance:none;}
+.modal-row{display:flex;gap:8px;}
+.modal-row>*{flex:1;}
+.urgente-toggle{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-family:system-ui,sans-serif;font-size:13px;color:var(--text2);}
+.urgente-toggle input{width:18px;height:18px;accent-color:var(--danger);}
+.modal-btns{display:flex;gap:8px;}
+.btn-cancel{flex:1;padding:12px;background:transparent;border:1px solid var(--border2);border-radius:9px;color:var(--text2);font-size:14px;cursor:pointer;font-family:system-ui,sans-serif;}
+.btn-ok{flex:2;padding:12px;background:var(--gold);border:none;border-radius:9px;color:#000;font-size:14px;font-weight:700;cursor:pointer;font-family:system-ui,sans-serif;}
+.btn-ok:hover{background:var(--gold2);}
+
+/* ── EMPTY STATE ── */
+.empty-state{text-align:center;padding:32px 16px;color:var(--text3);font-family:system-ui,sans-serif;font-size:13px;line-height:1.6;}
+.empty-state .es-icon{font-size:32px;margin-bottom:8px;display:block;}
+
+/* ── LINKS A MÓDULOS ── */
+.modulos-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.modulo-link{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 12px;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:6px;transition:all .15s;position:relative;}
+.modulo-link::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--r) var(--r) 0 0;background:var(--accent);}
+.modulo-link:hover{border-color:var(--border2);transform:translateY(-1px);}
+.modulo-link .ml-icon{font-size:26px;}
+.modulo-link .ml-name{font-size:12px;font-weight:700;color:var(--text);font-family:system-ui,sans-serif;}
+.modulo-link .ml-sub{font-size:10px;color:var(--text2);font-family:system-ui,sans-serif;text-align:center;}
+.modulo-link .ml-badge{position:absolute;top:8px;right:8px;}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:10px 16px;font-size:13px;font-family:system-ui,sans-serif;color:var(--text);opacity:0;transition:all .3s;z-index:300;white-space:nowrap;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── LAST UPDATE ── */
+.last-update{font-size:10px;color:var(--text3);font-family:system-ui,sans-serif;text-align:center;padding:4px;}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo">🏭</div>
+  <div class="title">
+    <h1>Central</h1>
+    <p>Vista general del sistema</p>
+  </div>
+  <div class="sync-dot" id="sync-dot"></div>
+  <button id="sync-btn" onclick="syncAll()"><i class="ti ti-refresh" id="sync-icon"></i></button>
+</div>
+
+<div id="tabs">
+  <button class="tab active" onclick="switchTab('resumen')" id="tab-resumen"><i class="ti ti-layout-dashboard"></i>Resumen</button>
+  <button class="tab" onclick="switchTab('alertas')" id="tab-alertas"><i class="ti ti-bell"></i>Alertas</button>
+  <button class="tab" onclick="switchTab('pedidos')" id="tab-pedidos"><i class="ti ti-clipboard-list"></i>Pedidos</button>
+  <button class="tab" onclick="switchTab('stock')" id="tab-stock"><i class="ti ti-packages"></i>Stock</button>
+  <button class="tab" onclick="switchTab('modulos')" id="tab-modulos"><i class="ti ti-apps"></i>Módulos</button>
+</div>
+
+<!-- RESUMEN -->
+<div class="panel active" id="panel-resumen">
+  <div class="sec-title">Estado de sectores</div>
+  <div class="sector-grid" id="sector-grid"></div>
+  <div class="sec-title" style="margin-top:4px;">Últimas alertas</div>
+  <div id="resumen-alertas"></div>
+  <div class="last-update" id="last-update-text"></div>
+</div>
+
+<!-- ALERTAS -->
+<div class="panel" id="panel-alertas">
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="sec-title" style="margin:0;">Alertas del sistema</div>
+    <button onclick="marcarTodasLeidas()" style="font-size:11px;background:transparent;border:1px solid var(--border2);color:var(--text2);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:system-ui,sans-serif;">Marcar todas leídas</button>
+  </div>
+  <div id="alertas-list"></div>
+</div>
+
+<!-- PEDIDOS -->
+<div class="panel" id="panel-pedidos">
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <div class="sec-title" style="margin:0;">Pedidos entre sectores</div>
+    <button onclick="openPedidoModal()" style="padding:7px 12px;background:var(--gold);border:none;border-radius:8px;color:#000;font-size:12px;font-weight:700;cursor:pointer;font-family:system-ui,sans-serif;display:flex;align-items:center;gap:4px;"><i class="ti ti-plus"></i> Nuevo</button>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;" id="pedidos-filtros">
+    <button class="pedido-filtro active" data-estado="todos" onclick="filtrarPedidos('todos')">Todos</button>
+    <button class="pedido-filtro" data-estado="pendiente" onclick="filtrarPedidos('pendiente')">Pendientes</button>
+    <button class="pedido-filtro" data-estado="en_proceso" onclick="filtrarPedidos('en_proceso')">En proceso</button>
+    <button class="pedido-filtro" data-estado="listo" onclick="filtrarPedidos('listo')">Listos</button>
+  </div>
+  <div id="pedidos-list"></div>
+</div>
+
+<!-- STOCK -->
+<div class="panel" id="panel-stock">
+  <div class="sec-title">Stock bajo en todos los sectores</div>
+  <div id="stock-bajo-list"></div>
+  <div class="sec-title" style="margin-top:4px;">Todo el stock — Salón</div>
+  <div class="stock-table" id="stock-salon-table"></div>
+  <div class="sec-title" style="margin-top:4px;">Depósito</div>
+  <div class="stock-table" id="stock-deposito-table"></div>
+</div>
+
+<!-- MÓDULOS -->
+<div class="panel" id="panel-modulos">
+  <div class="sec-title">Acceso rápido a módulos</div>
+  <div class="modulos-grid">
+    <a href="asistente_salon.html" class="modulo-link" style="--accent:var(--sal);">
+      <span class="ml-icon">🏪</span>
+      <span class="ml-name">Salón</span>
+      <span class="ml-sub">Stock local · Recepciones</span>
+      <span class="ml-badge" id="badge-salon"></span>
+    </a>
+    <a href="asistente_pasteleria.html" class="modulo-link" style="--accent:var(--past);">
+      <span class="ml-icon">🍰</span>
+      <span class="ml-name">Pastelería</span>
+      <span class="ml-sub">Recetas · Stock · Tandas</span>
+      <span class="ml-badge" id="badge-pasteleria"></span>
+    </a>
+    <a href="asistente_panaderia.html" class="modulo-link" style="--accent:var(--pan);">
+      <span class="ml-icon">🍞</span>
+      <span class="ml-name">Panadería</span>
+      <span class="ml-sub">Producción · Freezer</span>
+      <span class="ml-badge" id="badge-panaderia"></span>
+    </a>
+    <a href="asistente_cocina.html" class="modulo-link" style="--accent:var(--coc);">
+      <span class="ml-icon">🍳</span>
+      <span class="ml-name">Cocina</span>
+      <span class="ml-sub">Elaborados · Viandas</span>
+      <span class="ml-badge" id="badge-cocina"></span>
+    </a>
+    <a href="asistente_deposito.html" class="modulo-link" style="--accent:var(--dep);grid-column:span 2;">
+      <span class="ml-icon">🏭</span>
+      <span class="ml-name">Depósito</span>
+      <span class="ml-sub">Insumos · Proveedores · Control general</span>
+      <span class="ml-badge" id="badge-deposito"></span>
+    </a>
+  </div>
+  <div class="sec-title" style="margin-top:8px;">Sincronización</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px;font-family:system-ui,sans-serif;font-size:13px;color:var(--text2);line-height:1.6;">
+    Esta pantalla se sincroniza automáticamente con Supabase cada <strong style="color:var(--gold);">30 segundos</strong>.<br>
+    Todos los módulos comparten la misma base de datos.<br>
+    <span id="config-status" style="color:var(--ok);font-size:11px;margin-top:6px;display:block;">● Conexión activa</span>
+  </div>
+</div>
+
+<!-- MODAL NUEVO PEDIDO -->
+<div id="pedido-modal-overlay">
+  <div id="pedido-modal">
+    <h3>📋 Nuevo pedido</h3>
+    <label class="modal-label">¿Quién pide?</label>
+    <select class="modal-select" id="pm-desde">
+      <option value="salon">🏪 Salón</option>
+      <option value="central">🏭 Central</option>
+    </select>
+    <label class="modal-label">¿A qué sector?</label>
+    <select class="modal-select" id="pm-hacia">
+      <option value="pasteleria">🍰 Pastelería</option>
+      <option value="panaderia">🍞 Panadería</option>
+      <option value="cocina">🍳 Cocina</option>
+      <option value="deposito">🏭 Depósito</option>
+    </select>
+    <label class="modal-label">Producto / descripción</label>
+    <input type="text" class="modal-input" id="pm-producto" placeholder="Ej: Alfajores de maicena"/>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Cantidad</label>
+        <input type="number" class="modal-input" id="pm-cantidad" placeholder="12" min="1"/>
+      </div>
+      <div>
+        <label class="modal-label">Unidad</label>
+        <select class="modal-select" id="pm-unidad" style="margin-bottom:0;">
+          <option value="u">Unidades</option>
+          <option value="kg">Kilos</option>
+          <option value="docena">Docena</option>
+          <option value="bandeja">Bandeja</option>
+        </select>
+      </div>
+    </div>
+    <label class="modal-label" style="margin-top:4px;">Nota (opcional)</label>
+    <input type="text" class="modal-input" id="pm-nota" placeholder="Ej: Para la tarde, sin azúcar"/>
+    <div class="urgente-toggle">
+      <input type="checkbox" id="pm-urgente"/>
+      <label for="pm-urgente">🔴 Marcar como urgente</label>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closePedidoModal()">Cancelar</button>
+      <button class="btn-ok" onclick="crearPedido()">Enviar pedido</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<style>
+.pedido-filtro{padding:5px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:11px;cursor:pointer;font-family:system-ui,sans-serif;transition:all .15s;}
+.pedido-filtro.active{background:var(--bg3);border-color:var(--gold-dim);color:var(--gold);}
+</style>
+
+<script>
+// ── SUPABASE ─────────────────────────────────────────
+const SB_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+
+async function sbFetch(method, table, body=null, params='') {
+  const url = SB_URL + '/rest/v1/' + table + params;
+  const headers = {
+    'apikey': SB_KEY,
+    'Authorization': 'Bearer ' + SB_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { console.error('SB error', res.status, await res.text()); return null; }
+  return method === 'DELETE' ? null : await res.json();
+}
+const sbSelect = (t, p='') => sbFetch('GET', t, null, p);
+const sbUpsert = (t, d) => sbFetch('POST', t, Array.isArray(d)?d:[d]);
+const sbPatch  = (t, p, d) => sbFetch('PATCH', t, d, p);
+const sbDelete = (t, p) => sbFetch('DELETE', t, null, p);
+
+// ── ESTADO ───────────────────────────────────────────
+let alertas = [];
+let pedidos = [];
+let salonStock = [];
+let depositoStock = [];
+let pasteleriaStock = [];
+let filtroActual = 'todos';
+
+const SECTOR_COLORS = {
+  salon: 'var(--sal)', pasteleria: 'var(--past)',
+  panaderia: 'var(--pan)', cocina: 'var(--coc)',
+  deposito: 'var(--dep)', central: 'var(--gold)'
+};
+const SECTOR_ICONS = {
+  salon:'🏪', pasteleria:'🍰', panaderia:'🍞',
+  cocina:'🍳', deposito:'🏭', central:'🏭'
+};
+
+// ── TABS ─────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// ── SYNC ─────────────────────────────────────────────
+function setSyncState(state) {
+  const dot = document.getElementById('sync-dot');
+  const btn = document.getElementById('sync-btn');
+  dot.className = 'sync-dot' + (state === 'ok' ? '' : state === 'warn' ? ' warn' : ' err');
+  btn.classList.toggle('spinning', state === 'loading');
+}
+
+async function syncAll() {
+  setSyncState('loading');
+  try {
+    await Promise.all([loadAlertas(), loadPedidos(), loadStocks()]);
+    renderAll();
+    setSyncState('ok');
+    document.getElementById('last-update-text').textContent =
+      'Última actualización: ' + new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+  } catch(e) {
+    console.error('Sync error:', e);
+    setSyncState('err');
+  }
+}
+
+async function loadAlertas() {
+  const rows = await sbSelect('alertas_sistema', '?leida=eq.false&order=created_at.desc&limit=50');
+  if (rows) alertas = rows;
+}
+
+async function loadPedidos() {
+  const rows = await sbSelect('pedidos_sector', '?estado=neq.entregado&order=created_at.desc&limit=100');
+  if (rows) pedidos = rows;
+}
+
+async function loadStocks() {
+  const [sal, dep, past] = await Promise.all([
+    sbSelect('salon_stock', '?order=nombre.asc'),
+    sbSelect('deposito_stock', '?order=nombre.asc'),
+    sbSelect('pasteleria_stock', '?order=recipe_name.asc'),
+  ]);
+  if (sal) salonStock = sal;
+  if (dep) depositoStock = dep;
+  if (past) pasteleriaStock = past;
+}
+
+// ── RENDER ALL ───────────────────────────────────────
+function renderAll() {
+  renderSectorGrid();
+  renderResumenAlertas();
+  renderAlertasList();
+  renderPedidos();
+  renderStockBajo();
+  renderStockTabla('stock-salon-table', salonStock, 'cantidad', 'nombre', 5);
+  renderStockTabla('stock-deposito-table', depositoStock, 'cantidad', 'nombre', 3);
+  updateBadges();
+}
+
+// ── SECTOR GRID ──────────────────────────────────────
+function renderSectorGrid() {
+  const sectores = [
+    { id:'salon', name:'Salón', icon:'🏪', color:'var(--sal)' },
+    { id:'pasteleria', name:'Pastelería', icon:'🍰', color:'var(--past)' },
+    { id:'panaderia', name:'Panadería', icon:'🍞', color:'var(--pan)' },
+    { id:'cocina', name:'Cocina', icon:'🍳', color:'var(--coc)' },
+    { id:'deposito', name:'Depósito', icon:'🏭', color:'var(--dep)' },
+  ];
+  const el = document.getElementById('sector-grid');
+  el.innerHTML = sectores.map(s => {
+    const propias = alertas.filter(a => a.sector === s.id);
+    const pend = pedidos.filter(p => p.hacia_sector === s.id && p.estado === 'pendiente');
+    let chips = '';
+    if (propias.length === 0 && pend.length === 0) {
+      chips = '<span class="sc-alert-chip ok">✓ Sin alertas</span>';
+    } else {
+      if (propias.filter(a=>a.tipo==='sin_stock').length > 0)
+        chips += `<span class="sc-alert-chip danger">🔴 Sin stock</span>`;
+      if (propias.filter(a=>a.tipo==='stock_bajo').length > 0)
+        chips += `<span class="sc-alert-chip warn">⚠️ Stock bajo</span>`;
+      if (pend.length > 0)
+        chips += `<span class="sc-alert-chip info">📋 ${pend.length} pedido${pend.length>1?'s':''}</span>`;
+    }
+    return `<div class="sector-card" style="--accent:${s.color}" onclick="switchTab('alertas')">
+      <div class="sc-icon">${s.icon}</div>
+      <div class="sc-name">${s.name}</div>
+      <div class="sc-alerts">${chips}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── ALERTAS ──────────────────────────────────────────
+function renderResumenAlertas() {
+  const el = document.getElementById('resumen-alertas');
+  const recientes = alertas.slice(0, 4);
+  if (recientes.length === 0) {
+    el.innerHTML = '<div class="empty-state"><span class="es-icon">✅</span>Todo en orden — sin alertas activas</div>';
+    return;
+  }
+  el.innerHTML = recientes.map(a => alertaHTML(a)).join('');
+}
+
+function renderAlertasList() {
+  const el = document.getElementById('alertas-list');
+  if (alertas.length === 0) {
+    el.innerHTML = '<div class="empty-state"><span class="es-icon">🎉</span>No hay alertas pendientes</div>';
+    return;
+  }
+  el.innerHTML = alertas.map(a => alertaHTML(a)).join('');
+}
+
+function alertaHTML(a) {
+  const cls = a.tipo === 'sin_stock' ? 'danger' : a.tipo === 'stock_bajo' ? 'warn' : 'info';
+  const icon = a.tipo === 'sin_stock' ? '🔴' : a.tipo === 'stock_bajo' ? '⚠️' : a.tipo === 'pedido_urgente' ? '🚨' : 'ℹ️';
+  const color = SECTOR_COLORS[a.sector] || 'var(--gold)';
+  const hora = new Date(a.created_at).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+  return `<div class="alerta-item ${cls}" style="margin-bottom:6px;">
+    <div class="alerta-icon">${icon}</div>
+    <div class="alerta-body">
+      <div class="alerta-msg">${a.mensaje}</div>
+      <div class="alerta-meta">
+        <span class="alerta-sector-tag" style="background:${color}22;color:${color};">${SECTOR_ICONS[a.sector]||''} ${a.sector}</span>
+        ${hora}
+      </div>
+    </div>
+    <button class="mark-read-btn" onclick="marcarLeida(${a.id})">✓</button>
+  </div>`;
+}
+
+async function marcarLeida(id) {
+  await sbPatch('alertas_sistema', '?id=eq.' + id, { leida: true });
+  alertas = alertas.filter(a => a.id !== id);
+  renderAlertasList();
+  renderResumenAlertas();
+  renderSectorGrid();
+  updateBadges();
+  toast('Alerta marcada como leída');
+}
+
+async function marcarTodasLeidas() {
+  await sbPatch('alertas_sistema', '?leida=eq.false', { leida: true });
+  alertas = [];
+  renderAll();
+  toast('Todas las alertas marcadas como leídas');
+}
+
+// ── PEDIDOS ──────────────────────────────────────────
+function filtrarPedidos(estado) {
+  filtroActual = estado;
+  document.querySelectorAll('.pedido-filtro').forEach(b => b.classList.toggle('active', b.dataset.estado === estado));
+  renderPedidos();
+}
+
+function renderPedidos() {
+  const el = document.getElementById('pedidos-list');
+  const filtrados = filtroActual === 'todos' ? pedidos : pedidos.filter(p => p.estado === filtroActual);
+  if (filtrados.length === 0) {
+    el.innerHTML = '<div class="empty-state"><span class="es-icon">📋</span>No hay pedidos en esta categoría</div>';
+    return;
+  }
+  el.innerHTML = filtrados.map(p => pedidoHTML(p)).join('');
+}
+
+function pedidoHTML(p) {
+  const urgente = p.urgente ? ' urgente' : '';
+  const desde_color = SECTOR_COLORS[p.desde_sector] || 'var(--gold)';
+  const hacia_color = SECTOR_COLORS[p.hacia_sector] || 'var(--gold)';
+  const hora = new Date(p.created_at).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+  let btns = '';
+  if (p.estado === 'pendiente') {
+    btns = `<button class="pedido-btn" onclick="cambiarEstado(${p.id},'en_proceso')">▶ Tomar</button>
+            <button class="pedido-btn danger" onclick="cambiarEstado(${p.id},'entregado')">✗ Cancelar</button>`;
+  } else if (p.estado === 'en_proceso') {
+    btns = `<button class="pedido-btn primary" onclick="cambiarEstado(${p.id},'listo')">✓ Listo</button>
+            <button class="pedido-btn" onclick="cambiarEstado(${p.id},'entregado')">📦 Entregado</button>`;
+  } else if (p.estado === 'listo') {
+    btns = `<button class="pedido-btn primary" onclick="cambiarEstado(${p.id},'entregado')">📦 Entregar</button>`;
+  }
+  return `<div class="pedido-card${urgente}" style="margin-bottom:8px;">
+    <div class="pedido-header">
+      <div class="pedido-icon">${SECTOR_ICONS[p.hacia_sector]||'📦'}</div>
+      <div class="pedido-info">
+        <div class="pedido-prod">${p.urgente?'🔴 ':''} ${p.producto}</div>
+        <div class="pedido-meta">
+          <span style="color:${desde_color}">${SECTOR_ICONS[p.desde_sector]} ${p.desde_sector}</span>
+          → <span style="color:${hacia_color}">${SECTOR_ICONS[p.hacia_sector]} ${p.hacia_sector}</span>
+          · ${hora}
+        </div>
+        ${p.nota ? `<div class="pedido-meta" style="margin-top:2px;font-style:italic;">"${p.nota}"</div>` : ''}
+      </div>
+      <div class="pedido-qty">${p.cantidad}<span style="font-size:11px;font-weight:400;color:var(--text2);"> ${p.unidad}</span></div>
+    </div>
+    <div class="pedido-footer">
+      <span class="estado-badge ${p.estado}">${p.estado.replace('_',' ')}</span>
+      <div class="pedido-btns">${btns}</div>
+    </div>
+  </div>`;
+}
+
+async function cambiarEstado(id, nuevoEstado) {
+  await sbPatch('pedidos_sector', '?id=eq.' + id, { estado: nuevoEstado, updated_at: new Date().toISOString() });
+  if (nuevoEstado === 'entregado') {
+    pedidos = pedidos.filter(p => p.id !== id);
+  } else {
+    const p = pedidos.find(p => p.id === id);
+    if (p) p.estado = nuevoEstado;
+  }
+  renderPedidos();
+  renderSectorGrid();
+  updateBadges();
+  toast('Pedido actualizado: ' + nuevoEstado.replace('_',' '));
+}
+
+function openPedidoModal() { document.getElementById('pedido-modal-overlay').classList.add('open'); }
+function closePedidoModal() { document.getElementById('pedido-modal-overlay').classList.remove('open'); }
+
+async function crearPedido() {
+  const producto = document.getElementById('pm-producto').value.trim();
+  const cantidad = parseFloat(document.getElementById('pm-cantidad').value);
+  if (!producto || !cantidad) { toast('Completá producto y cantidad'); return; }
+  const pedido = {
+    desde_sector: document.getElementById('pm-desde').value,
+    hacia_sector: document.getElementById('pm-hacia').value,
+    producto,
+    cantidad,
+    unidad: document.getElementById('pm-unidad').value,
+    urgente: document.getElementById('pm-urgente').checked,
+    nota: document.getElementById('pm-nota').value.trim() || null,
+    estado: 'pendiente',
+  };
+  const result = await sbUpsert('pedidos_sector', pedido);
+  if (result) {
+    pedidos.unshift(result[0]);
+    // Si es urgente, crear alerta también
+    if (pedido.urgente) {
+      await sbUpsert('alertas_sistema', {
+        sector: pedido.desde_sector,
+        tipo: 'pedido_urgente',
+        mensaje: `🚨 Pedido urgente: ${producto} (${cantidad} ${pedido.unidad}) para ${pedido.hacia_sector}`,
+      });
+      await loadAlertas();
+    }
+    renderAll();
+    closePedidoModal();
+    // Limpiar form
+    ['pm-producto','pm-nota','pm-cantidad'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('pm-urgente').checked = false;
+    switchTab('pedidos');
+    toast('Pedido enviado ✓');
+  } else {
+    toast('Error al enviar pedido — verificá la conexión');
+  }
+}
+
+// ── STOCK ─────────────────────────────────────────────
+function renderStockBajo() {
+  const el = document.getElementById('stock-bajo-list');
+  const bajos = depositoStock.filter(s => s.cantidad !== null && s.stock_minimo !== null && s.cantidad <= s.stock_minimo);
+  const sinStock = depositoStock.filter(s => !s.cantidad || s.cantidad <= 0);
+
+  if (bajos.length === 0 && sinStock.length === 0) {
+    el.innerHTML = '<div class="empty-state"><span class="es-icon">✅</span>Stock en niveles normales</div>';
+    return;
+  }
+  let html = '';
+  if (sinStock.length > 0) {
+    html += '<div class="sec-title" style="color:var(--danger);">SIN STOCK</div>';
+    html += '<div class="stock-table">';
+    sinStock.forEach(s => {
+      html += `<div class="stock-row zero">
+        <div class="stock-sector-dot" style="background:var(--dep)"></div>
+        <div class="stock-nombre">${s.nombre || s.id}</div>
+        <div class="stock-qty danger">0</div>
+        <div class="stock-unit">${s.unidad||''}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  if (bajos.length > 0) {
+    html += '<div class="sec-title" style="color:var(--warn);margin-top:8px;">STOCK BAJO</div>';
+    html += '<div class="stock-table">';
+    bajos.forEach(s => {
+      html += `<div class="stock-row low">
+        <div class="stock-sector-dot" style="background:var(--dep)"></div>
+        <div class="stock-nombre">${s.nombre || s.id}</div>
+        <div class="stock-qty warn">${s.cantidad}</div>
+        <div class="stock-unit">${s.unidad||''}</div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+function renderStockTabla(elId, data, cantField, nameField, minBajo) {
+  const el = document.getElementById(elId);
+  if (!data || data.length === 0) {
+    el.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--text3);font-family:system-ui,sans-serif;text-align:center;">Sin datos</div>';
+    return;
+  }
+  el.innerHTML = data.map(row => {
+    const qty = row[cantField] || 0;
+    const cls = qty <= 0 ? 'danger' : qty <= minBajo ? 'warn' : 'ok';
+    return `<div class="stock-row ${qty<=0?'zero':qty<=minBajo?'low':''}">
+      <div class="stock-nombre">${row[nameField] || row.id}</div>
+      <div class="stock-qty ${cls}">${qty}</div>
+      <div class="stock-unit">${row.unidad||'u'}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── BADGES ───────────────────────────────────────────
+function updateBadges() {
+  const sectores = ['salon','pasteleria','panaderia','cocina','deposito'];
+  sectores.forEach(s => {
+    const count = alertas.filter(a => a.sector === s).length
+                + pedidos.filter(p => p.hacia_sector === s && p.estado === 'pendiente').length;
+    const el = document.getElementById('badge-' + s);
+    if (el) el.innerHTML = count > 0 ? `<span class="tab-badge" style="position:static;animation:none;">${count}</span>` : '';
+  });
+  // Badge en tab alertas
+  const tabAlertas = document.getElementById('tab-alertas');
+  const existing = tabAlertas.querySelector('.tab-badge');
+  if (existing) existing.remove();
+  if (alertas.length > 0) {
+    const b = document.createElement('span');
+    b.className = 'tab-badge';
+    b.textContent = alertas.length;
+    tabAlertas.appendChild(b);
+  }
+  // Badge en tab pedidos
+  const tabPedidos = document.getElementById('tab-pedidos');
+  const ep = tabPedidos.querySelector('.tab-badge');
+  if (ep) ep.remove();
+  const pend = pedidos.filter(p => p.estado === 'pendiente').length;
+  if (pend > 0) {
+    const b = document.createElement('span');
+    b.className = 'tab-badge';
+    b.textContent = pend;
+    tabPedidos.appendChild(b);
+  }
+}
+
+// ── TOAST ─────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── INIT ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  await syncAll();
+  // Auto-sync cada 30 segundos
+  setInterval(syncAll, 30000);
+});
+
+// PWA install (para Android principalmente)
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  window._pwaPrompt = e;
+});
+</script>
+</body>
+</html>
