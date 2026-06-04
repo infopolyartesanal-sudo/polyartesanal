@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="theme-color" content="#880E4F"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Pastelería"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Asistente de Pastelería</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --primary: #C2185B; }
+  body {
+    font-family: Georgia, serif;
+    background: #fdf0f5;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 16px;
+  }
+  #app {
+    display: flex; flex-direction: column;
+    height: 700px; width: 100%; max-width: 480px;
+    background: #fff; border: 1px solid #f0c4d4;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(194,24,91,0.10);
+    position: relative;
+  }
+  #header {
+    background: #880E4F; color: #FCE4EC;
+    padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  #header .logo { font-size: 24px; }
+  #header h1 { font-size: 16px; font-weight: 500; color: #FCE4EC; letter-spacing: 0.5px; }
+  #header p { font-size: 11px; color: #F48FB1; font-family: system-ui, sans-serif; }
+  #header .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #F48FB1; font-family: system-ui, sans-serif; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #5DCAA5; flex-shrink: 0; }
+  #status-dot.listening { background: #E24B4A; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  #tabs { display: flex; border-bottom: 1px solid #f0c4d4; background: #fdf0f5; flex-shrink: 0; }
+  .tab {
+    flex: 1; padding: 10px 4px; font-size: 11px; font-family: system-ui, sans-serif;
+    color: #999; border: none; background: transparent; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+  }
+  .tab i { font-size: 18px; }
+  .tab.active { color: #C2185B; border-bottom-color: #C2185B; background: #fff; }
+  .tab:hover:not(.active) { color: #333; }
+
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  #chat-messages {
+    flex: 1; overflow-y: auto; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg {
+    max-width: 85%; padding: 10px 14px; border-radius: 14px;
+    font-size: 14px; line-height: 1.55; font-family: system-ui, sans-serif;
+  }
+  .msg.bot { background: #fce4ec; color: #1a1a1a; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: #C2185B; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.thinking { opacity: 0.6; font-style: italic; }
+
+  #chat-input-area {
+    padding: 10px 12px; border-top: 1px solid #f0c4d4;
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  #chat-input {
+    flex: 1; border: 1px solid #f0c4d4; border-radius: 20px;
+    padding: 10px 14px; font-size: 14px; font-family: system-ui, sans-serif;
+    outline: none; background: #fdf0f5;
+  }
+  #chat-input:focus { border-color: #C2185B; }
+  #send-btn, #mic-btn {
+    width: 38px; height: 38px; border-radius: 50%; border: none;
+    background: #C2185B; color: white; cursor: pointer; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #mic-btn { background: #f8bbd9; color: #880E4F; }
+  #mic-btn.listening { background: #E24B4A; color: white; animation: pulse 1s infinite; }
+  #api-error { font-size: 13px; color: #E24B4A; font-family: system-ui, sans-serif; margin-top: 8px; display: none; }
+
+  /* Speech bar */
+  #speech-bar {
+    display: none; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #FCE4EC;
+    border-top: 1px solid #f48fb1; flex-shrink: 0;
+    font-family: system-ui, sans-serif;
+  }
+  #speech-bar.visible { display: flex; }
+  #speech-bar .speech-label { font-size: 12px; color: #880E4F; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .speech-ctrl-btn {
+    width: 34px; height: 34px; border-radius: 50%; border: none;
+    background: #C2185B; color: white; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; transition: all 0.15s;
+  }
+  .speech-ctrl-btn.stop { background: #E24B4A; }
+
+  /* Recipes panel */
+  #recipes-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .recipe-card {
+    padding: 12px 14px; background: #fff; border-radius: 10px;
+    border: 1px solid #f0c4d4; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .recipe-card:hover { border-color: #C2185B; background: #fce4ec; }
+  .recipe-card h3 { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+  .recipe-card p { font-size: 12px; color: #666; font-family: system-ui, sans-serif; }
+  .recipe-tag {
+    display: inline-block; font-size: 11px; background: #FCE4EC;
+    color: #880E4F; padding: 2px 8px; border-radius: 10px;
+    margin-top: 4px; font-family: system-ui, sans-serif;
+  }
+  .recipe-action-btn {
+    width: 30px; height: 30px; border-radius: 7px; border: 1px solid #f0c4d4;
+    background: white; color: #888; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .recipe-action-btn:hover { background: #fce4ec; color: #C2185B; border-color: #C2185B; }
+  .recipe-action-btn.danger:hover { background: #ffeaea; color: #E24B4A; border-color: #E24B4A; }
+  .empty-state { text-align: center; color: #aaa; font-size: 14px; padding: 40px 20px; font-family: system-ui, sans-serif; line-height: 1.6; }
+  .add-recipe-btn {
+    margin: 0 12px 12px; padding: 12px; background: #C2185B; color: white;
+    border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Stock panel */
+  #stock-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .stock-section-title {
+    font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 8px 4px 6px; font-family: system-ui, sans-serif;
+  }
+  .stock-card {
+    background: white; border-radius: 10px; border: 1px solid #f0c4d4;
+    margin-bottom: 8px; overflow: hidden;
+  }
+  .stock-card-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .stock-card-name { flex: 1; font-size: 14px; font-weight: 500; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .stock-card-rendimiento { font-size: 11px; color: #888; font-family: system-ui, sans-serif; }
+  .stock-depositos {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1px; background: #f0c4d4; border-top: 1px solid #f0c4d4;
+  }
+  .stock-dep-cell {
+    background: #fff; padding: 8px 12px;
+    font-family: system-ui, sans-serif;
+  }
+  .stock-dep-cell .dep-label { font-size: 11px; color: #888; margin-bottom: 2px; }
+  .stock-dep-cell .dep-val { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+  .stock-dep-cell .dep-val.has-stock { color: #C2185B; }
+  .stock-dep-btns { display: flex; gap: 4px; margin-top: 4px; }
+  .stock-dep-btn {
+    flex: 1; padding: 4px; border-radius: 6px; border: 1px solid #f0c4d4;
+    background: white; cursor: pointer; font-size: 13px; font-weight: 700;
+    font-family: system-ui, sans-serif; transition: all 0.15s;
+  }
+  .stock-dep-btn.plus { background: #C2185B; color: white; border-color: #C2185B; }
+  .stock-dep-btn.minus:hover { background: #ffeaea; }
+
+  /* Timers */
+  #timers-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .timer-card {
+    background: white; border: 1px solid #f0c4d4; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px; font-family: system-ui, sans-serif;
+  }
+  .timer-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .timer-display { font-size: 28px; font-weight: 700; color: #C2185B; font-family: monospace; }
+  .timer-display.urgent { color: #E24B4A; animation: pulse 1s infinite; }
+  .timer-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .timer-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: none;
+    background: #fce4ec; color: #880E4F; cursor: pointer; font-size: 13px;
+    font-family: system-ui, sans-serif;
+  }
+  .timer-btn.start { background: #C2185B; color: white; }
+  .timer-btn.danger { background: #ffeaea; color: #E24B4A; }
+  .add-timer-btn {
+    margin: 0 0 12px; padding: 10px; background: #C2185B; color: white;
+    border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif;
+    cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Log */
+  #log-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .log-item { padding: 8px 10px; background: white; border-radius: 8px; border: 1px solid #f0c4d4; margin-bottom: 6px; font-family: system-ui, sans-serif; }
+  .log-item .log-time { font-size: 11px; color: #aaa; }
+  .log-item .log-text { font-size: 13px; color: #333; margin-top: 2px; }
+  .log-export-btn {
+    margin: 0 0 12px; padding: 10px; background: transparent; color: #C2185B;
+    border: 1px solid #C2185B; border-radius: 10px; font-size: 14px;
+    font-family: system-ui, sans-serif; cursor: pointer; width: 100%;
+  }
+
+  /* Recipe detail */
+  #recipe-detail {
+    position: absolute; inset: 0; background: white;
+    transform: translateX(100%); transition: transform 0.25s ease;
+    display: flex; flex-direction: column; z-index: 10;
+  }
+  #recipe-detail.open { transform: translateX(0); }
+  #recipe-detail-header {
+    background: #880E4F; color: white; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #recipe-detail-header button {
+    background: transparent; border: none; color: white; font-size: 22px; cursor: pointer; padding: 2px;
+  }
+  #recipe-detail-header h2 { flex: 1; font-size: 15px; font-weight: 500; }
+  #recipe-detail-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .ingredients-section { margin-bottom: 16px; }
+  .ingredients-section h4 { font-size: 13px; font-weight: 600; color: #880E4F; margin-bottom: 10px; font-family: system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
+  .ingredient-item { display: flex !important; align-items: center; gap: 10px; padding: 6px 4px !important; border-radius: 6px; transition: background 0.15s; cursor: pointer; user-select: none; }
+  .ingredient-item:hover { background: rgba(194,24,91,0.07); }
+  .ingredient-item::before { display: none !important; }
+  .ingredient-checkbox { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #C2185B; background: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; font-size: 13px; color: white; }
+  .ingredient-item.checked .ingredient-checkbox { background: #C2185B; border-color: #C2185B; }
+  .ingredient-item.checked .ingredient-text { text-decoration: line-through; color: #aaa; }
+  .ingredient-text { font-size: 14px; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .checklist-progress { font-size: 12px; font-family: system-ui, sans-serif; color: #C2185B; margin-top: 8px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .checklist-progress-bar { flex: 1; height: 4px; background: #e0ddd8; border-radius: 2px; overflow: hidden; }
+  .checklist-progress-fill { height: 100%; background: #C2185B; border-radius: 2px; transition: width 0.3s; }
+  .checklist-reset-btn { margin-top: 8px; background: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-family: system-ui, sans-serif; color: #666; cursor: pointer; }
+  .step-item { display: flex; gap: 10px; margin-bottom: 12px; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: #C2185B; color: white; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: system-ui, sans-serif; }
+  .step-text { font-size: 14px; font-family: system-ui, sans-serif; color: #333; line-height: 1.5; }
+  .recipe-meta-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: #fce4ec; color: #880E4F; padding: 4px 10px; border-radius: 10px; font-family: system-ui, sans-serif; margin-bottom: 14px; margin-right: 6px; }
+
+  /* Deposit modal */
+  #deposito-modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 200;
+    align-items: flex-end; justify-content: center;
+  }
+  #deposito-modal-overlay.open { display: flex; }
+  #deposito-modal {
+    background: white; border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; font-family: system-ui, sans-serif;
+  }
+  #deposito-modal h3 { margin: 0 0 4px; font-size: 16px; color: #1a1a1a; }
+  .dep-rendimiento { font-size: 12px; color: #888; margin-bottom: 16px; }
+  .dep-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .dep-row label { flex: 1; font-size: 14px; color: #444; }
+  .dep-row input { width: 80px; padding: 8px; border: 1px solid #f0c4d4; border-radius: 8px; font-size: 15px; text-align: center; font-family: system-ui, sans-serif; }
+  .dep-total-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid #f0c4d4; margin-top: 4px; font-size: 13px; color: #666; }
+  #dep-total-val { font-weight: 700; color: #C2185B; }
+
+
+  /* Stock alerts */
+  .tab-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #E24B4A; color: white; font-size: 10px; font-weight: 700;
+    position: absolute; top: 4px; right: 4px; font-family: system-ui, sans-serif;
+    animation: pulse 2s infinite;
+  }
+  .tab { position: relative; }
+  .alert-banner {
+    margin: 8px 12px 0; padding: 10px 12px; background: #fee2e2;
+    border: 1px solid #fca5a5; border-radius: 8px;
+    font-family: system-ui, sans-serif; font-size: 13px; color: #dc2626;
+    display: none; line-height: 1.5;
+  }
+  .alert-banner.visible { display: block; }
+  .alert-banner strong { display: block; margin-bottom: 4px; }
+
+    /* Recipe speech controls */
+  #recipe-speech-controls { margin: 0 12px 12px; display: flex; gap: 8px; align-items: center; }
+
+  /* Modal */
+  #modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  #modal-overlay.open { display: flex; }
+  #modal {
+    background: white; border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; max-height: 85%;
+    overflow-y: auto; font-family: system-ui, sans-serif;
+  }
+  #modal h2 { font-size: 18px; margin-bottom: 16px; color: #880E4F; }
+  #modal label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; margin-top: 10px; }
+  #modal input, #modal textarea {
+    width: 100%; border: 1px solid #f0c4d4; border-radius: 8px;
+    padding: 10px; font-size: 14px; font-family: system-ui, sans-serif; outline: none;
+  }
+  #modal input:focus, #modal textarea:focus { border-color: #C2185B; }
+  #modal textarea { min-height: 80px; resize: vertical; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+  .btn-primary { flex: 2; padding: 12px; background: #C2185B; color: white; border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+  .btn-secondary { flex: 1; padding: 12px; background: transparent; color: #666; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+  #api-key-section { padding: 12px 16px; background: #fce4ec; border-bottom: 1px solid #f0c4d4; font-family: system-ui, sans-serif; display: flex; gap: 8px; align-items: center; }
+  #api-key-input { flex: 1; border: 1px solid #f0c4d4; border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: system-ui, sans-serif; background: white; outline: none; }
+  #api-key-save { padding: 8px 14px; background: #C2185B; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: system-ui, sans-serif; }
+  /* Pedidos */
+  .ped-card{background:#fff;border:1px solid #f0c4d4;border-radius:10px;padding:12px;margin-bottom:8px;font-family:system-ui,sans-serif;}
+  .ped-card.urgente{border-color:#E24B4A;background:#fff8f8;}
+  .ped-prod{font-size:14px;font-weight:600;color:#1a1a1a;}
+  .ped-meta{font-size:11px;color:#aaa;margin-top:3px;}
+  .ped-qty{font-size:18px;font-weight:700;color:#C2185B;}
+  .ped-btns{display:flex;gap:6px;margin-top:10px;}
+  .ped-btn{flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;}
+  .ped-btn.primary{background:#C2185B;color:#fff;border-color:#C2185B;font-weight:600;}
+  .ped-badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;margin-top:4px;}
+  .ped-badge.pendiente{background:#fef9c3;color:#92400e;}
+  .ped-badge.en_proceso{background:#dbeafe;color:#1e40af;}
+  .ped-badge.listo{background:#dcfce7;color:#166534;}
+  .tab-badge-red{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#E24B4A;color:#fff;font-size:10px;font-weight:700;position:absolute;top:4px;right:4px;animation:pulse 2s infinite;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <div class="logo">🍰</div>
+    <div>
+      <h1>Pastelería</h1>
+      <p>Asistente de producción</p>
+    </div>
+    <div class="status">
+      <div id="status-dot"></div>
+      <span id="status-text">Listo</span>
+    </div>
+  </div>
+
+  <div id="api-key-section" id="api-key-section">
+    <input type="password" id="api-key-input" placeholder="API Key de Anthropic..." />
+    <button id="api-key-save" onclick="saveApiKey()">Guardar</button>
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('chat')" id="tab-chat">
+      <i class="ti ti-message-circle"></i>Chat
+    </button>
+    <button class="tab" onclick="switchTab('recipes')" id="tab-recipes">
+      <i class="ti ti-book"></i>Recetas
+    </button>
+    <button class="tab" onclick="switchTab('stock')" id="tab-stock">
+      <i class="ti ti-building-warehouse"></i>Stock
+    </button>
+    <button class="tab" onclick="switchTab('timers')" id="tab-timers">
+      <i class="ti ti-clock"></i>Timers
+    </button>
+    <button class="tab" onclick="switchTab('pedidos')" id="tab-pedidos" style="position:relative;">
+      <i class="ti ti-bell"></i>Pedidos
+    </button>
+    <button class="tab" onclick="switchTab('log')" id="tab-log">
+      <i class="ti ti-clipboard-list"></i>Registro
+    </button>
+  </div>
+
+  <!-- CHAT -->
+  <div class="panel active" id="panel-chat">
+    <div id="chat-messages">
+      <div class="msg bot">¡Buenas! 🍰✨ Bienvenido a otro día de hacer magia en pastelería. Podés preguntarme sobre cualquier receta del recetario, organizar el día, o consultar el stock de los depósitos. ¿Por dónde arrancamos?</div>
+    </div>
+    <div id="speech-bar">
+      <span class="speech-label"><i class="ti ti-volume"></i> <span id="speech-bar-label">Leyendo...</span></span>
+      <button class="speech-ctrl-btn" id="speech-pause-btn" onclick="toggleSpeechPause()" title="Pausar"><i class="ti ti-player-pause" id="speech-pause-icon"></i></button>
+      <button class="speech-ctrl-btn stop" onclick="stopSpeech()" title="Detener"><i class="ti ti-player-stop"></i></button>
+    </div>
+    <div id="chat-input-area">
+      <input type="text" id="chat-input" placeholder="Escribí o usá el micrófono..." />
+      <button id="mic-btn" onclick="toggleMic()" title="Micrófono"><i class="ti ti-microphone"></i></button>
+      <button id="send-btn" onclick="sendMessage()" title="Enviar"><i class="ti ti-send"></i></button>
+    </div>
+  </div>
+
+  <!-- RECETAS -->
+  <div class="panel" id="panel-recipes">
+    <div class="search-bar">
+      <input class="search-input" id="search-recipes" placeholder="Buscar receta..." oninput="filterRecipes(this.value)" />
+    </div>
+    <div id="recipes-panel" style="flex:1;overflow-y:auto;"></div>
+    <button class="add-recipe-btn" onclick="openAddRecipe()">
+      <i class="ti ti-plus"></i> Nueva receta
+    </button>
+  </div>
+
+  <!-- STOCK -->
+  <div class="panel" id="panel-stock">
+    <div class="search-bar">
+      <input class="search-input" id="search-stock" placeholder="Buscar producto en stock..." oninput="filterStock(this.value)" />
+    </div>
+    <div id="stock-panel" style="flex:1;overflow-y:auto;"></div>
+  </div>
+
+  <!-- TIMERS -->
+  <div class="panel" id="panel-timers">
+    <div id="timers-panel"></div>
+    <button class="add-timer-btn" onclick="openAddTimer()">
+      <i class="ti ti-plus"></i> Nuevo timer
+    </button>
+  </div>
+
+  <!-- PEDIDOS RECIBIDOS -->
+  <div class="panel" id="panel-pedidos">
+    <div style="padding:12px 12px 0;font-family:system-ui,sans-serif;">
+      <div style="font-size:13px;font-weight:700;color:#880E4F;margin-bottom:8px;">📋 Pedidos para pastelería</div>
+      <div style="font-size:12px;color:#888;margin-bottom:10px;">Pedidos del salón u otras áreas. Tocá para cambiar el estado.</div>
+    </div>
+    <div id="pedidos-pasteler-list" style="flex:1;overflow-y:auto;padding:0 12px 12px;"></div>
+  </div>
+
+  <!-- LOG -->
+  <div class="panel" id="panel-log">
+    <div class="search-bar">
+      <input class="search-input" id="search-log" placeholder="Buscar en el registro..." oninput="filterLog(this.value)" />
+    </div>
+    <div id="log-panel" style="flex:1;overflow-y:auto;"></div>
+    <button class="log-export-btn" onclick="exportLog()">
+      <i class="ti ti-download"></i> Exportar registro del día
+    </button>
+  </div>
+
+  <!-- RECIPE DETAIL -->
+  <div id="recipe-detail">
+    <div id="recipe-detail-header">
+      <button onclick="closeRecipeDetail()"><i class="ti ti-arrow-left"></i></button>
+      <h2 id="recipe-detail-title"></h2>
+      <button id="complete-recipe-btn" onclick="completeRecipe()" style="background:#C2185B;border:none;color:white;border-radius:8px;padding:6px 12px;font-family:system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap;">
+        <i class="ti ti-circle-check"></i> Completada
+      </button>
+    </div>
+    <div id="recipe-detail-body"></div>
+    <div id="recipe-mic-bar" style="margin:0 12px 8px;display:flex;gap:8px;align-items:center;">
+      <button id="recipe-mic-btn" onclick="toggleRecipeMic()" style="flex:1;padding:10px;background:#f0ede8;color:#333;border:1px solid #ddd;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="ti ti-microphone" id="recipe-mic-icon"></i> <span id="recipe-mic-label">Hablarle al asistente</span>
+      </button>
+    </div>
+    <div id="recipe-speech-controls">
+      <button id="speak-recipe-btn" onclick="speakRecipe()" style="flex:1;padding:10px;background:#C2185B;color:white;border:none;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="ti ti-volume" id="speak-recipe-icon"></i> <span id="speak-recipe-label">Leer receta en voz alta</span>
+      </button>
+      <button id="recipe-pause-btn" onclick="toggleSpeechPause()" style="display:none;width:42px;height:42px;border-radius:50%;border:none;background:#C2185B;color:white;cursor:pointer;align-items:center;justify-content:center;font-size:18px;">
+        <i class="ti ti-player-pause" id="recipe-pause-icon"></i>
+      </button>
+      <button id="recipe-stop-btn" onclick="stopSpeech()" style="display:none;width:42px;height:42px;border-radius:50%;border:none;background:#E24B4A;color:white;cursor:pointer;align-items:center;justify-content:center;font-size:18px;">
+        <i class="ti ti-player-stop"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL DISTRIBUCIÓN DEPÓSITO -->
+  <div id="deposito-modal-overlay">
+    <div id="deposito-modal">
+      <h3>¿A dónde va esta tanda?</h3>
+      <p class="dep-rendimiento" id="dep-rendimiento-label"></p>
+      <div class="dep-row"><label>🏪 Local</label><input type="number" id="dep-local" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>❄️ Heladera</label><input type="number" id="dep-heladera" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>🧊 Freezer</label><input type="number" id="dep-freezer" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>📦 Estante</label><input type="number" id="dep-estante" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-total-row"><span>Total distribuido</span><span id="dep-total-val">0</span></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button onclick="closeDepModal()" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;background:white;cursor:pointer;font-family:system-ui,sans-serif;">Cancelar</button>
+        <button onclick="confirmDeposito()" style="flex:2;padding:10px;background:#C2185B;color:white;border:none;border-radius:8px;cursor:pointer;font-family:system-ui,sans-serif;font-weight:600;">Confirmar tanda ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NUEVA/EDITAR RECETA -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <h2 id="modal-title">Nueva receta</h2>
+      <input type="hidden" id="rec-editing-id" value="" />
+      <label>Nombre</label>
+      <input type="text" id="rec-name" placeholder="Ej: Alfajor de Maicena" />
+      <label>Ingredientes (uno por línea)</label>
+      <textarea id="rec-ingredients" placeholder="250gm manteca&#10;100gm azúcar..."></textarea>
+      <label>Pasos (uno por línea)</label>
+      <textarea id="rec-steps" placeholder="Cremar manteca y azúcar&#10;Agregar huevos..."></textarea>
+      <label>Rendimiento por tanda</label>
+      <input type="text" id="rec-rendimiento" placeholder="Ej: 17 budines, 8 kg, 20 alfajores" />
+      <label>Destino sugerido</label>
+      <select id="rec-deposito" style="width:100%;padding:10px;border:1px solid #f0c4d4;border-radius:8px;font-size:14px;font-family:system-ui,sans-serif;">
+        <option value="local">🏪 Local directo</option>
+        <option value="heladera">❄️ Heladera</option>
+        <option value="freezer">🧊 Freezer</option>
+        <option value="estante">📦 Estante</option>
+        <option value="pedido">📋 Solo por pedido</option>
+      </select>
+      <label>Tiempo de cocción (min, opcional)</label>
+      <input type="number" id="rec-time" placeholder="Ej: 20" />
+      <div class="modal-btns">
+        <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn-primary" id="modal-save-btn" onclick="saveRecipe()">Guardar receta</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+// ── SUPABASE CONFIG ───────────────────────────────
+const SUPABASE_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+
+async function sbFetch(method, table, body=null, params='') {
+  const url = SUPABASE_URL + '/rest/v1/' + table + params;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { const err = await res.text(); console.error('Supabase error:', err); return null; }
+  return method === 'DELETE' ? null : await res.json();
+}
+
+async function sbUpsert(table, data) {
+  return sbFetch('POST', table, Array.isArray(data) ? data : [data]);
+}
+
+async function sbSelect(table, params='') {
+  return sbFetch('GET', table, null, params);
+}
+
+async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
+  await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
+}
+// ── END SUPABASE ──────────────────────────────────
+
+// Polyfill
+if (!Array.prototype.findLastIndex) {
+  Array.prototype.findLastIndex = function(fn) {
+    for (let i = this.length - 1; i >= 0; i--) { if (fn(this[i], i, this)) return i; }
+    return -1;
+  };
+}
+
+const RECIPES_KEY = 'pasteleria_recipes';
+const LOG_KEY = 'pasteleria_log_';
+const API_KEY_KEY = 'pasteleria_api_key';
+const STOCK_KEY = 'pasteleria_stock';
+const SB_SECTOR = 'pasteleria';
+
+// ── STATE ──────────────────────────────────────────
+let recipes = [];
+let log = [];
+let apiKey = '';
+let currentRecipe = null;
+let checklistState = {};
+let stockState = {}; // { recipeName: { local, heladera, freezer, estante } }
+
+// ── HELPERS UI ────────────────────────────────────
+function setStatus(msg, color) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  if (dot) dot.style.background = color || '#5DCAA5';
+  if (txt) txt.textContent = msg;
+}
+
+// ── INIT ──────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  // API key — siempre desde localStorage (no es dato operativo)
+  apiKey = localStorage.getItem(API_KEY_KEY) || '';
+  if (apiKey) {
+    document.getElementById('api-key-input').value = '••••••••';
+    document.getElementById('api-key-section').style.display = 'none';
+  }
+
+  setStatus('Cargando...', '#F59E0B');
+
+  // ── Cargar recetas desde Supabase ────────────────
+  try {
+    const rows = await sbSelect('pasteleria_recetas', '?order=id.asc');
+    if (rows && rows.length > 0) {
+      recipes = rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        ingredients: r.ingredients,
+        steps: r.steps,
+        rendimiento: r.rendimiento || '',
+        deposito: r.deposito || 'local',
+        cookTime: r.cook_time || null,
+      }));
+      // Actualizar caché local
+      localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes));
+    } else {
+      // Sin datos en Supabase → intentar caché local, luego DEFAULT
+      const cached = localStorage.getItem(RECIPES_KEY);
+      recipes = cached ? JSON.parse(cached) : DEFAULT_RECIPES;
+      // Si vinieron de DEFAULT o caché, subirlos a Supabase
+      if (!rows || rows.length === 0) await _pushRecipesToSupabase(recipes);
+    }
+  } catch(e) {
+    console.warn('Supabase no disponible, usando caché local:', e);
+    try { const c = localStorage.getItem(RECIPES_KEY); recipes = c ? JSON.parse(c) : DEFAULT_RECIPES; } catch(_){ recipes = DEFAULT_RECIPES; }
+  }
+
+  // ── Cargar stock desde Supabase ──────────────────
+  try {
+    const rows = await sbSelect('pasteleria_stock', '');
+    if (rows && rows.length > 0) {
+      stockState = {};
+      rows.forEach(r => { stockState[r.recipe_name] = { local: r.local||0, heladera: r.heladera||0, freezer: r.freezer||0, estante: r.estante||0 }; });
+      localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
+    } else {
+      try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(_){ stockState = {}; }
+    }
+  } catch(e) {
+    try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(_){ stockState = {}; }
+  }
+
+  // ── Log del día desde localStorage (es efímero, no necesita Supabase) ──
+  try { const l = localStorage.getItem(LOG_KEY + today()); if (l) log = JSON.parse(l); } catch(e){}
+
+  setStatus('Listo', '#5DCAA5');
+
+  renderRecipes();
+  renderStock();
+  showLimpiezaIndicator();
+  checkStockAlerts();
+  renderTimers();
+  renderLog();
+  initSpeech();
+  initMic();
+
+  document.getElementById('chat-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  // Cargar pedidos al iniciar
+  loadPedidosPasteleria();
+  // Publicar estado de stock al central al abrir
+  setTimeout(publishStockToCentral, 2000);
+});
+
+function today() { return new Date().toISOString().split('T')[0]; }
+
+// ── GUARDAR RECETAS ────────────────────────────────
+async function _pushRecipesToSupabase(list) {
+  // Upsert de todas las recetas al mismo tiempo
+  const rows = list.map(r => ({
+    id: r.id,
+    sector: SB_SECTOR,
+    name: r.name,
+    ingredients: r.ingredients,
+    steps: r.steps,
+    rendimiento: r.rendimiento || '',
+    deposito: r.deposito || 'local',
+    cook_time: r.cookTime || null,
+  }));
+  await sbUpsert('pasteleria_recetas', rows);
+}
+
+async function saveRecipes() {
+  // 1) Caché local inmediata
+  try { localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)); } catch(e){}
+  // 2) Supabase en background
+  try { await _pushRecipesToSupabase(recipes); } catch(e){ console.warn('saveRecipes Supabase error:', e); }
+}
+
+async function deleteRecipeFromSupabase(id) {
+  try {
+    await sbFetch('DELETE', 'pasteleria_recetas', null, '?id=eq.' + id);
+  } catch(e){ console.warn('deleteRecipe Supabase error:', e); }
+}
+
+// ── GUARDAR STOCK ──────────────────────────────────
+async function saveStock() {
+  // 1) Caché local
+  try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){}
+  // 2) Supabase — upsert por recipe_name
+  try {
+    const rows = Object.entries(stockState).map(([recipe_name, s]) => ({
+      recipe_name,
+      sector: SB_SECTOR,
+      local: s.local||0,
+      heladera: s.heladera||0,
+      freezer: s.freezer||0,
+      estante: s.estante||0,
+    }));
+    if (rows.length > 0) await sbUpsert('pasteleria_stock', rows);
+  } catch(e){ console.warn('saveStock Supabase error:', e); }
+}
+
+function saveLog() { try { localStorage.setItem(LOG_KEY + today(), JSON.stringify(log)); } catch(e){} }
+
+function saveApiKey() {
+  const v = document.getElementById('api-key-input').value.trim();
+  if (!v || v === '••••••••') return;
+  apiKey = v;
+  localStorage.setItem(API_KEY_KEY, apiKey);
+  document.getElementById('api-key-section').style.display = 'none';
+}
+function addToLog(text, type) {
+  const now = new Date();
+  log.unshift({ text, type, time: now.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' }) });
+  saveLog(); renderLog();
+}
+
+// ── TABS ──────────────────────────────────────────
+
+function updateAlertUI(alerts, tabId, title) {
+  const tab = document.getElementById(tabId);
+  if (tab) {
+    const existing = tab.querySelector('.tab-badge');
+    if (existing) existing.remove();
+    if (alerts.length > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'tab-badge';
+      badge.textContent = alerts.length;
+      tab.appendChild(badge);
+    }
+  }
+  let banner = document.getElementById('alert-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'alert-banner';
+    banner.className = 'alert-banner';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  if (alerts.length > 0) {
+    banner.innerHTML = '<strong>' + title + '</strong>' + alerts.map(a => '• ' + a).join('<br>');
+    banner.classList.add('visible');
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+function checkStockAlerts() {
+  const alerts = [];
+  for (const r of recipes) {
+    const s = stockState[r.name];
+    const total = s ? (s.local + s.heladera + s.freezer + s.estante) : 0;
+    if (total === 0) alerts.push(r.name + ': sin stock en ningún depósito');
+  }
+  updateAlertUI(alerts, 'tab-stock', '⚠️ Productos sin stock:');
+}
+
+
+function filterRecipes(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('recipes-panel');
+  if (!el) return;
+  const cards = el.querySelectorAll('.recipe-card');
+  let visible = 0;
+  cards.forEach((card, i) => {
+    const r = recipes[i];
+    if (!r) return;
+    const match = !q || r.name.toLowerCase().includes(q) || r.ingredients.join(' ').toLowerCase().includes(q);
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  let empty = el.querySelector('.search-empty');
+  if (visible === 0 && q) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'search-empty'; el.appendChild(empty); }
+    empty.textContent = 'No se encontraron resultados para "' + q + '"';
+    empty.style.display = '';
+  } else if (empty) { empty.style.display = 'none'; }
+}
+
+function filterStock(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('stock-panel');
+  if (!el) return;
+  const cards = el.querySelectorAll('.stock-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const name = card.querySelector('.stock-card-name');
+    const match = !q || (name && name.textContent.toLowerCase().includes(q));
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  // Also hide section titles if all items under them are hidden
+  el.querySelectorAll('.stock-section-title').forEach(title => {
+    let next = title.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains('stock-section-title')) {
+      if (next.style.display !== 'none') hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    title.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function filterLog(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('log-panel');
+  if (!el) return;
+  const items = el.querySelectorAll('.log-item');
+  let visible = 0;
+  items.forEach(item => {
+    const text = item.querySelector('.log-text');
+    const match = !q || (text && text.textContent.toLowerCase().includes(q));
+    item.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  let empty = el.querySelector('.search-empty');
+  if (visible === 0 && q) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'search-empty'; el.appendChild(empty); }
+    empty.textContent = 'No se encontraron entradas para "' + q + '"';
+    empty.style.display = '';
+  } else if (empty) { empty.style.display = 'none'; }
+}
+
+
+// ── ALARMA LIMPIEZA GENERAL ──────────────────────────
+const DIAS_LIMPIEZA = [1, 3, 5]; // lunes=1, miercoles=3, viernes=5
+const ALARMA_LIMPIEZA_HORA = 15;
+let alarmaLimpiezaActivada = false;
+
+let alarmaHieloActivada = false;
+
+function checkAlarmaLimpieza() {
+  const now = new Date();
+  const dia = now.getDay();
+  const hora = now.getHours();
+  const min = now.getMinutes();
+
+  // Alarma hielo — todos los días a las 15hs
+  if (hora === 15 && min === 0 && !alarmaHieloActivada) {
+    alarmaHieloActivada = true;
+    dispararAlarmaHielo();
+  }
+
+  // Alarma limpieza — lunes/miércoles/viernes a las 15hs
+  if (!DIAS_LIMPIEZA.includes(dia)) return;
+  if (hora === ALARMA_LIMPIEZA_HORA && min === 0 && !alarmaLimpiezaActivada) {
+    dispararAlarmaLimpieza();
+  }
+}
+
+function dispararAlarmaHielo() {
+  // Banner
+  let banner = document.getElementById('hielo-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'hielo-banner';
+    banner.style.cssText = 'margin:8px 12px 0;padding:12px 14px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;font-family:system-ui,sans-serif;font-size:13px;color:#0369a1;display:none;line-height:1.5;animation:pulse 1.5s infinite;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  banner.innerHTML = '<strong style="display:block;margin-bottom:4px;">🧊 ¡GUARDAR HIELO EN EL FREEZER! 15:00hs</strong>Acordate de poner el hielo ahora.';
+  banner.style.display = 'block';
+
+  // Notificación del sistema
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('🧊 ¡Guardar hielo en el freezer!', {
+      body: 'Son las 15:00hs — guardá el hielo en el freezer ahora.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧊</text></svg>',
+      requireInteraction: true,
+    });
+  }
+
+  // Sonido distintivo (tono más grave)
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f, s, d) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.3, ctx.currentTime + s);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + s + d);
+      o.start(ctx.currentTime + s); o.stop(ctx.currentTime + s + d + 0.1);
+    }
+    beep(440, 0, 0.3); beep(440, 0.4, 0.3); beep(550, 0.8, 0.6);
+  } catch(e) {}
+
+  if (typeof addToLog === 'function') addToLog('🧊 ALARMA: Guardar hielo en el freezer (15:00hs)', 'alarma');
+}
+
+function dispararAlarmaLimpieza() {
+  alarmaLimpiezaActivada = true;
+
+  // Banner en el chat
+  let banner = document.getElementById('limpieza-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'limpieza-banner';
+    banner.style.cssText = 'margin:8px 12px 0;padding:12px 14px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;font-family:system-ui,sans-serif;font-size:13px;color:#854d0e;display:none;line-height:1.5;animation:pulse 1.5s infinite;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  banner.innerHTML = '<strong style="display:block;margin-bottom:4px;">🧹 ¡HORA DE LIMPIEZA GENERAL! 15:00hs</strong>Todos los sectores se ponen a limpiar ahora.';
+  banner.style.display = 'block';
+
+  // Notificación del sistema
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('🧹 ¡Limpieza general!', {
+      body: 'Son las 15:00hs — todos los sectores a limpiar.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧹</text></svg>',
+      requireInteraction: true,
+    });
+  }
+
+  // Sonido
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f, s, d) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.3, ctx.currentTime + s);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + s + d);
+      o.start(ctx.currentTime + s); o.stop(ctx.currentTime + s + d + 0.1);
+    }
+    beep(660, 0, 0.2); beep(770, 0.25, 0.2); beep(880, 0.5, 0.4);
+  } catch(e) {}
+
+  if (typeof addToLog === 'function') addToLog('🧹 ALARMA: Limpieza general 15:00hs', 'limpieza');
+}
+
+// Mostrar indicador de próxima limpieza en el chat
+function showLimpiezaIndicator() {
+  const now = new Date();
+  const dia = now.getDay();
+  const hora = now.getHours();
+  if (!DIAS_LIMPIEZA.includes(dia)) return;
+  if (hora >= ALARMA_LIMPIEZA_HORA) return; // ya pasó
+  const min = now.getMinutes();
+  const minRestantes = (ALARMA_LIMPIEZA_HORA * 60) - (hora * 60 + min);
+  const hR = Math.floor(minRestantes / 60);
+  const mR = minRestantes % 60;
+  let ind = document.getElementById('limpieza-indicator');
+  if (!ind) {
+    ind = document.createElement('div');
+    ind.id = 'limpieza-indicator';
+    ind.style.cssText = 'margin:8px 12px 0;padding:8px 12px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;font-family:system-ui,sans-serif;font-size:12px;color:#854d0e;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(ind, msgs);
+  }
+  ind.innerHTML = '🧹 Hoy toca limpieza general — alarma en ' + (hR > 0 ? hR + 'h ' : '') + mR + 'min (15:00hs)';
+}
+
+setInterval(checkAlarmaLimpieza, 60000);
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'stock') { renderStock(); checkStockAlerts(); }
+  if (name === 'log') renderLog();
+}
+
+// ── RECIPES ──────────────────────────────────────
+
+function renderRecipeCards(arr, el) {
+  if (!el) el = document.getElementById('recipes-panel');
+  if (arr.length === 0) { el.innerHTML = '<div class="empty-state">No hay recetas cargadas todavía.<br>Agregá la primera con el botón de abajo.</div>'; return; }
+  el.innerHTML = arr.map(r => `
+    <div class="recipe-card" onclick="openRecipeDetail(${r.id})">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <h3>${r.name}</h3>
+          <p>${r.ingredients.length} ingredientes · ${r.steps.length} pasos${r.rendimiento ? ' · ' + r.rendimiento : ''}</p>
+          ${r.deposito ? `<span class="recipe-tag">${depIcon ? depIcon(r.deposito) : ''} ${depLabel ? depLabel(r.deposito) : r.deposito}</span>` : ''}
+          ${r.cookTime ? `<span class="recipe-tag">⏱ ${r.cookTime} min</span>` : ''}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+          <button class="recipe-action-btn" onclick="openEditRecipe(${r.id})" title="Editar"><i class="ti ti-pencil"></i></button>
+          <button class="recipe-action-btn danger" onclick="deleteRecipe(${r.id})" title="Eliminar"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function renderRecipes() {
+  const el = document.getElementById('recipes-panel');
+  if (recipes.length === 0) { el.innerHTML = '<div class="empty-state">No hay recetas cargadas todavía.<br>Agregá la primera con el botón de abajo.</div>'; return; }
+  renderRecipeCards(recipes, el);
+}
+
+function depIcon(d) { return {local:'🏪',heladera:'❄️',freezer:'🧊',estante:'📦',pedido:'📋'}[d] || ''; }
+function depLabel(d) { return {local:'Local',heladera:'Heladera',freezer:'Freezer',estante:'Estante',pedido:'A pedido'}[d] || d; }
+
+function openAddRecipe() {
+  document.getElementById('modal-title').textContent = 'Nueva receta';
+  document.getElementById('modal-save-btn').textContent = 'Guardar receta';
+  document.getElementById('rec-editing-id').value = '';
+  ['rec-name','rec-ingredients','rec-steps','rec-rendimiento','rec-time'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('rec-deposito').value = 'local';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function openEditRecipe(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('modal-title').textContent = 'Editar receta';
+  document.getElementById('modal-save-btn').textContent = 'Guardar cambios';
+  document.getElementById('rec-editing-id').value = id;
+  document.getElementById('rec-name').value = r.name;
+  document.getElementById('rec-ingredients').value = r.ingredients.join('\n');
+  document.getElementById('rec-steps').value = r.steps.join('\n');
+  document.getElementById('rec-rendimiento').value = r.rendimiento || '';
+  document.getElementById('rec-deposito').value = r.deposito || 'local';
+  document.getElementById('rec-time').value = r.cookTime || '';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+async function deleteRecipe(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r || !confirm('¿Eliminar "' + r.name + '"?')) return;
+  recipes = recipes.filter(x => x.id !== id);
+  try { localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)); } catch(e){}
+  await deleteRecipeFromSupabase(id);
+  renderRecipes();
+  addToLog('🗑 Receta eliminada: ' + r.name, 'receta');
+}
+
+function saveRecipe() {
+  const name = document.getElementById('rec-name').value.trim();
+  const ingRaw = document.getElementById('rec-ingredients').value.trim();
+  const stepsRaw = document.getElementById('rec-steps').value.trim();
+  const rendimiento = document.getElementById('rec-rendimiento').value.trim();
+  const deposito = document.getElementById('rec-deposito').value;
+  const cookTime = parseInt(document.getElementById('rec-time').value) || null;
+  if (!name || !ingRaw || !stepsRaw) { alert('Completá nombre, ingredientes y pasos.'); return; }
+  const ingredients = ingRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const steps = stepsRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const editingId = document.getElementById('rec-editing-id').value;
+  if (editingId) {
+    const idx = recipes.findIndex(x => x.id === parseInt(editingId));
+    if (idx !== -1) { recipes[idx] = { ...recipes[idx], name, ingredients, steps, rendimiento, deposito, cookTime }; addToLog('✏️ Receta editada: ' + name, 'receta'); }
+  } else {
+    recipes.push({ id: Date.now(), name, ingredients, steps, rendimiento, deposito, cookTime });
+    addToLog('➕ Receta agregada: ' + name, 'receta');
+  }
+  saveRecipes(); renderRecipes(); closeModal();
+}
+
+// ── RECIPE DETAIL ─────────────────────────────────
+function toggleIngredient(recipeId, idx) {
+  if (!checklistState[recipeId]) checklistState[recipeId] = new Set();
+  const s = checklistState[recipeId];
+  if (s.has(idx)) s.delete(idx); else s.add(idx);
+  renderChecklist(recipeId);
+}
+
+function renderChecklist(recipeId) {
+  const recipe = recipes.find(r => r.id === recipeId);
+  if (!recipe) return;
+  const checked = checklistState[recipeId] || new Set();
+  const total = recipe.ingredients.length;
+  const done = checked.size;
+  const container = document.getElementById('ingredient-checklist-' + recipeId);
+  if (!container) return;
+  container.innerHTML = recipe.ingredients.map((ing, idx) => {
+    const isChecked = checked.has(idx);
+    return `<div class="ingredient-item ${isChecked ? 'checked' : ''}" onclick="toggleIngredient(${recipeId}, ${idx})">
+      <div class="ingredient-checkbox">${isChecked ? '✓' : ''}</div>
+      <span class="ingredient-text">${ing}</span>
+    </div>`;
+  }).join('') + `
+  <div class="checklist-progress">
+    <div class="checklist-progress-bar"><div class="checklist-progress-fill" style="width:${total ? (done/total*100) : 0}%"></div></div>
+    <span>${done}/${total}</span>
+    ${done > 0 ? `<button class="checklist-reset-btn" onclick="event.stopPropagation();resetChecklist(${recipeId})">Reiniciar</button>` : ''}
+  </div>`;
+}
+
+function resetChecklist(recipeId) { checklistState[recipeId] = new Set(); renderChecklist(recipeId); }
+
+function openRecipeDetail(id) {
+  currentRecipe = recipes.find(r => r.id === id);
+  if (!currentRecipe) return;
+  document.getElementById('recipe-detail-title').textContent = currentRecipe.name;
+  const body = document.getElementById('recipe-detail-body');
+  body.innerHTML = `
+    <div class="ingredients-section">
+      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Mise en place</span>
+        <span style="font-size:11px;color:#aaa;font-weight:400;">Tildá lo que ya tenés listo</span>
+      </h4>
+      <div id="ingredient-checklist-${currentRecipe.id}"></div>
+    </div>
+    ${currentRecipe.rendimiento ? `<span class="recipe-meta-tag">📦 Rinde: ${currentRecipe.rendimiento}</span>` : ''}
+    ${currentRecipe.deposito ? `<span class="recipe-meta-tag">${depIcon(currentRecipe.deposito)} ${depLabel(currentRecipe.deposito)}</span>` : ''}
+    <div style="font-size:13px;color:#666;font-family:system-ui,sans-serif;margin:12px 0 8px;">Pasos:</div>
+    ${currentRecipe.steps.map((s,i) => `
+      <div class="step-item">
+        <div class="step-num">${i+1}</div>
+        <div class="step-text">${s}</div>
+      </div>`).join('')}
+    ${currentRecipe.cookTime ? `
+      <div style="margin-top:8px">
+        <button style="width:100%;padding:10px;background:#C2185B;color:white;border:none;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="addTimerFromRecipe()">
+          ⏱ Iniciar timer de cocción (${currentRecipe.cookTime} min)
+        </button>
+      </div>` : ''}
+  `;
+  renderChecklist(currentRecipe.id);
+  updateSpeechUI('', false);
+  const cb = document.getElementById('complete-recipe-btn');
+  if (cb) { cb.dataset.count = '0'; cb.style.background = '#C2185B'; cb.innerHTML = '<i class="ti ti-circle-check"></i> Completada'; }
+  document.getElementById('recipe-detail').classList.add('open');
+  addToLog('👀 Consultó receta: ' + currentRecipe.name, 'receta');
+}
+
+function closeRecipeDetail() {
+  document.getElementById('recipe-detail').classList.remove('open');
+  stopSpeech();
+}
+
+function toggleRecipeMic() {
+  if (!currentRecipe) return;
+  // Pre-fill chat input with recipe context, go to chat tab and activate mic
+  const recipeName = currentRecipe.name;
+  closeRecipeDetail();
+  switchTab('chat');
+  // Small delay to let the tab switch render, then activate mic
+  setTimeout(() => {
+    toggleMic(recipeName);
+  }, 150);
+}
+
+function addTimerFromRecipe() {
+  if (!currentRecipe) return;
+  addTimerWithData(currentRecipe.name + ' (horno)', currentRecipe.cookTime);
+  switchTab('timers'); closeRecipeDetail();
+}
+
+// ── COMPLETE RECIPE → DEPOSIT MODAL ───────────────
+function completeRecipe() {
+  if (!currentRecipe) return;
+  document.getElementById('dep-rendimiento-label').textContent = 'Rendimiento: ' + (currentRecipe.rendimiento || '—') + ' · Destino sugerido: ' + depLabel(currentRecipe.deposito || 'local');
+  ['dep-local','dep-heladera','dep-freezer','dep-estante'].forEach(id => document.getElementById(id).value = 0);
+  updateDepTotal();
+  document.getElementById('deposito-modal-overlay').classList.add('open');
+}
+
+function updateDepTotal() {
+  const t = ['dep-local','dep-heladera','dep-freezer','dep-estante'].reduce((sum,id) => sum + (parseInt(document.getElementById(id).value)||0), 0);
+  document.getElementById('dep-total-val').textContent = t;
+}
+
+function closeDepModal() { document.getElementById('deposito-modal-overlay').classList.remove('open'); }
+
+function confirmDeposito() {
+  if (!currentRecipe) return;
+  const local = parseInt(document.getElementById('dep-local').value) || 0;
+  const heladera = parseInt(document.getElementById('dep-heladera').value) || 0;
+  const freezer = parseInt(document.getElementById('dep-freezer').value) || 0;
+  const estante = parseInt(document.getElementById('dep-estante').value) || 0;
+
+  if (!stockState[currentRecipe.name]) stockState[currentRecipe.name] = { local:0, heladera:0, freezer:0, estante:0 };
+  const s = stockState[currentRecipe.name];
+  s.local += local; s.heladera += heladera; s.freezer += freezer; s.estante += estante;
+  saveStock();
+
+  const btn = document.getElementById('complete-recipe-btn');
+  const count = parseInt(btn.dataset.count || '0') + 1;
+  btn.dataset.count = count;
+  btn.style.background = '#16a34a';
+  btn.innerHTML = '<i class="ti ti-circle-check-filled"></i> ¡Completada! ×' + count;
+  btn.style.transform = 'scale(1.08)';
+  setTimeout(() => btn.style.transform = '', 200);
+
+  addToLog(`✅ Tanda ${count}: ${currentRecipe.name} → 🏪${local} ❄️${heladera} 🧊${freezer} 📦${estante}`, 'receta');
+  closeDepModal();
+  renderStock();
+}
+
+// ── STOCK ─────────────────────────────────────────
+function getStock(name) {
+  if (!stockState[name]) stockState[name] = { local:0, heladera:0, freezer:0, estante:0 };
+  return stockState[name];
+}
+
+function adjustStock(name, dep, delta) {
+  const s = getStock(name);
+  s[dep] = Math.max(0, (s[dep] || 0) + delta);
+  saveStock(); renderStock();
+  if (delta < 0) addToLog(`📤 Retirado del ${depLabel(dep)}: ${Math.abs(delta)} de ${name}`, 'stock');
+}
+
+function renderStock(filterQ) {
+  filterQ = (filterQ || '').toLowerCase().trim();
+  const el = document.getElementById('stock-panel');
+  if (!el) return;
+
+  // Group by deposito type
+  const groups = { local: [], heladera: [], freezer: [], estante: [], pedido: [] };
+  for (const r of recipes) {
+    const dep = r.deposito || 'local';
+    if (groups[dep]) groups[dep].push(r);
+  }
+
+  let html = '';
+  const sections = [
+    { key: 'heladera', label: '❄️ Heladera' },
+    { key: 'freezer',  label: '🧊 Freezer' },
+    { key: 'estante',  label: '📦 Estante' },
+    { key: 'local',    label: '🏪 Local directo' },
+    { key: 'pedido',   label: '📋 Solo por pedido' },
+  ];
+
+  for (const sec of sections) {
+    const items = groups[sec.key];
+    if (!items.length) continue;
+    html += `<div class="stock-section-title">${sec.label}</div>`;
+    for (const r of items) {
+      const s = getStock(r.name);
+      const totalStock = s.local + s.heladera + s.freezer + s.estante;
+      html += `<div class="stock-card">
+        <div class="stock-card-header">
+          <div>
+            <div class="stock-card-name">${r.name}</div>
+            <div class="stock-card-rendimiento">${r.rendimiento || ''}</div>
+          </div>
+        </div>
+        <div class="stock-depositos">
+          ${['local','heladera','freezer','estante'].map(dep => `
+            <div class="stock-dep-cell">
+              <div class="dep-label">${depIcon(dep)} ${depLabel(dep)}</div>
+              <div class="dep-val ${s[dep] > 0 ? 'has-stock' : ''}">${s[dep] || 0}</div>
+              <div class="stock-dep-btns">
+                <button class="stock-dep-btn minus" onclick="adjustStock('${r.name}','${dep}',-1)">−</button>
+                <button class="stock-dep-btn plus" onclick="adjustStock('${r.name}','${dep}',1)">+</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  if (!html) html = '<div class="empty-state">Completá tandas desde las recetas<br>para ver el stock acá.</div>';
+  el.innerHTML = html;
+}
+
+// ── TIMERS ────────────────────────────────────────
+let timers = [];
+function renderTimers() {
+  const el = document.getElementById('timers-panel');
+  if (timers.length === 0) { el.innerHTML = '<div class="empty-state">No hay timers activos.<br>Agregá uno o inicialo desde una receta.</div>'; return; }
+  el.innerHTML = timers.map(t => {
+    const mins = Math.floor(t.remaining / 60);
+    const secs = t.remaining % 60;
+    const display = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    const urgent = t.remaining <= 60 && t.running;
+    return `<div class="timer-card">
+      <div class="timer-name">${t.name}</div>
+      <div class="timer-display ${urgent ? 'urgent' : ''}">${display}</div>
+      <div class="timer-btns">
+        <button class="timer-btn start" onclick="toggleTimer(${t.id})">${t.running ? '⏸ Pausar' : '▶ Iniciar'}</button>
+        <button class="timer-btn" onclick="resetTimer(${t.id})">↺ Reiniciar</button>
+        <button class="timer-btn danger" onclick="deleteTimer(${t.id})">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openAddTimer() {
+  const name = prompt('Nombre del timer:');
+  if (!name) return;
+  const mins = parseInt(prompt('Minutos:'));
+  if (!mins || isNaN(mins)) return;
+  addTimerWithData(name, mins);
+}
+
+function addTimerWithData(name, mins) {
+  const t = { id: Date.now(), name, total: mins * 60, remaining: mins * 60, running: false, interval: null };
+  timers.push(t); renderTimers();
+}
+
+function toggleTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (!t) return;
+  if (t.running) { clearInterval(t.interval); t.running = false; }
+  else {
+    t.running = true;
+    t.interval = setInterval(() => {
+      t.remaining--;
+      if (t.remaining <= 0) {
+        t.remaining = 0; t.running = false; clearInterval(t.interval);
+        speak('¡Atención! El timer ' + t.name + ' terminó.', '¡Timer terminado!');
+        addToLog('⏰ Timer terminado: ' + t.name, 'timer');
+      }
+      renderTimers();
+    }, 1000);
+  }
+  renderTimers();
+}
+
+function resetTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (!t) return;
+  clearInterval(t.interval); t.running = false; t.remaining = t.total; renderTimers();
+}
+
+function deleteTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (t) clearInterval(t.interval);
+  timers = timers.filter(x => x.id !== id); renderTimers();
+}
+
+// ── LOG ───────────────────────────────────────────
+function renderLog() {
+  const el = document.getElementById('log-panel');
+  if (log.length === 0) { el.innerHTML = '<div class="empty-state">El registro del día está vacío.<br>Aparecerá acá cada acción que hagas.</div>'; return; }
+  el.innerHTML = log.map(e => `<div class="log-item"><div class="log-time">${e.time}</div><div class="log-text">${e.text}</div></div>`).join('');
+}
+
+function exportLog() {
+  const text = log.map(e => `[${e.time}] ${e.text}`).join('\n');
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'registro-pasteleria-' + today() + '.txt';
+  a.click();
+}
+
+// ── SPEECH ────────────────────────────────────────
+let synth = null;
+let isSpeaking = false, isPaused = false, currentUtterance = null;
+
+function initSpeech() { if ('speechSynthesis' in window) { synth = window.speechSynthesis; } }
+
+function speak(text, label) {
+  if (!synth) return;
+  synth.cancel();
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  currentUtterance.lang = 'es-AR'; currentUtterance.rate = 0.95;
+  currentUtterance.onstart = () => { isSpeaking = true; isPaused = false; updateSpeechUI(label || 'Hablando...', true); };
+  currentUtterance.onend = currentUtterance.onerror = () => { isSpeaking = false; isPaused = false; updateSpeechUI('', false); };
+  synth.speak(currentUtterance);
+}
+
+function toggleSpeechPause() {
+  if (!synth || !isSpeaking) return;
+  if (isPaused) { synth.resume(); isPaused = false; updateSpeechUI(null, true, false); }
+  else { synth.pause(); isPaused = true; updateSpeechUI(null, true, true); }
+}
+
+function stopSpeech() {
+  if (!synth) return;
+  synth.cancel(); isSpeaking = false; isPaused = false; updateSpeechUI('', false);
+}
+
+function updateSpeechUI(label, speaking, paused) {
+  const bar = document.getElementById('speech-bar');
+  if (bar) {
+    if (speaking) { bar.classList.add('visible'); if (label !== null && label !== undefined) document.getElementById('speech-bar-label').textContent = label; }
+    else { bar.classList.remove('visible'); }
+    const pi = document.getElementById('speech-pause-icon');
+    if (pi) pi.className = (paused === true) ? 'ti ti-player-play' : 'ti ti-player-pause';
+  }
+  const speakBtn = document.getElementById('speak-recipe-btn');
+  const pauseBtn = document.getElementById('recipe-pause-btn');
+  const stopBtn = document.getElementById('recipe-stop-btn');
+  const speakLabel = document.getElementById('speak-recipe-label');
+  const speakIcon = document.getElementById('speak-recipe-icon');
+  if (speakBtn && pauseBtn && stopBtn) {
+    if (speaking) {
+      speakBtn.style.flex = '0 0 auto'; speakBtn.style.padding = '10px 14px';
+      if (speakLabel) speakLabel.textContent = '';
+      pauseBtn.style.display = 'flex'; stopBtn.style.display = 'flex';
+      const rpi = document.getElementById('recipe-pause-icon');
+      if (rpi) rpi.className = (paused === true) ? 'ti ti-player-play' : 'ti ti-player-pause';
+    } else {
+      speakBtn.style.flex = '1'; speakBtn.style.padding = '10px';
+      if (speakLabel) speakLabel.textContent = 'Leer receta en voz alta';
+      pauseBtn.style.display = 'none'; stopBtn.style.display = 'none';
+    }
+  }
+}
+
+function speakRecipe() {
+  if (!currentRecipe) return;
+  if (isSpeaking) { stopSpeech(); return; }
+  const text = currentRecipe.name + '. Ingredientes: ' + currentRecipe.ingredients.join(', ') + '. Pasos: ' + currentRecipe.steps.map((s,i) => 'Paso '+(i+1)+': '+s).join('. ');
+  speak(text, 'Leyendo: ' + currentRecipe.name);
+  addToLog('🔊 Leyó en voz alta: ' + currentRecipe.name, 'receta');
+}
+
+// ── MIC ───────────────────────────────────────────
+let recognition = null;
+function initMic() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'es-AR'; recognition.interimResults = false; recognition.maxAlternatives = 1;
+  recognition.onresult = e => {
+    const text = e.results[0][0].transcript;
+    const ctx = recognition._recipeContext;
+    document.getElementById('chat-input').value = ctx ? `[Receta: ${ctx}] ${text}` : text;
+    recognition._recipeContext = null;
+    sendMessage();
+  };
+  recognition.onend = () => { setStatus('Listo', false); };
+  recognition.onerror = () => { setStatus('Listo', false); };
+}
+
+function toggleMic(recipeContext) {
+  if (!recognition) { alert('Tu navegador no soporta reconocimiento de voz.'); return; }
+  const btn = document.getElementById('mic-btn');
+  if (btn.classList.contains('listening')) { recognition.stop(); return; }
+  recognition._recipeContext = recipeContext || null;
+  recognition.start();
+  setStatus('Escuchando...', true);
+}
+
+function setStatus(text, listening) {
+  document.getElementById('status-text').textContent = text;
+  document.getElementById('status-dot').classList.toggle('listening', listening);
+  document.getElementById('mic-btn').classList.toggle('listening', listening);
+}
+
+// ── CHAT ──────────────────────────────────────────
+function buildSystemPrompt(recipeCtx) {
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const hoy = dias[new Date().getDay()];
+  const hora = new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+
+  // Build stock context
+  let stockCtx = '';
+  const stockItems = Object.entries(stockState).filter(([,s]) => s.local+s.heladera+s.freezer+s.estante > 0);
+  if (stockItems.length > 0) {
+    stockCtx = '\nSTOCK ACTUAL DE DEPÓSITOS:\n' + stockItems.map(([name, s]) =>
+      `- ${name}: 🏪${s.local} ❄️${s.heladera} 🧊${s.freezer} 📦${s.estante}`
+    ).join('\n');
+  }
+
+  return `Sos el asistente interno del sector PASTELERÍA. Tu único rol es:
+
+1. RECETAS: Guiás y explicás solo las recetas cargadas en el sistema. Nunca inventés recetas.
+2. ORGANIZACIÓN DEL DÍA: Usás el stock real de depósitos para indicar qué producir y reponer.
+3. STOCK: Sabés el estado actual de cada depósito (local, heladera, freezer, estante) y ayudás a decidir qué necesita reposición.
+
+DEPÓSITOS:
+- 🏪 LOCAL: venta inmediata
+- ❄️ HELADERA: reserva refrigerada (budines, tortas, bizcochuelos)
+- 🧊 FREEZER: reserva congelada (cookies keto, tapas alfajor, bases sin gluten)
+- 📦 ESTANTE: reserva temperatura ambiente (alfajores secos, galletas)
+
+REGLAS:
+- Solo recetas y organización. Fuera de eso: "Solo puedo ayudarte con las recetas y la organización del día."
+- Español rioplatense, tono cálido y alegre 🍰. Reconocé el esfuerzo del equipo.
+- Cuando organices el día, priorizá lo que tiene stock bajo o cero.
+- Para recetas de ciclo largo (cada 30 días), recordalo cuando el stock esté bajo.
+
+--- CONTEXTO ACTUAL ---
+Hoy: ${hoy}, ${hora}hs
+${recipeCtx ? 'Recetas en el sistema:\n' + recipeCtx : 'Sin recetas cargadas.'}
+${stockCtx || '\nAún no hay stock registrado.'}
+--- FIN CONTEXTO ---`;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!apiKey) { alert('Ingresá tu API Key de Anthropic para usar el chat.'); return; }
+
+  input.value = '';
+  appendMsg(text, 'user');
+  const thinking = appendMsg('...', 'bot thinking');
+
+  const recipeCtx = recipes.map(r => `- ${r.name} (${r.rendimiento || 'sin rendimiento definido'}, depósito: ${depLabel(r.deposito || 'local')})`).join('\n');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: buildSystemPrompt(recipeCtx),
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || 'No pude procesar la respuesta.';
+    thinking.remove();
+    appendMsg(reply, 'bot');
+    speak(reply, 'Asistente respondiendo...');
+    addToLog('💬 ' + text, 'chat');
+  } catch(e) {
+    thinking.remove();
+    appendMsg('Hubo un error al conectar con el asistente. Revisá la API key.', 'bot');
+  }
+}
+
+function appendMsg(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + cls;
+  el.textContent = text;
+  const msgs = document.getElementById('chat-messages');
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return el;
+}
+
+// ── DEFAULT RECIPES ───────────────────────────────
+
+const DEFAULT_RECIPES = [{"id": 101, "name": "Pepas de Algarroba", "ingredients": ["500gm premezcla integral", "500gm azúcar impalpable", "500gm margarina bien derretida", "50ml esencia vainilla", "50ml esencia naranja", "500gm algarroba", "600gm membrillo"], "steps": ["Derretir bien la margarina", "Incorporar las esencias, la algarroba y el azúcar. Mezclar bien", "Terminar con la premezcla. TRABAJAR LA MASA RÁPIDO PORQUE SE ENFRÍA", "Hacer chorizitos de 3cm de ancho x 10cm de largo", "Armar las pepas en las latas haciendo un agujerito en el medio sin tocar el fondo", "Rellenar de membrillo. Destemplar antes de cocinar", "Cocinar a 200° x 7 min, rotar y cocinar 7 min más"], "cookTime": 14, "rendimiento": "2,3 kg", "deposito": "local"}, {"id": 102, "name": "Cookies Apto Diabetes Naranja y Cacao", "ingredients": ["150gm manteca", "50gm eritritol", "25gm vainilla", "20gm cacao amargo alcalino", "125gm algarroba", "450gm harina de almendras", "Ralladura de naranja", "1gm tocoferoles"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "700gm", "deposito": "local"}, {"id": 103, "name": "Cookies Apto Diabetes Cacao y Nuez Tostada", "ingredients": ["200gm manteca", "150gm eritritol", "50gm vainilla", "200gm avena activada", "400gm nuez", "10gm goma xántica", "70gm harina de coco"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "900gm", "deposito": "local"}, {"id": 104, "name": "Cookies Apto Diabetes Naranja y Nuez", "ingredients": ["80gm manteca", "70gm eritritol", "50gm vainilla", "200gm harina de almendra", "40gm harina de coco", "1 huevo", "1 yema"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "400gm o 6 pares tapas alfajor", "deposito": "freezer"}, {"id": 105, "name": "Cookies de Coco Sin Gluten", "ingredients": ["100gm manteca pomada", "140gm eritritol impalpable", "Limón rallado", "200gm coco rallado", "35gm harina de coco", "3 huevos enteros"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "10 pares tapas alfajores", "deposito": "freezer"}, {"id": 106, "name": "Cookies Sin Gluten Base (12+ sabores)", "ingredients": ["1250gm manteca pomada", "500gm azúcar impalpable", "Sabor a elección", "2 huevos enteros", "9 yemas", "5kg harinas sin gluten sin leudantes"], "steps": ["Mezclar la manteca con el azúcar impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "8 kg (7-12 sabores distintos)", "deposito": "freezer"}, {"id": 107, "name": "Torta Poly", "ingredients": ["1lt aceite", "1500gm azúcar", "300gm chocolate derretido", "250gm cacao amargo", "100gm nueces picadas", "100gm fruta escurrida", "100gm pasas de uva", "250gm algarroba", "3kg premezcla budín integral", "10gm canela", "5gm nuez moscada", "200cc whisky o gin", "50cc esencia vainilla", "50cc esencia naranja"], "steps": ["Mezclar todos los húmedos juntos", "Agregar el azúcar y batir", "Incorporar los secos menos la premezcla", "Agregar la premezcla en 3 partes", "Molde a 3/4 de lleno con hojas antiadherentes", "Horno a 200° x 30 min aprox"], "cookTime": 30, "rendimiento": "24 porciones", "deposito": "heladera"}, {"id": 108, "name": "Budín de Chocolate y Nuez", "ingredients": ["1200gm aceite", "1500gm azúcar", "10gm goma guar", "500gm cacao amargo", "1000gm nuez", "500gm algarroba", "3000gm premezcla budín integral", "50gm vainilla"], "steps": ["Mezclar todos los húmedos juntos", "Agregar el azúcar y batir", "Incorporar los secos menos la premezcla", "Agregar la premezcla en 3 partes", "Poner en budineras de 400gm, bañar de nuez picada y azúcar", "Cocinar a 200° por 20 minutos aprox"], "cookTime": 20, "rendimiento": "17 budines", "deposito": "heladera"}, {"id": 109, "name": "Budín Carrot (Zanahoria y Nuez)", "ingredients": ["1lt aceite", "1500gm azúcar", "2kg zanahoria rallada", "50cc vainilla", "1kg nuez tostada picada", "50cc esencia naranja", "4kg premezcla budín integral", "10gm canela", "5gm nuez moscada"], "steps": ["Mezclar todos los húmedos juntos", "Agregar el azúcar y batir", "Incorporar los secos menos la premezcla", "Agregar la premezcla en 3 partes", "Poner en budineras de 400gm, bañar y cocinar a 200° por 20 min aprox"], "cookTime": 20, "rendimiento": "24 budines", "deposito": "heladera"}, {"id": 110, "name": "Budín Manzana y Canela Integral", "ingredients": ["1lt aceite", "1500gm azúcar", "4kg manzana", "10gm canela", "3kg premezcla budín integral", "100cc vainilla"], "steps": ["Mezclar todos los húmedos juntos", "Agregar el azúcar y batir", "Incorporar los secos menos la premezcla", "Agregar la premezcla en 3 partes", "Poner en budineras de 400gm y cocinar a 200° por 20 min aprox"], "cookTime": 20, "rendimiento": "24 budines", "deposito": "heladera"}, {"id": 111, "name": "Marquise de Chocolate Apto Diabetes", "ingredients": ["200gm chocolate derretido", "120gm manteca derretida", "90gm eritritol impalpable", "3 yemas", "3 claras", "1gm sal", "250gm crema batida con stevia (decoración)"], "steps": ["Derretir manteca con chocolate", "Batir yemas con eritritol", "Integrar el chocolate tibio", "Batir claras a punto suave", "Incorporarlas a la mezcla de forma suave y envolvente", "Molde de 18cm enmantecado, cocinar a 160° x 20 minutos"], "cookTime": 20, "rendimiento": "1 torta (por pedido)", "deposito": "pedido"}, {"id": 112, "name": "Bizcochuelo Vainilla (Torta Grande)", "ingredients": ["500gm azúcar A", "500gm huevos", "500gm harina leudante blanca"], "steps": ["Batir a punto letra el azúcar y los huevos", "Agregar de forma suave y envolvente la harina", "Llevar a 5 moldes de 18cm con poca cantidad (salen bajitos)", "IMPORTANTE: se hace y entra al horno, no puede esperar", "Horno precalentado a 180° x 20 minutos"], "cookTime": 20, "rendimiento": "5 discos (2 tandas semanales)", "deposito": "heladera"}, {"id": 113, "name": "Bizcochuelo Chocolate Sin Gluten (Torta Grande)", "ingredients": ["500gm azúcar A", "500gm huevos", "400gm premezcla chocolate sin gluten"], "steps": ["Batir a punto letra el azúcar y los huevos", "Agregar de forma suave y envolvente la premezcla", "Llevar a 5 moldes de 18cm", "IMPORTANTE: se hace y entra al horno, no puede esperar", "Horno precalentado a 180° x 20 minutos"], "cookTime": 20, "rendimiento": "5 discos (2 tandas semanales)", "deposito": "heladera"}, {"id": 114, "name": "Bizcochuelo Sin Gluten (Budín individual)", "ingredients": ["500gm azúcar A", "500gm huevos", "400gm premezcla chocolate sin gluten"], "steps": ["Batir a punto letra el azúcar y los huevos", "Agregar de forma suave y envolvente la premezcla", "Llevar a budineras de 400gm", "IMPORTANTE: se hace y entra al horno, no puede esperar", "Horno precalentado a 180° x 20 minutos"], "cookTime": 20, "rendimiento": "7 budines", "deposito": "heladera"}, {"id": 115, "name": "Bizcochuelo para Torta Porcionada", "ingredients": ["500gm azúcar A", "500gm huevos", "500gm harina leudante blanca"], "steps": ["Batir a punto letra el azúcar y los huevos", "Agregar de forma suave y envolvente la harina", "IMPORTANTE: se hace y entra al horno, no puede esperar", "Horno precalentado a 180° x 20 minutos"], "cookTime": 20, "rendimiento": "2 placas / 8 porciones (cuota semanal)", "deposito": "heladera"}, {"id": 116, "name": "Budín Tipo Inglés (Base múltiples sabores)", "ingredients": ["1kg manteca pomada", "1kg azúcar A", "50gm vainilla", "22 huevos", "800gm premezcla", "200gm almidón de maíz"], "steps": ["Cremar manteca y azúcar", "Agregar huevos de a uno", "Agregar la vainilla", "Incorporar el almidón y la harina sin batir mucho", "Poner en moldes de 400gm a 3/4 de llenado", "Cocinar a 180° x 25 min en horno precalentado", "Variantes: manzana / frutos secos / chips chocolate / banana / frutos rojos"], "cookTime": 25, "rendimiento": "10-12 budines (cuota semanal)", "deposito": "heladera"}, {"id": 117, "name": "Masa Seca Blanca (Pepas y variantes)", "ingredients": ["1250gm manteca pomada", "500gm azúcar impalpable", "20gm miel", "50cc vainilla", "500gm almidón maíz", "5kg harina blanca 0000", "9 yemas", "2 huevos", "Ralladura de 2 limones", "Dulces / chocolate / decoraciones a elección"], "steps": ["Cremar la manteca y el azúcar", "Agregar los huevos de a uno", "Agregar vainilla y limón", "Agregar la miel", "Agregar el almidón y 3/4 de la harina", "Terminar de incorporar la harina sin amasar mucho", "Armar en placas, heladera mínimo 2hs o freezer 10 min", "Cocinar frías a 200° x 17 min hasta que cambien a color pálido"], "cookTime": 17, "rendimiento": "8 kg", "deposito": "local"}, {"id": 118, "name": "Masa Seca Integral", "ingredients": ["420gm manteca pomada", "170gm azúcar impalpable", "7gm miel", "30cc vainilla", "50gm algarroba", "200gm almidón maíz", "625gm harina 0000", "625gm harina de espelta", "3 yemas", "1 huevo", "Ralladura de limón"], "steps": ["Cremar la manteca y el azúcar", "Agregar los huevos de a uno", "Agregar vainilla y limón", "Agregar la miel", "Agregar el almidón y 3/4 de la harina", "Terminar sin amasar mucho", "Heladera mínimo 2hs o freezer 10 min", "Cocinar frías a 200° x 17 min aprox"], "cookTime": 17, "rendimiento": "2700gm", "deposito": "local"}, {"id": 119, "name": "Pepas Blancas", "ingredients": ["250gm manteca pomada", "100gm azúcar impalpable", "5gm miel", "10gm vainilla", "200gm membrillo", "100gm almidón maíz", "900gm harina blanca 0000", "2 yemas", "Ralladura de limón"], "steps": ["Cremar la manteca y el azúcar", "Agregar los huevos de a uno", "Agregar vainilla y limón", "Agregar la miel", "Agregar el almidón y 3/4 de la harina", "Terminar sin amasar mucho", "Armar pepas, poner membrillo, heladera mínimo 2hs", "Cocinar frías a 200° x 17 min"], "cookTime": 17, "rendimiento": "1500gm", "deposito": "local"}, {"id": 120, "name": "Alfajor de Maicena", "ingredients": ["250gm manteca pomada", "250gm azúcar impalpable", "10gm miel", "10gm vainilla", "850gm premezcla alfajor maicena", "10 yemas", "200gm coco rallado", "Dulce de leche para rellenar"], "steps": ["Cremar la manteca y el azúcar", "Agregar las yemas de a una", "Agregar vainilla y miel", "Agregar la premezcla toda junta", "Heladera mínimo 2hs o freezer 10 min", "Cocinar frías a 200° x 17 min aprox"], "cookTime": 17, "rendimiento": "15 alfajores grandes / 122 chicos", "deposito": "estante"}, {"id": 121, "name": "Alfajor de Chocolate", "ingredients": ["400gm manteca pomada", "400gm azúcar impalpable", "200gm almidón de maíz", "800gm harina 0000", "Ralladura de naranja", "12 yemas", "240gm huevos", "80gm miel", "150cc agua", "40gm cacao en polvo", "10gm bicarbonato sodio", "10gm bicarbonato de amonio", "10gm vainilla", "700gm dulce de leche (relleno)", "500gm chocolate semiamargo (cobertura)"], "steps": ["Cremar la manteca y el azúcar", "Agregar vainilla, ralladura, miel y los huevos", "Disolver bicarbonatos en agua y agregar", "Tamizar los secos juntos y agregar", "Unir sin amasar. Film y heladera 1 hora", "Estirar, cortar discos de 5mm, heladera 10 min", "Cocinar a 170° x 12-15 min"], "cookTime": 15, "rendimiento": "20 alfajores", "deposito": "local"}, {"id": 122, "name": "Galletas Sin Azúcar Chocolate y Maní", "ingredients": ["100gm manteca", "73gm eritritol", "50gm pasta de maní", "5gm vainilla", "50gm maní triturado", "200gm premezcla chocolate sin TACC", "65gm yema", "65gm huevos"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "600gm", "deposito": "freezer"}, {"id": 123, "name": "Cookies Keto de Almendras", "ingredients": ["100gm manteca", "100gm almendras tostadas molidas", "75gm harina de almendras", "75gm eritritol", "42gm huevo", "5gm vainilla"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "350gm", "deposito": "freezer"}, {"id": 124, "name": "Cookies Keto Choco Café", "ingredients": ["100gm manteca", "25gm algarroba", "25gm cacao amargo", "75gm eritritol", "42gm huevo", "3gm café", "50gm harina de almendra"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "350gm", "deposito": "freezer"}, {"id": 125, "name": "Cookies Keto Nuez", "ingredients": ["100gm manteca", "150gm nuez tostada molida", "75gm eritritol", "42gm huevo", "1/2 cdita goma guar", "25gm harina de almendra", "25gm harina de coco"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "400gm", "deposito": "freezer"}, {"id": 126, "name": "Cookies Keto Coco y Lima", "ingredients": ["100gm manteca", "100gm coco rallado", "1 cáscara de lima", "75gm eritritol", "42gm huevo", "25-30gm harina de coco", "Punta de cdita goma guar", "25gm harina de almendras"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "350gm", "deposito": "freezer"}, {"id": 127, "name": "Tapas Alfajor Coco Keto", "ingredients": ["100gm manteca", "200gm coco rallado", "1 cáscara de limón", "140gm eritritol impalpable", "125gm huevo", "35gm harina de coco", "1 cdita goma guar", "50gm harina de almendras"], "steps": ["Mezclar la manteca con el eritritol impalpable", "Agregar los huevos de a uno", "Incorporar los sabores", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "15 tapas (17 alfajores)", "deposito": "freezer"}, {"id": 128, "name": "Cookies New York (Chocolate)", "ingredients": ["500gm manteca", "3 yemas", "300gm chocolate derretido", "500gm azúcar impalpable", "3 huevos", "Ralladura de limón", "800gm harina leudante", "50cc vainilla"], "steps": ["Mezclar la manteca con el azúcar", "Agregar los huevos de a uno", "Incorporar los sabores y el chocolate", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos"], "cookTime": 10, "rendimiento": "30 galletas de 80gm c/u", "deposito": "local"}, {"id": 129, "name": "Cookies New York Veganas (múltiples sabores)", "ingredients": ["250gm margarina derretida", "150gm chocolate derretido", "250gm azúcar impalpable", "6 Topclass", "Ralladura de limón", "280gm harina leudante", "10gm vainilla"], "steps": ["Mezclar la margarina con el azúcar", "Agregar el Topclass de a uno", "Incorporar los sabores y el chocolate", "Agregar las harinas", "Manguear en placa, frío por 2 horas", "Cocinar a 200° por 10 minutos", "Nota: múltiples sabores posibles — chocolate, vainilla, pepitas, frutos rojos, red velvet, pistacho"], "cookTime": 10, "rendimiento": "24 galletas de 80gm c/u", "deposito": "local"}];
+
+// ══════════════════════════════════════════════════════
+// INTEGRACIÓN CON SISTEMA CENTRAL
+// ══════════════════════════════════════════════════════
+
+let pedidosPasteleria = [];
+
+// ── PUBLICAR STOCK A SUPABASE (se llama desde confirmDeposito) ──
+async function publishStockToCentral() {
+  try {
+    const rows = Object.entries(stockState).map(([recipe_name, s]) => ({
+      recipe_name,
+      sector: 'pasteleria',
+      local: s.local || 0,
+      heladera: s.heladera || 0,
+      freezer: s.freezer || 0,
+      estante: s.estante || 0,
+    }));
+    if (rows.length > 0) await sbUpsert('pasteleria_stock', rows);
+    await checkAndPublishAlerts();
+  } catch(e) { console.warn('publishStock error:', e); }
+}
+
+// ── DETECTAR Y PUBLICAR ALERTAS DE STOCK ──
+async function checkAndPublishAlerts() {
+  try {
+    const alertas = [];
+    for (const r of recipes) {
+      const s = stockState[r.name];
+      const total = s ? (s.local + s.heladera + s.freezer + s.estante) : 0;
+      if (total === 0) {
+        alertas.push({
+          sector: 'pasteleria',
+          tipo: 'sin_stock',
+          mensaje: `Sin stock: ${r.name}`,
+          producto_id: String(r.id),
+        });
+      } else if (total <= 3) {
+        alertas.push({
+          sector: 'pasteleria',
+          tipo: 'stock_bajo',
+          mensaje: `Stock bajo (${total}): ${r.name}`,
+          producto_id: String(r.id),
+        });
+      }
+    }
+    // Solo publicar las nuevas (evitar duplicados borrando las anteriores no leídas de pastelería primero)
+    if (alertas.length > 0) {
+      await sbFetch('DELETE', 'alertas_sistema', null, '?sector=eq.pasteleria&leida=eq.false');
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) { console.warn('checkAlerts error:', e); }
+}
+
+// ── CARGAR PEDIDOS DIRIGIDOS A PASTELERÍA ──
+async function loadPedidosPasteleria() {
+  try {
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.pasteleria&estado=neq.entregado&order=created_at.desc');
+    if (rows) {
+      pedidosPasteleria = rows;
+      renderPedidosPasteleria();
+      updatePedidosBadge();
+    }
+  } catch(e) { console.warn('loadPedidos error:', e); }
+}
+
+// ── RENDERIZAR PEDIDOS EN EL PANEL ──
+function renderPedidosPasteleria() {
+  const el = document.getElementById('pedidos-pasteler-list');
+  if (!el) return;
+  if (pedidosPasteleria.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:#ccc;font-family:system-ui,sans-serif;font-size:13px;">Sin pedidos pendientes ✓</div>';
+    return;
+  }
+  el.innerHTML = pedidosPasteleria.map(p => {
+    const hora = new Date(p.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+    const iconDesde = {salon:'🏪', central:'🏭', cocina:'🍳', panaderia:'🍞', deposito:'🏭'}[p.desde_sector] || '📋';
+    let btns = '';
+    if (p.estado === 'pendiente') {
+      btns = `<button class="ped-btn" onclick="cambiarEstadoPedido(${p.id},'en_proceso')">▶ Tomar</button>
+              <button class="ped-btn" style="color:#E24B4A;" onclick="cambiarEstadoPedido(${p.id},'entregado')">✗ Rechazar</button>`;
+    } else if (p.estado === 'en_proceso') {
+      btns = `<button class="ped-btn primary" onclick="cambiarEstadoPedido(${p.id},'listo')">✓ Listo para entregar</button>`;
+    } else if (p.estado === 'listo') {
+      btns = `<button class="ped-btn primary" onclick="cambiarEstadoPedido(${p.id},'entregado')">📦 Marcar entregado</button>`;
+    }
+    return `<div class="ped-card ${p.urgente ? 'urgente' : ''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;">
+          <div class="ped-prod">${p.urgente ? '🔴 ' : ''}${p.producto}</div>
+          <div class="ped-meta">${iconDesde} ${p.desde_sector} · ${hora}${p.nota ? ` · "${p.nota}"` : ''}</div>
+          <span class="ped-badge ${p.estado}">${p.estado.replace('_',' ')}</span>
+        </div>
+        <div class="ped-qty">${p.cantidad}<span style="font-size:11px;font-weight:400;color:#aaa;"> ${p.unidad}</span></div>
+      </div>
+      <div class="ped-btns">${btns}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── CAMBIAR ESTADO DE UN PEDIDO ──
+async function cambiarEstadoPedido(id, nuevoEstado) {
+  try {
+    await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
+    if (nuevoEstado === 'entregado') {
+      pedidosPasteleria = pedidosPasteleria.filter(p => p.id !== id);
+    } else {
+      const p = pedidosPasteleria.find(p => p.id === id);
+      if (p) p.estado = nuevoEstado;
+    }
+    renderPedidosPasteleria();
+    updatePedidosBadge();
+    addToLog(`📋 Pedido ${nuevoEstado.replace('_',' ')}: ${pedidosPasteleria.find(p=>p.id===id)?.producto || ''}`, 'pedido');
+  } catch(e) { console.warn('cambiarEstado error:', e); }
+}
+
+// ── BADGE EN TAB DE PEDIDOS ──
+function updatePedidosBadge() {
+  const tab = document.getElementById('tab-pedidos');
+  if (!tab) return;
+  const existing = tab.querySelector('.tab-badge-red');
+  if (existing) existing.remove();
+  const pendientes = pedidosPasteleria.filter(p => p.estado === 'pendiente').length;
+  if (pendientes > 0) {
+    const b = document.createElement('span');
+    b.className = 'tab-badge-red';
+    b.textContent = pendientes;
+    tab.appendChild(b);
+  }
+}
+
+// ── HOOK: al confirmar tanda publicar al central ──
+// Wrapeamos confirmDeposito para que también llame a publishStockToCentral
+const _originalConfirmDeposito = confirmDeposito;
+confirmDeposito = async function() {
+  _originalConfirmDeposito();
+  // Pequeño delay para que stockState ya esté actualizado
+  setTimeout(publishStockToCentral, 500);
+};
+
+// ── HOOK: al ajustar stock publicar también ──
+const _originalAdjustStock = adjustStock;
+adjustStock = function(name, dep, delta) {
+  _originalAdjustStock(name, dep, delta);
+  setTimeout(publishStockToCentral, 300);
+};
+
+// ── AUTO-REFRESH PEDIDOS CADA 60s ──
+setInterval(loadPedidosPasteleria, 60000);
+
+
+// ══════════════════════════════════════════════════════════════════
+// MÓDULO DE INTEGRACIÓN DE FLUJOS — Conecta todos los sectores
+// ══════════════════════════════════════════════════════════════════
+
+// ── MAPA: nombre de leudado → ID del freezer de panadería ─────────
+const LEUDADO_TO_FREEZER = {
+  'medialunas de manteca':    'medialunas_manteca',
+  'lenguita invertida':       'medialunas_manteca',
+  'popurrí + roll':           'medialunas_manteca',
+  'vigilantes':               'facturas_grasa',
+  'medialuna grasa':          'facturas_grasa',
+  'vigilantes (12) + medialuna grasa (12)': 'facturas_grasa',
+  'santiagueñas + sacramentos': 'facturas_grasa',
+  'santiagueñas':             'facturas_grasa',
+  'sacramentos':              'facturas_grasa',
+  'medialunas grasa':         'facturas_grasa',
+  'cremonas':                 'cremonas',
+  'cremonas (jyq, membrillo, comunes)': 'cremonas',
+  'cremonas jyq':             'cremonas',
+  'cremonas membrillo + simples': 'cremonas',
+  'libritos':                 'libritos_clasicos',
+  'libritos integrales':      'libritos_integrales',
+  'tortitas negras':          'facturas_grasa',
+  'palitos de queso':         'palitos_queso',
+  'palmeritas':               'palmeritas',
+  'bizcochitos':              'bizcochitos',
+  'pan caserito':             'pan_caserito',
+  'rolls':                    'medialunas_manteca',
+  'roll de manzana':          'medialunas_manteca',
+  'popurrí':                  'medialunas_manteca',
+  'empanadas clásicas':       'emp_clasicas',
+  'empanadas integrales':     'emp_integral',
+};
+
+// ── MAPA: ingrediente texto libre → ID materia prima depósito ──────
+const ING_TO_MP = {
+  'harina 0000':        { id: 'harina_0000', factor: 0.001 },  // g → kg
+  'harina 000':         { id: 'harina_000',  factor: 0.001 },
+  'harina trigo 000':   { id: 'harina_000',  factor: 0.001 },
+  'harina trigo 0000':  { id: 'harina_0000', factor: 0.001 },
+  'trigo 000':          { id: 'harina_000',  factor: 0.001 },
+  'trigo 0000':         { id: 'harina_0000', factor: 0.001 },
+  'harina integral':    { id: 'harina_integral', factor: 0.001 },
+  'harina trigo integral': { id: 'harina_integral', factor: 0.001 },
+  'harina de espelta':  { id: 'harina_espelta', factor: 0.001 },
+  'harina integral de espelta': { id: 'harina_espelta', factor: 0.001 },
+  'harina integral de centeno': { id: 'harina_centeno', factor: 0.001 },
+  'harina de centeno':  { id: 'harina_centeno', factor: 0.001 },
+  'harina de almendras': { id: 'harina_almendras', factor: 0.001 },
+  'harina de coco':     { id: 'harina_coco', factor: 0.001 },
+  'manteca':            { id: 'manteca',   factor: 0.001 },
+  'margarina':          { id: 'margarina', factor: 0.001 },
+  'sal':                { id: 'sal',       factor: 0.001 },
+  'levadura':           { id: 'levadura',  factor: 0.001 },
+  'levadura fresca':    { id: 'levadura',  factor: 0.001 },
+  'azucar':             { id: 'azucar',    factor: 0.001 },
+  'azúcar':             { id: 'azucar',    factor: 0.001 },
+  'aceite':             { id: 'aceite',    factor: 0.001 },
+  'aceite girasol':     { id: 'aceite',    factor: 0.001 },
+  'leche':              { id: 'leche',     factor: 0.001 },
+  'huevos':             { id: 'huevos',    factor: 1 },
+  'huevo':              { id: 'huevos',    factor: 1 },
+  'grasa':              { id: 'grasa',     factor: 0.001 },
+  'miel':               { id: 'miel',      factor: 0.001 },
+  'membrillo':          { id: 'membrillo', factor: 0.001 },
+  'almidón':            { id: 'almidon',   factor: 0.001 },
+  'almidón de maíz':    { id: 'almidon',   factor: 0.001 },
+  'polenta':            { id: 'polenta',   factor: 0.001 },
+};
+
+// ── PARSEAR ingrediente texto → { mpId, cantidad, unidad } ────────
+function parsearIngrediente(ingText) {
+  const txt = ingText.toLowerCase().trim();
+  // Extraer número y unidad del inicio: "2800g harina 0000" → [2800, 'g', 'harina 0000']
+  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|cc|ml|lt?|u|cucharad[ai]ta?s?|cucharas?|litros?)?\s+(.+)/);
+  if (!match) return null;
+
+  let cantidad = parseFloat(match[1].replace(',', '.'));
+  const unidad = match[2] || 'u';
+  const nombreIng = match[3].trim();
+
+  // Convertir a kg si está en gramos o cc/ml
+  let cantKg = cantidad;
+  if (unidad === 'g') cantKg = cantidad / 1000;
+  else if (unidad === 'cc' || unidad === 'ml') cantKg = cantidad / 1000;
+  else if (unidad === 'kg' || unidad === 'lt' || unidad === 'l' || unidad === 'litros') cantKg = cantidad;
+
+  // Buscar match en ING_TO_MP
+  let mpId = null;
+  for (const [key, val] of Object.entries(ING_TO_MP)) {
+    if (nombreIng.includes(key)) {
+      mpId = val.id;
+      break;
+    }
+  }
+  if (!mpId) return null;
+  return { mpId, cantKg };
+}
+
+// ── DESCONTAR INGREDIENTES DEL DEPÓSITO ──────────────────────────
+async function descontarIngredientesDeposito(ingredients, sector) {
+  if (!ingredients || ingredients.length === 0) return;
+  try {
+    // Leer stock actual del depósito
+    const rows = await sbSelect('deposito_stock', '');
+    if (!rows) return;
+    const stockMap = {};
+    rows.forEach(r => stockMap[r.id] = r.cantidad || 0);
+
+    const updates = [];
+    const alertas = [];
+
+    for (const ing of ingredients) {
+      const parsed = parsearIngrediente(ing);
+      if (!parsed) continue;
+      const { mpId, cantKg } = parsed;
+      if (stockMap[mpId] === undefined) continue;
+
+      const nuevo = Math.max(0, Math.round((stockMap[mpId] - cantKg) * 100) / 100);
+      stockMap[mpId] = nuevo;
+      updates.push({ id: mpId, cantidad: nuevo });
+
+      // Verificar si quedó bajo mínimo
+      if (nuevo <= 0) {
+        alertas.push({ sector: 'deposito', tipo: 'sin_stock', mensaje: `Sin stock: ${mpId} (usado por ${sector})`, producto_id: mpId });
+      } else if (nuevo <= 5) {
+        alertas.push({ sector: 'deposito', tipo: 'stock_bajo', mensaje: `Stock bajo (${nuevo}kg): ${mpId}`, producto_id: mpId });
+      }
+    }
+
+    // Actualizar depósito en Supabase
+    if (updates.length > 0) {
+      await sbUpsert('deposito_stock', updates);
+    }
+
+    // Publicar alertas
+    if (alertas.length > 0) {
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) {
+    console.warn('descontarIngredientes error:', e);
+  }
+}
+
+// ── SUMAR PRODUCTO AL SALÓN ───────────────────────────────────────
+async function sumarProductoAlSalon(productoNombre, productoId, cantidad, sectorOrigen) {
+  if (!cantidad || cantidad <= 0) return;
+  try {
+    // Leer stock actual del salón para este producto
+    const rows = await sbSelect('salon_stock', '?id=eq.' + encodeURIComponent(productoId));
+    const actual = rows && rows.length > 0 ? (rows[0].cantidad || 0) : 0;
+    const nuevo = actual + cantidad;
+
+    await sbUpsert('salon_stock', [{
+      id: productoId,
+      nombre: productoNombre,
+      cantidad: nuevo,
+      sector: sectorOrigen,
+    }]);
+
+    // Crear recepción en salón para que quede registrado
+    await sbUpsert('salon_recepciones', [{
+      producto_id: productoId,
+      producto_nombre: productoNombre,
+      cantidad: cantidad,
+      sector_origen: sectorOrigen,
+    }]);
+
+  } catch(e) {
+    console.warn('sumarProductoAlSalon error:', e);
+  }
+}
+
+// ── DESCONTAR DEL FREEZER DE PANADERÍA ───────────────────────────
+async function descontarDelFreezer(nombreProducto, cantidad) {
+  try {
+    // Encontrar el ID del freezer usando el nombre
+    const nombreLower = nombreProducto.toLowerCase();
+    let freezerId = null;
+    for (const [key, val] of Object.entries(LEUDADO_TO_FREEZER)) {
+      if (nombreLower.includes(key)) { freezerId = val; break; }
+    }
+    if (!freezerId) return;
+
+    const rows = await sbSelect('freezer_panaderia', '?id=eq.' + freezerId);
+    if (!rows || rows.length === 0) return;
+
+    const actual = rows[0].total || 0;
+    const nuevo = Math.max(0, actual - cantidad);
+
+    await sbUpsert('freezer_panaderia', [{ id: freezerId, total: nuevo }]);
+
+    // Alerta si quedó bajo
+    if (nuevo <= 0) {
+      await sbUpsert('alertas_sistema', [{
+        sector: 'panaderia',
+        tipo: 'sin_stock',
+        mensaje: `Freezer vacío: ${nombreProducto}`,
+        producto_id: freezerId,
+      }]);
+    } else if (nuevo <= 20) {
+      await sbUpsert('alertas_sistema', [{
+        sector: 'panaderia',
+        tipo: 'stock_bajo',
+        mensaje: `Freezer bajo (${nuevo}u): ${nombreProducto}`,
+        producto_id: freezerId,
+      }]);
+    }
+  } catch(e) {
+    console.warn('descontarDelFreezer error:', e);
+  }
+}
+
+
+// ── HOOK PASTELERÍA: al ajustar stock local → sumar al salón ──
+const _orig_past_adjust = adjustStock;
+adjustStock = async function(name, dep, delta) {
+  _orig_past_adjust(name, dep, delta);
+  if (delta > 0 && dep === 'local') {
+    try {
+      const prodId = 'pasteleria_' + name.toLowerCase().replace(/\s+/g, '_');
+      await sumarProductoAlSalon(name, prodId, delta, 'pasteleria');
+      // Descontar ingredientes del depósito
+      const receta = (typeof recipes !== 'undefined') ? recipes.find(r => r.name === name) : null;
+      if (receta && receta.ingredients) {
+        await descontarIngredientesDeposito(receta.ingredients, 'pasteleria');
+      }
+    } catch(e) { console.warn('pasteleria→salon error:', e); }
+  }
+};
+
+</script>
+</body>
+</html>

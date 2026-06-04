@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="theme-color" content="#0D47A1"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Depósito"/>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Depósito General — Materias Primas</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  :root{--primary:#1B5E20;--primary-light:#E8F5E9;--primary-mid:#43A047;--border:#C8E6C9;--danger:#E24B4A;--warn:#F59E0B;}
+  body{font-family:system-ui,sans-serif;background:#F1F8E9;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;}
+  #app{display:flex;flex-direction:column;height:700px;width:100%;max-width:480px;background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(27,94,32,.10);position:relative;}
+  #header{background:var(--primary);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
+  #header .logo{font-size:24px;}
+  #header h1{font-size:15px;font-weight:500;color:#fff;}
+  #header p{font-size:11px;color:#A5D6A7;}
+  #header .status{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#A5D6A7;}
+  #status-dot{width:8px;height:8px;border-radius:50%;background:#5DCAA5;flex-shrink:0;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  #tabs{display:flex;border-bottom:1px solid var(--border);background:var(--primary-light);flex-shrink:0;}
+  .tab{flex:1;padding:10px 4px;font-size:11px;color:#999;border:none;background:transparent;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;border-bottom:2px solid transparent;transition:all .15s;position:relative;}
+  .tab i{font-size:18px;}
+  .tab.active{color:var(--primary);border-bottom-color:var(--primary);background:#fff;}
+  .tab-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;font-weight:700;position:absolute;top:4px;right:4px;animation:pulse 2s infinite;}
+
+  .panel{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  .panel.active{display:flex;}
+
+  /* Stock panel */
+  #stock-list{flex:1;overflow-y:auto;padding:12px;}
+  .search-bar{padding:8px 12px;flex-shrink:0;border-bottom:1px solid var(--border);}
+  .search-input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:20px;font-size:14px;outline:none;background:#F9FBF9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;}
+  .search-input:focus{border-color:var(--primary);}
+
+  .sector-title{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.06em;padding:10px 4px 6px;}
+  .mp-card{background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;overflow:hidden;}
+  .mp-card.critical{border-color:var(--danger);background:#fff8f8;}
+  .mp-card.warn{border-color:var(--warn);background:#fffbf0;}
+  .mp-header{padding:10px 14px;display:flex;align-items:center;gap:8px;}
+  .mp-name{flex:1;font-size:14px;font-weight:500;color:#1a1a1a;}
+  .mp-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;flex-shrink:0;}
+  .mp-badge.ok{background:#dcfce7;color:#16a34a;}
+  .mp-badge.warn{background:#fef9c3;color:#92400e;}
+  .mp-badge.critical{background:#fee2e2;color:var(--danger);}
+  .mp-body{padding:0 14px 12px;border-top:1px solid #f0ede8;}
+  .mp-row{display:flex;align-items:center;gap:8px;margin-top:8px;}
+  .mp-label{font-size:12px;color:#888;flex:1;}
+  .mp-val{font-size:14px;font-weight:700;color:var(--primary);}
+  .mp-unit{font-size:11px;color:#888;}
+  .mp-adj{display:flex;align-items:center;gap:4px;}
+  .mp-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:#fff;cursor:pointer;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .mp-btn.plus{background:var(--primary);color:#fff;border-color:var(--primary);}
+  .mp-btn.minus:hover{background:#fee2e2;border-color:#fca5a5;}
+  .mp-progress-bar{flex:1;height:6px;background:#e0ddd8;border-radius:3px;overflow:hidden;}
+  .mp-progress-fill{height:100%;border-radius:3px;transition:width .3s;}
+  .mp-progress-fill.ok{background:#22c55e;}
+  .mp-progress-fill.warn{background:#f59e0b;}
+  .mp-progress-fill.critical{background:var(--danger);}
+  .mp-min-label{font-size:11px;color:#aaa;}
+
+  /* Alert banner */
+  .alert-banner{margin:8px 12px 0;padding:10px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;font-size:13px;color:#dc2626;display:none;line-height:1.5;flex-shrink:0;}
+  .alert-banner.visible{display:block;}
+  .alert-banner-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
+  .alert-banner-header strong{font-size:13px;}
+  .alert-banner-body{margin-top:6px;max-height:80px;overflow-y:auto;font-size:12px;}
+  .alert-banner-body.expanded{max-height:200px;}
+  .alert-toggle{font-size:11px;color:#dc2626;text-decoration:underline;white-space:nowrap;margin-left:8px;}
+
+  /* Facturas panel */
+  #facturas-panel{flex:1;overflow-y:auto;padding:12px;}
+  .upload-area{border:2px dashed var(--border);border-radius:12px;padding:24px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:12px;}
+  .upload-area:hover{border-color:var(--primary);background:var(--primary-light);}
+  .upload-area i{font-size:36px;color:var(--primary-mid);display:block;margin-bottom:8px;}
+  .upload-area p{font-size:14px;color:#666;margin-bottom:4px;}
+  .upload-area small{font-size:12px;color:#aaa;}
+  .factura-result{background:#f8fbf8;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;}
+  .factura-result h4{font-size:14px;font-weight:600;color:var(--primary);margin-bottom:8px;}
+  .factura-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0ede8;font-size:13px;}
+  .factura-item:last-child{border-bottom:none;}
+  .factura-item-name{color:#333;flex:1;}
+  .factura-item-qty{font-weight:600;color:var(--primary);margin-left:8px;}
+  .factura-item-match{font-size:11px;color:#888;margin-left:4px;}
+  .factura-item-new{font-size:11px;color:#E64A19;margin-left:4px;font-weight:600;}
+  .factura-new-section{margin-top:12px;padding:10px;background:#FFF3E0;border:1px solid #FFCCBC;border-radius:8px;}
+  .factura-new-title{font-size:13px;font-weight:600;color:#E64A19;margin-bottom:8px;}
+  .factura-new-item{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13px;}
+  .factura-new-item input{flex:1;padding:5px 8px;border:1px solid #FFCCBC;border-radius:6px;font-size:12px;font-family:system-ui,sans-serif;}
+  .factura-new-item select{padding:5px 6px;border:1px solid #FFCCBC;border-radius:6px;font-size:12px;font-family:system-ui,sans-serif;}
+  .factura-new-item .chk{width:18px;height:18px;accent-color:#E64A19;flex-shrink:0;}
+  .factura-confirm-btn{width:100%;padding:11px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;margin-top:8px;}
+  .factura-history-item{padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;}
+  .factura-history-item .fh-date{font-size:11px;color:#aaa;}
+  .factura-history-item .fh-prov{font-size:13px;font-weight:500;color:#333;margin-top:2px;}
+  .factura-history-item .fh-items{font-size:12px;color:#666;margin-top:2px;}
+  #factura-loading{display:none;text-align:center;padding:20px;color:var(--primary);font-size:14px;}
+
+  /* Pedidos panel */
+  #pedidos-panel{flex:1;overflow-y:auto;padding:12px;}
+  .pedido-card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;}
+  .pedido-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+  .pedido-proveedor{font-size:14px;font-weight:600;color:var(--primary);}
+  .pedido-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;}
+  .pedido-badge.urgente{background:#fee2e2;color:var(--danger);}
+  .pedido-badge.normal{background:#dcfce7;color:#16a34a;}
+  .pedido-items{font-size:13px;color:#555;line-height:1.6;}
+
+  /* Chat */
+  #chat-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;}
+  .msg{max-width:85%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.55;}
+  .msg.bot{background:var(--primary-light);color:#1a1a1a;align-self:flex-start;border-bottom-left-radius:4px;}
+  .msg.user{background:var(--primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
+  .msg.thinking{opacity:.6;font-style:italic;}
+  #chat-input-area{padding:10px 12px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
+  #chat-input{flex:1;border:1px solid var(--border);border-radius:20px;padding:10px 14px;font-size:14px;outline:none;background:var(--primary-light);}
+  #chat-input:focus{border-color:var(--primary);}
+  #send-btn{width:38px;height:38px;border-radius:50%;border:none;background:var(--primary);color:#fff;cursor:pointer;font-size:17px;display:flex;align-items:center;justify-content:center;}
+
+  /* API key */
+  #api-key-section{padding:10px 12px;background:var(--primary-light);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
+  #api-key-input{flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;background:#fff;}
+  #api-key-save{padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div class="logo">🏭</div>
+    <div>
+      <h1>Depósito General</h1>
+      <p>Materias primas — todos los sectores</p>
+    </div>
+    <div class="status"><div id="status-dot"></div><span id="status-text">Listo</span></div>
+  </div>
+
+  <div id="api-key-section">
+    <input type="password" id="api-key-input" placeholder="API Key de Anthropic..." />
+    <button id="api-key-save" onclick="saveApiKey()">Guardar</button>
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('stock')" id="tab-stock"><i class="ti ti-package"></i>Stock</button>
+    <button class="tab" onclick="switchTab('facturas')" id="tab-facturas"><i class="ti ti-file-invoice"></i>Facturas</button>
+    <button class="tab" onclick="switchTab('pedidos')" id="tab-pedidos"><i class="ti ti-shopping-cart"></i>Pedidos</button>
+    <button class="tab" onclick="switchTab('pedidos-deposito')" id="tab-pedidos-deposito" style="position:relative;">
+      <i class="ti ti-bell"></i>Pedidos
+    </button>
+    <button class="tab" onclick="switchTab('chat')" id="tab-chat"><i class="ti ti-message-circle"></i>Asistente</button>
+  </div>
+
+  <div class="panel active" id="panel-stock">
+    <div id="stock-alert-banner" class="alert-banner"></div>
+    <div class="search-bar"><input class="search-input" id="search-stock" placeholder="Buscar materia prima..." oninput="filterStock(this.value)" /></div>
+    <div id="stock-list"></div>
+  </div>
+
+  <div class="panel" id="panel-facturas">
+    <div id="facturas-panel">
+      <div class="upload-area" onclick="document.getElementById('file-input').click()">
+        <i class="ti ti-cloud-upload"></i>
+        <p>Subí la factura del proveedor</p>
+        <small>Foto (.jpg, .png) o PDF — el asistente lee los productos y cantidades</small>
+      </div>
+      <input type="file" id="file-input" accept="image/*,.pdf" style="display:none" onchange="processFactura(this)" />
+      <div id="factura-loading"><i class="ti ti-loader" style="animation:pulse 1s infinite;font-size:24px;display:block;margin-bottom:8px;"></i>Leyendo la factura...</div>
+      <div id="factura-result-area"></div>
+      <div class="sector-title" style="margin-top:8px">Historial de facturas</div>
+      <div id="factura-history"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-pedidos">
+    <div id="pedidos-panel"></div>
+  </div>
+
+  <div class="panel" id="panel-chat">
+    <div id="chat-messages">
+      <div class="msg bot">¡Hola! 🏭 Soy el asistente del depósito. Puedo ayudarte a revisar el stock de materias primas, interpretar facturas de proveedores, o armar una lista de pedidos según lo que está crítico. ¿Qué necesitás?</div>
+    </div>
+    <div id="chat-input-area">
+      <input type="text" id="chat-input" placeholder="Consultá sobre el stock..." />
+      <button id="send-btn" onclick="sendMessage()"><i class="ti ti-send"></i></button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ── SUPABASE CONFIG ───────────────────────────────
+const SUPABASE_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+
+async function sbFetch(method, table, body=null, params='') {
+  const url = SUPABASE_URL + '/rest/v1/' + table + params;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { const err = await res.text(); console.error('Supabase error:', err); return null; }
+  return method === 'DELETE' ? null : await res.json();
+}
+
+async function sbUpsert(table, data) {
+  return sbFetch('POST', table, Array.isArray(data) ? data : [data]);
+}
+
+async function sbSelect(table, params='') {
+  return sbFetch('GET', table, null, params);
+}
+
+async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
+  await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
+}
+// ── END SUPABASE ──────────────────────────────────
+
+const API_KEY_KEY = 'deposito_api_key';
+const STOCK_KEY = 'deposito_stock';
+const FACTURAS_KEY = 'deposito_facturas';
+let apiKey = '';
+let stockState = {};
+let facturasHistory = [];
+
+// ── MATERIAS PRIMAS CATALOG ──────────────────────────
+// consumoSemanal: kg o unidades por semana según producción real
+// stockMinimo: nivel de alerta crítica
+// unidad: kg, u, lt, cc
+// sector: qué sectores usan este insumo
+// proveedor: referencia
+
+const MP_CATALOG = [
+  // ── HARINAS ──
+  { id:'harina_0000', nombre:'Harina 0000', unidad:'kg', sector:'panaderia', consumoSemanal:150, stockMinimo:50, proveedor:'Molinero' },
+  { id:'harina_000', nombre:'Harina 000', unidad:'kg', sector:'panaderia', consumoSemanal:50, stockMinimo:25, proveedor:'Molinero' },
+  { id:'harina_integral', nombre:'Harina Integral', unidad:'kg', sector:'panaderia', consumoSemanal:25, stockMinimo:10, proveedor:'Molinero' },
+  { id:'harina_espelta', nombre:'Harina de Espelta', unidad:'kg', sector:'pasteleria+panaderia', consumoSemanal:10, stockMinimo:5, proveedor:'Dietética' },
+  { id:'harina_centeno', nombre:'Harina de Centeno', unidad:'kg', sector:'panaderia', consumoSemanal:10, stockMinimo:5, proveedor:'Dietética' },
+  { id:'harina_almendras', nombre:'Harina de Almendras', unidad:'kg', sector:'pasteleria', consumoSemanal:5, stockMinimo:2, proveedor:'Dietética' },
+  { id:'harina_coco', nombre:'Harina de Coco', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
+  // ── GRASAS Y ACEITES ──
+  { id:'manteca', nombre:'Manteca', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:30, stockMinimo:10, proveedor:'Lácteos' },
+  { id:'margarina', nombre:'Margarina (empaste)', unidad:'kg', sector:'panaderia', consumoSemanal:40, stockMinimo:15, proveedor:'Lácteos' },
+  { id:'grasa', nombre:'Grasa vacuna', unidad:'kg', sector:'panaderia', consumoSemanal:5, stockMinimo:3, proveedor:'Carnicería' },
+  { id:'aceite_girasol', nombre:'Aceite de girasol', unidad:'lt', sector:'todos', consumoSemanal:15, stockMinimo:5, proveedor:'Mayorista' },
+  // ── LÁCTEOS ──
+  { id:'leche', nombre:'Leche', unidad:'lt', sector:'panaderia+pasteleria', consumoSemanal:20, stockMinimo:8, proveedor:'Lácteos' },
+  { id:'queso_crema', nombre:'Queso crema', unidad:'kg', sector:'cocina', consumoSemanal:3, stockMinimo:1, proveedor:'Lácteos' },
+  { id:'muzzarella', nombre:'Muzzarella', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Lácteos' },
+  { id:'queso_maquina', nombre:'Queso de máquina (fetas)', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Fiambrería' },
+  { id:'ricota', nombre:'Ricota', unidad:'kg', sector:'cocina', consumoSemanal:1, stockMinimo:0.5, proveedor:'Lácteos' },
+  // ── AZÚCARES Y DULCES ──
+  { id:'azucar_a', nombre:'Azúcar A', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:25, stockMinimo:10, proveedor:'Mayorista' },
+  { id:'azucar_impalpable', nombre:'Azúcar impalpable', unidad:'kg', sector:'pasteleria', consumoSemanal:8, stockMinimo:3, proveedor:'Mayorista' },
+  { id:'eritritol', nombre:'Eritritol', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
+  { id:'miel', nombre:'Miel', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:2, stockMinimo:1, proveedor:'Dietética' },
+  { id:'dulce_leche', nombre:'Dulce de leche', unidad:'kg', sector:'pasteleria', consumoSemanal:10, stockMinimo:4, proveedor:'Lácteos' },
+  { id:'membrillo', nombre:'Dulce de membrillo', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:5, stockMinimo:2, proveedor:'Mayorista' },
+  // ── LEVADURA Y ADITIVOS ──
+  { id:'levadura', nombre:'Levadura fresca', unidad:'kg', sector:'panaderia', consumoSemanal:1.5, stockMinimo:0.5, proveedor:'Panadería insumos' },
+  { id:'aditivo', nombre:'Aditivo panadero', unidad:'kg', sector:'panaderia', consumoSemanal:0.5, stockMinimo:0.2, proveedor:'Panadería insumos' },
+  { id:'frescura', nombre:'Frescura', unidad:'u', sector:'panaderia', consumoSemanal:2, stockMinimo:1, proveedor:'Panadería insumos' },
+  { id:'almidon_maiz', nombre:'Almidón de maíz', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Mayorista' },
+  { id:'goma_xantica', nombre:'Goma xántica', unidad:'kg', sector:'pasteleria', consumoSemanal:0.2, stockMinimo:0.1, proveedor:'Dietética' },
+  // ── HUEVOS ──
+  { id:'huevos', nombre:'Huevos', unidad:'u', sector:'pasteleria+cocina', consumoSemanal:120, stockMinimo:48, proveedor:'Granja' },
+  // ── CACAO Y CHOCOLATE ──
+  { id:'cacao', nombre:'Cacao amargo', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
+  { id:'chocolate', nombre:'Chocolate semiamargo', unidad:'kg', sector:'pasteleria', consumoSemanal:2, stockMinimo:1, proveedor:'Dietética' },
+  { id:'algarroba', nombre:'Harina de algarroba', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
+  // ── ESPECIAS Y SABORIZANTES ──
+  { id:'vainilla', nombre:'Esencia de vainilla', unidad:'lt', sector:'panaderia+pasteleria', consumoSemanal:0.3, stockMinimo:0.1, proveedor:'Dietética' },
+  { id:'canela', nombre:'Canela en polvo', unidad:'kg', sector:'pasteleria', consumoSemanal:0.3, stockMinimo:0.1, proveedor:'Mayorista' },
+  { id:'sal', nombre:'Sal fina', unidad:'kg', sector:'todos', consumoSemanal:3, stockMinimo:2, proveedor:'Mayorista' },
+  // ── FRUTAS Y VERDURAS ──
+  { id:'manzana', nombre:'Manzana', unidad:'kg', sector:'pasteleria', consumoSemanal:8, stockMinimo:3, proveedor:'Verdulería' },
+  { id:'zanahoria', nombre:'Zanahoria', unidad:'kg', sector:'pasteleria', consumoSemanal:6, stockMinimo:2, proveedor:'Verdulería' },
+  { id:'cebolla', nombre:'Cebolla', unidad:'kg', sector:'cocina', consumoSemanal:20, stockMinimo:8, proveedor:'Verdulería' },
+  { id:'morron', nombre:'Morrón rojo', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Verdulería' },
+  { id:'papa', nombre:'Papa', unidad:'kg', sector:'cocina', consumoSemanal:5, stockMinimo:2, proveedor:'Verdulería' },
+  { id:'rucula', nombre:'Rúcula', unidad:'u', sector:'cocina', consumoSemanal:3, stockMinimo:1, proveedor:'Verdulería' },
+  // ── CARNES Y FIAMBRES ──
+  { id:'carne_picada', nombre:'Carne picada', unidad:'kg', sector:'cocina', consumoSemanal:14, stockMinimo:7, proveedor:'Carnicería' },
+  { id:'pollo', nombre:'Pollo crudo', unidad:'kg', sector:'cocina', consumoSemanal:10, stockMinimo:5, proveedor:'Carnicería' },
+  { id:'cerdo', nombre:'Cerdo crudo', unidad:'kg', sector:'cocina', consumoSemanal:10, stockMinimo:5, proveedor:'Carnicería' },
+  { id:'nalga', nombre:'Nalga (milanesas)', unidad:'kg', sector:'cocina', consumoSemanal:8, stockMinimo:4, proveedor:'Carnicería' },
+  { id:'jamon_cocido', nombre:'Jamón cocido (fetas)', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Fiambrería' },
+  { id:'jamon_crudo', nombre:'Jamón crudo (fetas)', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Fiambrería' },
+  // ── VERDURAS PREP / CONSERVAS ──
+  { id:'choclo', nombre:'Choclo en grano', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Verdulería' },
+  { id:'portobelo', nombre:'Portobelos', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Verdulería' },
+  { id:'zapallito', nombre:'Zapallito verde', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Verdulería' },
+  { id:'calabaza', nombre:'Calabaza', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Verdulería' },
+  { id:'berenjena_escabeche', nombre:'Berenjena al escabeche', unidad:'u', sector:'cocina', consumoSemanal:3, stockMinimo:1, proveedor:'Mayorista' },
+  { id:'aceitunas', nombre:'Aceitunas fileteadas', unidad:'kg', sector:'cocina', consumoSemanal:1, stockMinimo:0.5, proveedor:'Mayorista' },
+  // ── PANIFICACIÓN ESPECIAL ──
+  { id:'premezcla_budin', nombre:'Premezcla budín integral', unidad:'kg', sector:'pasteleria', consumoSemanal:15, stockMinimo:6, proveedor:'Dietética' },
+  { id:'premezcla_alfajor', nombre:'Premezcla alfajor maicena', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
+  { id:'premezcla_sg', nombre:'Premezcla sin gluten', unidad:'kg', sector:'pasteleria', consumoSemanal:5, stockMinimo:2, proveedor:'Dietética' },
+  { id:'nuez', nombre:'Nueces', unidad:'kg', sector:'pasteleria', consumoSemanal:4, stockMinimo:2, proveedor:'Dietética' },
+  { id:'coco_rallado', nombre:'Coco rallado', unidad:'kg', sector:'pasteleria', consumoSemanal:2, stockMinimo:1, proveedor:'Dietética' },
+  // ── CONDIMENTOS ──
+  { id:'adobe_pizza', nombre:'Adobo para pizza', unidad:'kg', sector:'cocina', consumoSemanal:0.3, stockMinimo:0.2, proveedor:'Mayorista' },
+  { id:'pimenton', nombre:'Pimentón', unidad:'kg', sector:'cocina', consumoSemanal:0.2, stockMinimo:0.1, proveedor:'Mayorista' },
+  { id:'demiglas', nombre:'Demiglás', unidad:'kg', sector:'cocina', consumoSemanal:0.5, stockMinimo:0.2, proveedor:'Mayorista' },
+  { id:'barbacoa', nombre:'Salsa barbacoa', unidad:'u', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Mayorista' },
+  { id:'mayonesa', nombre:'Mayonesa', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Mayorista' },
+  // ── INSUMOS DE COCINA ──
+  { id:'miga_pan', nombre:'Pan de miga (paquete 48u)', unidad:'u', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Panadería' },
+  { id:'folex', nombre:'Folex (papel antiadherente)', unidad:'u', sector:'todos', consumoSemanal:3, stockMinimo:2, proveedor:'Insumos' },
+  { id:'polenta', nombre:'Polenta', unidad:'kg', sector:'panaderia', consumoSemanal:5, stockMinimo:2, proveedor:'Mayorista' },
+  { id:'pasta_mani', nombre:'Pasta de maní', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietética' },
+  { id:'mani', nombre:'Maní tostado', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietética' },
+  { id:'agua_hielo', nombre:'Bolsas de hielo', unidad:'u', sector:'panaderia', consumoSemanal:14, stockMinimo:5, proveedor:'Hielo' },
+  { id:'polenta', nombre:'Polenta', unidad:'kg', sector:'panaderia', consumoSemanal:5, stockMinimo:2, proveedor:'Mayorista' },
+  { id:'pasta_mani', nombre:'Pasta de mani', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietetica' },
+  { id:'mani_tostado', nombre:'Mani tostado', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietetica' },
+  // LIMPIEZA
+  { id:'detergente', nombre:'Detergente (bidon)', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'lavandina', nombre:'Lavandina (bidon)', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'desengrasante', nombre:'Desengrasante 1lt', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'esponja_metal', nombre:'Esponja de metal', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'esponja_blanda', nombre:'Esponja blanda', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'bidones_agua', nombre:'Bidones agua potable', unidad:'u', sector:'limpieza', consumoSemanal:1, stockMinimo:2, proveedor:'Agua' },
+  { id:'trapo_rejilla', nombre:'Trapo rejilla', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'trapo_piso', nombre:'Trapo de piso', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'papel_grande', nombre:'Rollo papel grande', unidad:'u', sector:'limpieza', consumoSemanal:0.5, stockMinimo:2, proveedor:'Limpieza' },
+  // PAPELERIA
+  { id:'papel_higienico', nombre:'Papel higienico (pack x4)', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Limpieza' },
+  { id:'bolsas_freezer', nombre:'Bolsas 50x70 apto freezer (rollo)', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
+  { id:'fibron', nombre:'Fibron indeleble', unidad:'u', sector:'papeleria', consumoSemanal:0.25, stockMinimo:1, proveedor:'Insumos' },
+  { id:'cinta_papel', nombre:'Cinta ancha de papel', unidad:'u', sector:'papeleria', consumoSemanal:0.25, stockMinimo:1, proveedor:'Insumos' },
+  { id:'folex_papeleria', nombre:'Folex (paquete)', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:2, proveedor:'Insumos' },
+  { id:'bandejas_viandas', nombre:'Bandejas para viandas x50', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
+  { id:'potes_bisagra', nombre:'Potes bisagra altos x10', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
+  { id:'bandejas_despacho', nombre:'Bandejas despacho carton N5', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
+];
+
+// ── STATE ──────────────────────────────────────────
+async function initStockFromCatalog() {
+// ── Cargar stock desde Supabase al abrir ──
+  try {
+    const rows = await sbSelect('deposito_stock', '');
+    if (rows && rows.length > 0) {
+      rows.forEach(r => { stockState[r.id] = r.cantidad || 0; });
+      localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
+      console.log('✓ Stock depósito cargado desde Supabase:', rows.length, 'items');
+    } else {
+      // Sin datos en Supabase, cargar desde localStorage
+      try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e){ stockState = {}; }
+    }
+  } catch(e) {
+    console.warn('No se pudo cargar desde Supabase, usando localStorage:', e);
+    try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e2){ stockState = {}; }
+  }
+  // Add missing items — first time: start at 0 so user enters real values
+  // Subsequent: only add newly added catalog items at 0
+  for (const mp of MP_CATALOG) {
+    if (stockState[mp.id] === undefined) {
+      stockState[mp.id] = 0;
+    }
+  }
+  saveStock();
+}
+
+function saveStock() {
+  localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
+  const rows = MP_CATALOG.map(mp => ({
+    id: mp.id, nombre: mp.nombre, cantidad: stockState[mp.id]||0,
+    unidad: mp.unidad, sector: mp.sector, stock_minimo: mp.stockMinimo,
+    consumo_semanal: mp.consumoSemanal, proveedor: mp.proveedor
+  }));
+  sbUpsert('deposito_stock', rows).catch(()=>{});
+}
+
+function adjustStock(id, delta) {
+  stockState[id] = Math.max(0, Math.round(((stockState[id] || 0) + delta) * 10) / 10);
+  saveStock();
+  renderStock();
+  checkAlerts();
+}
+
+// ── RENDER STOCK ──────────────────────────────────
+function getStatus(mp) {
+  const v = stockState[mp.id] || 0;
+  if (v <= mp.stockMinimo) return 'critical';
+  if (v <= mp.stockMinimo * 1.5) return 'warn';
+  return 'ok';
+}
+
+function renderStock(filterQ) {
+  filterQ = (filterQ || '').toLowerCase().trim();
+  const el = document.getElementById('stock-list');
+  if (!el) return;
+
+  const sectors = [
+    { key: 'panaderia', label: '🍞 Panadería' },
+    { key: 'pasteleria', label: '🍰 Pastelería' },
+    { key: 'cocina', label: '🍳 Cocina' },
+    { key: 'todos', label: '🏭 Todos los sectores' },
+    { key: 'limpieza', label: '🧴 Limpieza' },
+    { key: 'papeleria', label: '📦 Papelería' },
+  ];
+
+  let html = '';
+  for (const sec of sectors) {
+    const items = MP_CATALOG.filter(mp => {
+      const inSector = mp.sector === sec.key || mp.sector.includes(sec.key);
+      const matchQ = !filterQ || mp.nombre.toLowerCase().includes(filterQ) || mp.proveedor.toLowerCase().includes(filterQ);
+      return inSector && matchQ;
+    });
+    if (!items.length) continue;
+
+    html += `<div class="sector-title">${sec.label}</div>`;
+    for (const mp of items) {
+      const v = stockState[mp.id] || 0;
+      const status = getStatus(mp);
+      const pct = Math.min(100, Math.round(v / (mp.consumoSemanal * 2) * 100));
+      const semanas = (v / mp.consumoSemanal).toFixed(1);
+
+      html += `<div class="mp-card ${status}" id="mp-${mp.id}">
+        <div class="mp-header">
+          <span class="mp-name">${mp.nombre}</span>
+          <span class="mp-badge ${status}">${status === 'critical' ? '🚨 Crítico' : status === 'warn' ? '⚠️ Bajo' : '✓ OK'}</span>
+        </div>
+        <div class="mp-body">
+          <div class="mp-row">
+            <span class="mp-label">Stock actual</span>
+            <div class="mp-adj">
+              <button class="mp-btn minus" onclick="adjustStock('${mp.id}',-${mp.consumoSemanal >= 10 ? 1 : 0.5})">−</button>
+              <span class="mp-val" style="min-width:48px;text-align:center;">${v}</span>
+              <span class="mp-unit">${mp.unidad}</span>
+              <button class="mp-btn plus" onclick="adjustStock('${mp.id}',${mp.consumoSemanal >= 10 ? 1 : 0.5})">+</button>
+            </div>
+          </div>
+          <div class="mp-row" style="margin-top:6px;">
+            <div class="mp-progress-bar"><div class="mp-progress-fill ${status}" style="width:${pct}%"></div></div>
+            <span class="mp-min-label" style="margin-left:8px;">${semanas}sem · mín ${mp.stockMinimo}${mp.unidad}</span>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
+  el.innerHTML = html || '<div style="text-align:center;color:#aaa;padding:24px;">No se encontraron resultados</div>';
+}
+
+function filterStock(q) {
+  renderStock(q);
+}
+
+// ── ALERTS ────────────────────────────────────────
+function checkAlerts() {
+  const criticos = MP_CATALOG.filter(mp => getStatus(mp) === 'critical');
+  const warns = MP_CATALOG.filter(mp => getStatus(mp) === 'warn');
+  const banner = document.getElementById('stock-alert-banner');
+
+  const tab = document.getElementById('tab-stock');
+  const existing = tab && tab.querySelector('.tab-badge');
+  if (existing) existing.remove();
+  if (criticos.length + warns.length > 0 && tab) {
+    const badge = document.createElement('span');
+    badge.className = 'tab-badge';
+    badge.textContent = criticos.length + warns.length;
+    tab.appendChild(badge);
+  }
+
+  if (criticos.length > 0) {
+    banner.innerHTML = `<div class="alert-banner-header" onclick="this.nextElementSibling.classList.toggle('expanded')">
+      <strong>🚨 ${criticos.length} item${criticos.length>1?'s':''} crítico${criticos.length>1?'s':''} — pedido urgente</strong>
+      <span class="alert-toggle">ver / ocultar</span>
+    </div>
+    <div class="alert-banner-body">${criticos.map(mp => `• ${mp.nombre}: ${stockState[mp.id]||0}${mp.unidad} (mín ${mp.stockMinimo}${mp.unidad}) — ${mp.proveedor}`).join('<br>')}</div>`;
+    banner.classList.add('visible');
+  } else { banner.classList.remove('visible'); }
+
+  renderPedidos();
+}
+
+// ── PEDIDOS ───────────────────────────────────────
+function renderPedidos() {
+  const el = document.getElementById('pedidos-panel');
+  if (!el) return;
+
+  const criticos = MP_CATALOG.filter(mp => getStatus(mp) === 'critical');
+  const warns = MP_CATALOG.filter(mp => getStatus(mp) === 'warn');
+
+  if (criticos.length === 0 && warns.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#aaa;padding:40px 20px;font-size:14px;">✅ Todo el stock está en niveles normales.<br>No hay pedidos urgentes.</div>';
+    return;
+  }
+
+  // Group by proveedor
+  const byProv = {};
+  const addToProv = (mp, urgente) => {
+    if (!byProv[mp.proveedor]) byProv[mp.proveedor] = { urgente: [], normal: [] };
+    const necesita = Math.ceil((mp.consumoSemanal * 2) - (stockState[mp.id] || 0));
+    byProv[mp.proveedor][urgente ? 'urgente' : 'normal'].push(`${mp.nombre}: ${necesita} ${mp.unidad}`);
+  };
+  criticos.forEach(mp => addToProv(mp, true));
+  warns.forEach(mp => addToProv(mp, false));
+
+  let html = '<div class="sector-title">Lista de pedidos por proveedor</div>';
+  for (const [prov, items] of Object.entries(byProv)) {
+    const isUrgente = items.urgente.length > 0;
+    html += `<div class="pedido-card">
+      <div class="pedido-header">
+        <span class="pedido-proveedor">📦 ${prov}</span>
+        <span class="pedido-badge ${isUrgente ? 'urgente' : 'normal'}">${isUrgente ? '🚨 Urgente' : 'Normal'}</span>
+      </div>
+      <div class="pedido-items">`;
+    if (items.urgente.length) html += items.urgente.map(i => `<div>🔴 ${i}</div>`).join('');
+    if (items.normal.length) html += items.normal.map(i => `<div>🟡 ${i}</div>`).join('');
+    html += `</div></div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── FACTURAS (leer con IA) ─────────────────────────
+function processFactura(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!apiKey) { alert('Necesitás guardar tu API Key primero.'); return; }
+
+  document.getElementById('factura-loading').style.display = 'block';
+  document.getElementById('factura-result-area').innerHTML = '';
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    const mediaType = file.type || 'image/jpeg';
+    const isPdf = file.type === 'application/pdf';
+
+    try {
+      const mpList = MP_CATALOG.map(mp => `${mp.nombre} (${mp.unidad})`).join(', ');
+      const messages = [{
+        role: 'user',
+        content: [
+          isPdf
+            ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+            : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+          { type: 'text', text: `Esta es una factura de proveedor. Extraé los productos y cantidades que aparecen. 
+Nuestras materias primas son: ${mpList}.
+Para cada item de la factura, identificá si coincide con alguna de nuestras materias primas.
+Respondé SOLO con un JSON válido sin ningún texto adicional, con este formato exacto:
+{"proveedor":"nombre del proveedor si aparece","fecha":"fecha si aparece","items":[{"nombre_factura":"nombre como aparece en la factura","cantidad":123,"unidad":"kg/lt/u","materia_prima_id":"id de nuestra MP si coincide o null","materia_prima_nombre":"nombre de nuestra MP si coincide o null","es_nuevo":false,"sector_sugerido":"panaderia/pasteleria/cocina/limpieza/papeleria/todos","min_sugerido":1}]}
+Para items sin match (materia_prima_id null), completá es_nuevo:true, sector_sugerido con el sector más apropiado, y min_sugerido con un mínimo razonable.` }
+        ]
+      }];
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages })
+      });
+
+      const data = await res.json();
+      const text = data.content?.[0]?.text || '{}';
+      const clean = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+
+      document.getElementById('factura-loading').style.display = 'none';
+      renderFacturaResult(parsed, file.name);
+    } catch(err) {
+      document.getElementById('factura-loading').style.display = 'none';
+      document.getElementById('factura-result-area').innerHTML = `<div style="color:var(--danger);font-size:13px;padding:12px;">Error al procesar la factura: ${err.message}</div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function renderFacturaResult(data, filename) {
+  const el = document.getElementById('factura-result-area');
+  if (!data.items || !data.items.length) {
+    el.innerHTML = '<div style="color:#888;font-size:13px;padding:12px;">No se encontraron items en la factura.</div>';
+    return;
+  }
+
+  const conocidos = data.items.filter(i => i.materia_prima_id);
+  const nuevos = data.items.filter(i => !i.materia_prima_id);
+
+  let html = `<div class="factura-result">
+    <h4>📄 ${data.proveedor || filename} ${data.fecha ? '· ' + data.fecha : ''}</h4>`;
+
+  // Known items
+  for (const item of conocidos) {
+    html += `<div class="factura-item">
+      <span class="factura-item-name">${item.nombre_factura}</span>
+      <span class="factura-item-qty">${item.cantidad} ${item.unidad}</span>
+      <span class="factura-item-match">→ ${item.materia_prima_nombre}</span>
+    </div>`;
+  }
+
+  // New items — show with form to add to catalog
+  if (nuevos.length > 0) {
+    html += `<div class="factura-new-section">
+      <div class="factura-new-title">➕ ${nuevos.length} producto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''} — ¿agregar al catálogo?</div>`;
+    for (let i = 0; i < nuevos.length; i++) {
+      const item = nuevos[i];
+      html += `<div class="factura-new-item">
+        <input type="checkbox" class="chk" id="new-chk-${i}" checked />
+        <span style="flex:1;font-weight:500;">${item.nombre_factura} (${item.cantidad} ${item.unidad})</span>
+        <select id="new-sector-${i}">
+          <option value="panaderia" ${item.sector_sugerido==='panaderia'?'selected':''}>🍞 Pan</option>
+          <option value="pasteleria" ${item.sector_sugerido==='pasteleria'?'selected':''}>🍰 Past</option>
+          <option value="cocina" ${item.sector_sugerido==='cocina'?'selected':''}>🍳 Coc</option>
+          <option value="limpieza" ${item.sector_sugerido==='limpieza'?'selected':''}>🧴 Limp</option>
+          <option value="papeleria" ${item.sector_sugerido==='papeleria'?'selected':''}>📦 Papel</option>
+          <option value="todos" ${item.sector_sugerido==='todos'?'selected':''}>🏭 Todos</option>
+        </select>
+        <input type="number" id="new-min-${i}" value="${item.min_sugerido || 1}" style="width:52px;" placeholder="mín" />
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  const dataStr = JSON.stringify(data).replace(/"/g,'&quot;');
+  html += `<button class="factura-confirm-btn" onclick="confirmFactura(${dataStr}, ${nuevos.length})">✅ Confirmar y actualizar stock</button>
+  </div>`;
+  el.innerHTML = html;
+}
+
+function confirmFactura(data, nuevoCount) {
+  let actualizados = 0;
+  let agregados = 0;
+  const nuevos = (data.items || []).filter(i => !i.materia_prima_id);
+
+  // Process known items
+  for (const item of data.items) {
+    if (item.materia_prima_id && item.cantidad > 0) {
+      stockState[item.materia_prima_id] = Math.round(((stockState[item.materia_prima_id] || 0) + item.cantidad) * 10) / 10;
+      actualizados++;
+    }
+  }
+
+  // Process new items from checkboxes
+  for (let i = 0; i < nuevos.length; i++) {
+    const chk = document.getElementById('new-chk-' + i);
+    if (!chk || !chk.checked) continue;
+    const item = nuevos[i];
+    const sector = document.getElementById('new-sector-' + i)?.value || 'todos';
+    const min = parseFloat(document.getElementById('new-min-' + i)?.value) || 1;
+    const proveedor = data.proveedor || 'Proveedor';
+
+    // Generate ID from name
+    const id = 'mp_' + item.nombre_factura.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').slice(0,30);
+    const nombre = item.nombre_factura.charAt(0).toUpperCase() + item.nombre_factura.slice(1).toLowerCase();
+
+    // Add to catalog dynamically
+    const exists = MP_CATALOG.find(mp => mp.id === id);
+    if (!exists) {
+      MP_CATALOG.push({ id, nombre, unidad: item.unidad || 'u', sector, consumoSemanal: item.cantidad / 4, stockMinimo: min, proveedor });
+      agregados++;
+    }
+    // Add to stock
+    stockState[id] = Math.round(((stockState[id] || 0) + item.cantidad) * 10) / 10;
+    actualizados++;
+  }
+
+  // Save dynamic catalog additions
+  const dynKey = 'deposito_catalog_dynamic';
+  const existing = JSON.parse(localStorage.getItem(dynKey) || '[]');
+  const newEntries = MP_CATALOG.filter(mp => mp.id.startsWith('mp_'));
+  localStorage.setItem(dynKey, JSON.stringify(newEntries));
+
+  saveStock();
+  checkAlerts();
+  renderStock();
+
+  facturasHistory.unshift({ ...data, fecha_carga: new Date().toLocaleDateString('es-AR'), actualizados });
+  localStorage.setItem(FACTURAS_KEY, JSON.stringify(facturasHistory));
+  renderFacturasHistory();
+
+  document.getElementById('factura-result-area').innerHTML = `<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:12px;font-size:13px;color:#16a34a;">
+    ✅ Stock actualizado con ${actualizados} item${actualizados!==1?'s':''}${agregados>0?' · '+agregados+' producto'+( agregados!==1?'s':'')+' nuevo'+( agregados!==1?'s':'')+' agregado'+(agregados!==1?'s':'')+' al catálogo':''}.
+  </div>`;
+}
+
+function renderFacturasHistory() {
+  const el = document.getElementById('factura-history');
+  if (!facturasHistory.length) { el.innerHTML = '<div style="color:#aaa;font-size:13px;padding:8px;">Sin facturas cargadas aún.</div>'; return; }
+  el.innerHTML = facturasHistory.slice(0,10).map(f => `
+    <div class="factura-history-item">
+      <div class="fh-date">${f.fecha_carga}${f.fecha ? ' · ' + f.fecha : ''}</div>
+      <div class="fh-prov">📦 ${f.proveedor || 'Proveedor'}</div>
+      <div class="fh-items">${f.actualizados} items actualizados</div>
+    </div>`).join('');
+}
+
+// ── CHAT ──────────────────────────────────────────
+function saveApiKey() {
+  const v = document.getElementById('api-key-input').value.trim();
+  if (!v || v === '••••••••') return;
+  apiKey = v; localStorage.setItem(API_KEY_KEY, apiKey);
+  document.getElementById('api-key-section').style.display = 'none';
+}
+
+function appendMsg(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + cls;
+  el.textContent = text;
+  const msgs = document.getElementById('chat-messages');
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return el;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text || !apiKey) return;
+  input.value = '';
+  appendMsg(text, 'user');
+  const thinking = appendMsg('...', 'bot thinking');
+
+  const criticos = MP_CATALOG.filter(mp => getStatus(mp) === 'critical').map(mp => `${mp.nombre}: ${stockState[mp.id]||0}${mp.unidad} (mín ${mp.stockMinimo})`).join(', ') || 'ninguno';
+  const warns = MP_CATALOG.filter(mp => getStatus(mp) === 'warn').map(mp => mp.nombre).join(', ') || 'ninguno';
+
+  const system = `Sos el asistente del depósito general de materias primas de una panadería/pastelería/cocina. 
+Sabés el stock actual de todos los insumos y podés ayudar a:
+1. Consultar stock de cualquier materia prima
+2. Armar listas de pedidos por proveedor
+3. Interpretar facturas
+4. Alertar sobre críticos
+
+STOCK CRÍTICO AHORA: ${criticos}
+STOCK BAJO: ${warns}
+
+Respondé en español rioplatense, de forma clara y concisa. Cuando des una lista de pedidos, organizala por proveedor.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system, messages: [{ role: 'user', content: text }] })
+    });
+    const data = await res.json();
+    thinking.remove();
+    appendMsg(data.content?.[0]?.text || 'Error al responder.', 'bot');
+  } catch(e) {
+    thinking.remove();
+    appendMsg('Error de conexión. Revisá la API key.', 'bot');
+  }
+}
+
+// ── TABS ──────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'stock') renderStock();
+  if (name === 'pedidos') renderPedidos();
+  if (name === 'facturas') renderFacturasHistory();
+}
+
+// ── INIT ──────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  apiKey = localStorage.getItem(API_KEY_KEY) || '';
+  if (!apiKey) {
+    const key = prompt('Ingresa tu API Key de Anthropic para activar la lectura de facturas con IA:');
+    if (key && key.trim()) { apiKey = key.trim(); localStorage.setItem(API_KEY_KEY, apiKey); }
+  }
+  if (apiKey) document.getElementById('api-key-section').style.display = 'none';
+
+  // Load dynamic catalog additions from previous sessions
+  try {
+    const dynCat = JSON.parse(localStorage.getItem('deposito_catalog_dynamic') || '[]');
+    for (const mp of dynCat) {
+      if (!MP_CATALOG.find(x => x.id === mp.id)) MP_CATALOG.push(mp);
+    }
+  } catch(e){}
+  initStockFromCatalog();
+  try { facturasHistory = JSON.parse(localStorage.getItem(FACTURAS_KEY) || '[]'); } catch(e){}
+  renderStock();
+  checkAlerts();
+  renderFacturasHistory();
+
+  document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+});
+
+
+// ══════════════════════════════════════════════════════
+// INTEGRACIÓN CENTRAL — DEPOSITO
+// ══════════════════════════════════════════════════════
+
+let pedidos_deposito = [];
+
+async function publishStockToCentral_deposito() {
+
+  try {
+    await checkAndPublishAlerts_deposito();
+  } catch(e) { console.warn('publishStock error:', e); }
+
+}
+
+async function checkAndPublishAlerts_deposito() {
+
+  try {
+    const alertas = [];
+    if (typeof MP_CATALOG !== 'undefined' && typeof stockState !== 'undefined') {
+      for (const mp of MP_CATALOG) {
+        const qty = stockState[mp.id] || 0;
+        if (qty <= 0) {
+          alertas.push({ sector: 'deposito', tipo: 'sin_stock', mensaje: `Sin stock: ${mp.nombre} (${mp.unidad})`, producto_id: mp.id });
+        } else if (qty <= mp.stockMinimo) {
+          alertas.push({ sector: 'deposito', tipo: 'stock_bajo', mensaje: `Stock bajo (${qty}${mp.unidad}): ${mp.nombre}`, producto_id: mp.id });
+        }
+      }
+    }
+    if (alertas.length > 0) {
+      await sbFetch('DELETE', 'alertas_sistema', null, '?sector=eq.deposito&leida=eq.false');
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) { console.warn('checkAlerts error:', e); }
+
+}
+
+async function loadPedidos_deposito() {
+  try {
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.deposito&estado=neq.entregado&order=created_at.desc');
+    if (rows) {
+      pedidos_deposito = rows;
+      renderPedidos_deposito();
+      updatePedidosBadge_deposito();
+    }
+  } catch(e) { console.warn('loadPedidos error:', e); }
+}
+
+function renderPedidos_deposito() {
+  const el = document.getElementById('pedidos-deposito-list');
+  if (!el) return;
+  if (pedidos_deposito.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:#aaa;font-family:system-ui,sans-serif;font-size:13px;">Sin pedidos pendientes ✓</div>';
+    return;
+  }
+  const icons = {salon:'🏪',central:'🏭',cocina:'🍳',panaderia:'🍞',pasteleria:'🍰',deposito:'🏭'};
+  el.innerHTML = pedidos_deposito.map(p => {
+    const hora = new Date(p.created_at).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+    let btns = '';
+    if (p.estado === 'pendiente') {
+      btns = `<button onclick="cambiarEstadoPedido_deposito(${p.id},'en_proceso')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">▶ Tomar</button>
+              <button onclick="cambiarEstadoPedido_deposito(${p.id},'entregado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
+    } else if (p.estado === 'en_proceso') {
+      btns = `<button onclick="cambiarEstadoPedido_deposito(${p.id},'listo')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#1565C0;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">✓ Listo para entregar</button>`;
+    } else if (p.estado === 'listo') {
+      btns = `<button onclick="cambiarEstadoPedido_deposito(${p.id},'entregado')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#22c55e;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">📦 Marcar entregado</button>`;
+    }
+    const estadoColors = {pendiente:'#fef9c3;color:#92400e',en_proceso:'#dbeafe;color:#1e40af',listo:'#dcfce7;color:#166534'};
+    return `<div style="background:#fff;border:1px solid ${p.urgente?'#fca5a5':'#eee'};border-radius:10px;padding:12px;margin-bottom:8px;${p.urgente?'background:#fff8f8;':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;color:#1a1a1a;font-family:system-ui,sans-serif;">${p.urgente?'🔴 ':''}${p.producto}</div>
+          <div style="font-size:11px;color:#aaa;margin-top:3px;font-family:system-ui,sans-serif;">${icons[p.desde_sector]||'📋'} ${p.desde_sector} · ${hora}${p.nota?' · &ldquo;'+p.nota+'&rdquo;':''}</div>
+          <span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;margin-top:4px;background:${(estadoColors[p.estado]||'').split(';')[0]};${(estadoColors[p.estado]||'').split(';')[1]?'color:'+((estadoColors[p.estado]||'').split(';')[1]).replace('color:',''):''};font-family:system-ui,sans-serif;">${p.estado.replace('_',' ')}</span>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:#1565C0;font-family:system-ui,sans-serif;">${p.cantidad}<span style="font-size:11px;font-weight:400;color:#aaa;"> ${p.unidad}</span></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;">${btns}</div>
+    </div>`;
+  }).join('');
+}
+
+async function cambiarEstadoPedido_deposito(id, nuevoEstado) {
+  try {
+    await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
+    if (nuevoEstado === 'entregado') {
+      pedidos_deposito = pedidos_deposito.filter(p => p.id !== id);
+    } else {
+      const p = pedidos_deposito.find(p => p.id === id);
+      if (p) p.estado = nuevoEstado;
+    }
+    renderPedidos_deposito();
+    updatePedidosBadge_deposito();
+    if (typeof addToLog === 'function') addToLog('📋 Pedido ' + nuevoEstado.replace('_',' ') + ': ' + (pedidos_deposito.find(p=>p.id===id)?.producto||''), 'pedido');
+  } catch(e) { console.warn('cambiarEstado error:', e); }
+}
+
+function updatePedidosBadge_deposito() {
+  const tab = document.getElementById('tab-pedidos-deposito');
+  if (!tab) return;
+  const existing = tab.querySelector('.int-badge');
+  if (existing) existing.remove();
+  const pendientes = pedidos_deposito.filter(p => p.estado === 'pendiente').length;
+  if (pendientes > 0) {
+    const b = document.createElement('span');
+    b.className = 'int-badge';
+    b.style.cssText = 'position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;background:#E24B4A;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;animation:pulse 2s infinite;';
+    b.textContent = pendientes;
+    tab.appendChild(b);
+  }
+}
+
+setInterval(loadPedidos_deposito, 60000);
+
+
+// Hook: al guardar stock publicar alertas al central
+const _orig_deposito_save = saveStock;
+saveStock = function(...args) {
+  _orig_deposito_save(...args);
+  setTimeout(publishStockToCentral_deposito, 400);
+};
+
+const _orig_deposito_adj = adjustStock;
+adjustStock = function(...args) {
+  _orig_deposito_adj(...args);
+  setTimeout(publishStockToCentral_deposito, 400);
+};
+
+
+</script>
+</body>
+</html>

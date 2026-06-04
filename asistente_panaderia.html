@@ -1,0 +1,2457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="theme-color" content="#E65100"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Panadería"/>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Asistente de Panadería</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --primary: #534AB7; }
+  body {
+    font-family: Georgia, serif;
+    background: #f5f3ef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 700px;
+    width: 100%;
+    max-width: 480px;
+    background: #fff;
+    border: 1px solid #e0ddd8;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+    position: relative;
+  }
+  #header {
+    background: #3C3489;
+    color: #EEEDFE;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  #header .logo { font-size: 24px; }
+  #header h1 { font-size: 16px; font-weight: 500; color: #EEEDFE; letter-spacing: 0.5px; }
+  #header p { font-size: 11px; color: #AFA9EC; font-family: system-ui, sans-serif; }
+  #header .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #AFA9EC; font-family: system-ui, sans-serif; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #5DCAA5; flex-shrink: 0; }
+  #status-dot.listening { background: #E24B4A; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  #tabs {
+    display: flex;
+    border-bottom: 1px solid #e0ddd8;
+    background: #f5f3ef;
+    flex-shrink: 0;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 4px;
+    font-size: 11px;
+    font-family: system-ui, sans-serif;
+    color: #888;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab i { font-size: 18px; }
+  .tab.active { color: #534AB7; border-bottom-color: #534AB7; background: #fff; }
+  .tab:hover:not(.active) { color: #333; }
+
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  #chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.55;
+    font-family: system-ui, sans-serif;
+  }
+  .msg.bot { background: #f0ede8; color: #1a1a1a; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: #534AB7; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.thinking { opacity: 0.6; font-style: italic; }
+
+  #chat-input-area {
+    padding: 10px 12px;
+    border-top: 1px solid #e0ddd8;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    background: #fff;
+  }
+  #chat-input {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    font-family: system-ui, sans-serif;
+    background: #f5f3ef;
+    color: #1a1a1a;
+    outline: none;
+  }
+  #chat-input:focus { border-color: #534AB7; background: #fff; }
+  #mic-btn, #send-btn {
+    width: 40px; height: 40px; border-radius: 50%; border: none;
+    background: #534AB7; color: white; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0; transition: all 0.15s;
+  }
+  #mic-btn.listening { background: #E24B4A; animation: pulse 1s infinite; }
+  #mic-btn:hover, #send-btn:hover { opacity: 0.85; }
+
+  #recipes-panel { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .recipe-card {
+    border: 1px solid #e0ddd8;
+    border-radius: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #fff;
+  }
+  .recipe-card:hover { border-color: #534AB7; background: #EEEDFE; }
+  .recipe-action-btn {
+    width: 30px; height: 30px; border-radius: 7px; border: 1px solid #e0ddd8;
+    background: white; color: #666; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .recipe-action-btn:hover { background: #EEEDFE; color: #534AB7; border-color: #534AB7; }
+  .recipe-action-btn.danger:hover { background: #ffeaea; color: #E24B4A; border-color: #E24B4A; }
+  .recipe-card h3 { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+  .recipe-card p { font-size: 12px; color: #666; font-family: system-ui, sans-serif; }
+  .recipe-tag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-family: system-ui, sans-serif; background: #EEEDFE; color: #534AB7; margin-top: 6px; margin-right: 4px; }
+
+  #add-recipe-btn {
+    margin: 0 12px 12px;
+    padding: 10px;
+    border: 1.5px dashed #bbb;
+    border-radius: 8px;
+    background: transparent;
+    color: #666;
+    font-size: 14px;
+    font-family: system-ui, sans-serif;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  #add-recipe-btn:hover { border-color: #534AB7; color: #534AB7; }
+
+  #modal-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  #modal-overlay.open { display: flex; }
+  #modal {
+    background: #fff;
+    border-radius: 14px;
+    padding: 20px;
+    width: 100%;
+    max-height: 90%;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+  }
+  #modal h2 { font-size: 17px; font-weight: 500; margin-bottom: 16px; color: #1a1a1a; }
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 13px; color: #555; font-family: system-ui, sans-serif; margin-bottom: 4px; }
+  .form-group input, .form-group textarea {
+    width: 100%; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 14px; font-family: system-ui, sans-serif;
+    background: #f5f3ef; color: #1a1a1a; outline: none;
+  }
+  .form-group textarea { min-height: 80px; resize: vertical; }
+  .form-group input:focus, .form-group textarea:focus { border-color: #534AB7; background: #fff; }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .btn-primary { padding: 8px 18px; background: #534AB7; color: white; border: none; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 14px; cursor: pointer; }
+  .btn-secondary { padding: 8px 18px; background: transparent; color: #555; border: 1px solid #ccc; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 14px; cursor: pointer; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-secondary:hover { background: #f0ede8; }
+
+  #timers-panel { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .timer-card {
+    border: 1px solid #e0ddd8;
+    border-radius: 12px;
+    padding: 14px;
+    background: #fff;
+  }
+  .timer-name { font-size: 15px; font-weight: 500; font-family: system-ui, sans-serif; margin-bottom: 4px; color: #1a1a1a; }
+  .timer-display { font-size: 36px; font-family: 'Courier New', monospace; color: #534AB7; margin: 8px 0; }
+  .timer-display.done { color: #E24B4A; }
+  .timer-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .timer-btn { padding: 6px 14px; border: 1px solid #ccc; border-radius: 8px; background: transparent; font-size: 13px; font-family: system-ui, sans-serif; cursor: pointer; color: #333; }
+  .timer-btn:hover { background: #f0ede8; }
+  #new-timer-area {
+    padding: 12px;
+    border-top: 1px solid #e0ddd8;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    background: #fff;
+    flex-wrap: wrap;
+  }
+  #new-timer-area input {
+    padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc;
+    font-family: system-ui, sans-serif; font-size: 14px;
+    background: #f5f3ef; color: #1a1a1a; outline: none;
+  }
+  #timer-name-input { flex: 1; min-width: 120px; }
+  #timer-min-input { width: 70px; }
+  #new-timer-area input:focus { border-color: #534AB7; background: #fff; }
+  #add-timer-btn { padding: 8px 14px; background: #534AB7; color: white; border: none; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 14px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+  #add-timer-btn:hover { opacity: 0.88; }
+
+  #log-panel { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .log-entry {
+    border: 1px solid #e0ddd8;
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: #fff;
+    font-family: system-ui, sans-serif;
+  }
+  .log-time { font-size: 11px; color: #888; margin-bottom: 3px; }
+  .log-text { font-size: 14px; color: #1a1a1a; }
+  .log-badge { display: inline-block; padding: 1px 7px; border-radius: 20px; font-size: 11px; margin-right: 6px; }
+  .badge-receta { background: #EEEDFE; color: #534AB7; }
+  .badge-tarea { background: #E1F5EE; color: #0F6E56; }
+  .badge-timer { background: #FAEEDA; color: #854F0B; }
+  #log-export-btn {
+    margin: 0 12px 12px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: transparent;
+    color: #555;
+    font-size: 13px;
+    font-family: system-ui, sans-serif;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex-shrink: 0;
+  }
+  #log-export-btn:hover { background: #f0ede8; }
+
+  #recipe-detail {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    z-index: 50;
+    flex-direction: column;
+  }
+  #recipe-detail.open { display: flex; }
+  #recipe-detail-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid #e0ddd8;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    background: #fff;
+  }
+  #recipe-detail-header button { background: transparent; border: none; cursor: pointer; color: #555; font-size: 20px; padding: 4px; }
+  #recipe-detail-header h2 { font-size: 16px; font-weight: 500; color: #1a1a1a; flex: 1; }
+  #recipe-detail-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .step-item { display: flex; gap: 12px; margin-bottom: 16px; align-items: flex-start; }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #534AB7; color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-family: system-ui, sans-serif; flex-shrink: 0;
+  }
+  .step-text { font-size: 14px; line-height: 1.6; color: #1a1a1a; font-family: system-ui, sans-serif; padding-top: 4px; }
+  .ingredients-section { background: #f5f3ef; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  .ingredients-section h4 { font-size: 13px; color: #666; font-family: system-ui, sans-serif; margin-bottom: 8px; }
+  .ingredient-item { font-size: 14px; font-family: system-ui, sans-serif; padding: 3px 0; color: #1a1a1a; display: flex; align-items: center; gap: 8px; }
+  .ingredient-item::before { content: '•'; color: #534AB7; }
+  #speak-recipe-btn {
+    margin: 12px 16px;
+    padding: 10px;
+    background: #534AB7; color: white;
+    border: none; border-radius: 8px;
+    font-family: system-ui, sans-serif; font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  #speak-recipe-btn:hover { opacity: 0.88; }
+
+  .empty-state { text-align: center; color: #888; font-family: system-ui, sans-serif; font-size: 14px; padding: 40px 16px; line-height: 1.7; }
+
+  /* API key setup */
+  #api-setup {
+    position: absolute; inset: 0; background: rgba(255,255,255,0.97);
+    z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  #api-setup.hidden { display: none; }
+  #api-setup-box { max-width: 340px; width: 100%; }
+  #api-setup-box h2 { font-size: 18px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
+  #api-setup-box p { font-size: 13px; color: #555; font-family: system-ui, sans-serif; line-height: 1.6; margin-bottom: 16px; }
+  #api-setup-box a { color: #534AB7; }
+  #api-key-input {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid #ccc; font-size: 14px; font-family: system-ui, sans-serif;
+    background: #f5f3ef; color: #1a1a1a; outline: none; margin-bottom: 10px;
+  }
+  #api-key-input:focus { border-color: #534AB7; background: #fff; }
+  #save-api-btn { width: 100%; padding: 10px; background: #534AB7; color: white; border: none; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 15px; cursor: pointer; }
+  #save-api-btn:hover { opacity: 0.88; }
+  #api-error { font-size: 13px; color: #E24B4A; font-family: system-ui, sans-serif; margin-top: 8px; display: none; }
+
+  /* Producción semanal */
+  .prod-section-title {
+    font-size: 13px; font-weight: 600; color: #888; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 12px 16px 6px; font-family: system-ui, sans-serif;
+  }
+  .prod-card {
+    margin: 0 12px 10px; background: white; border-radius: 12px;
+    border: 1px solid #e8e5e0; overflow: hidden;
+  }
+  .prod-card-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; cursor: pointer; user-select: none;
+  }
+  .prod-card-header:hover { background: #faf9f7; }
+  .prod-card-name { flex: 1; font-size: 14px; font-weight: 500; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .prod-card-badge {
+    font-size: 11px; font-family: system-ui, sans-serif;
+    padding: 3px 8px; border-radius: 20px; font-weight: 600;
+  }
+  .prod-card-badge.ok { background: #dcfce7; color: #16a34a; }
+  .prod-card-badge.warn { background: #fef9c3; color: #ca8a04; }
+  .prod-card-badge.danger { background: #fee2e2; color: #dc2626; }
+  .prod-card-body { padding: 0 14px 14px; border-top: 1px solid #f0ede8; }
+  .prod-progress-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 10px; font-family: system-ui, sans-serif;
+  }
+  .prod-progress-label { font-size: 12px; color: #666; min-width: 90px; }
+  .prod-progress-bar { flex: 1; height: 8px; background: #e0ddd8; border-radius: 4px; overflow: hidden; }
+  .prod-progress-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  .prod-progress-fill.ok { background: #22c55e; }
+  .prod-progress-fill.warn { background: #eab308; }
+  .prod-progress-fill.danger { background: #ef4444; }
+  .prod-progress-count { font-size: 12px; color: #444; font-weight: 600; min-width: 50px; text-align: right; }
+  .prod-tandas-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 8px; font-family: system-ui, sans-serif;
+  }
+  .prod-tandas-label { font-size: 12px; color: #666; }
+  .prod-tanda-btns { display: flex; gap: 6px; align-items: center; }
+  .prod-tanda-btn {
+    width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e0ddd8;
+    background: white; cursor: pointer; font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .prod-tanda-btn.plus { background: #534AB7; color: white; border-color: #534AB7; }
+  .prod-tanda-btn.plus:hover { opacity: 0.85; }
+  .prod-tanda-btn.minus:hover { background: #fee2e2; border-color: #fca5a5; }
+  .prod-tanda-count { font-size: 18px; font-weight: 700; color: #1a1a1a; min-width: 24px; text-align: center; }
+  .prod-freezer-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede8;
+    font-family: system-ui, sans-serif;
+  }
+  .prod-freezer-label { font-size: 12px; color: #666; display: flex; align-items: center; gap: 4px; }
+  .prod-freezer-value { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+  .prod-freezer-sub { font-size: 11px; color: #888; }
+  .prod-day-detail {
+    margin-top: 10px; padding: 8px 10px; background: #faf9f7;
+    border-radius: 8px; font-size: 12px; font-family: system-ui, sans-serif; color: #555;
+  }
+  .prod-day-detail table { width: 100%; border-collapse: collapse; }
+  .prod-day-detail td { padding: 2px 4px; }
+  .prod-day-detail td:last-child { text-align: right; font-weight: 500; color: #1a1a1a; }
+  .prod-reset-week {
+    margin: 8px 12px 16px; width: calc(100% - 24px);
+    padding: 10px; background: transparent; border: 1px solid #ddd;
+    border-radius: 8px; font-family: system-ui, sans-serif; font-size: 13px;
+    color: #666; cursor: pointer;
+  }
+  .prod-reset-week:hover { background: #f0ede8; }
+  .prod-week-label {
+    text-align: center; font-size: 12px; color: #999;
+    font-family: system-ui, sans-serif; padding: 6px 0 2px;
+  }
+
+  
+  /* Stock alerts */
+  .tab-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #E24B4A; color: white; font-size: 10px; font-weight: 700;
+    position: absolute; top: 4px; right: 4px; font-family: system-ui, sans-serif;
+    animation: pulse 2s infinite;
+  }
+  .tab { position: relative; }
+  .alert-banner {
+    margin: 8px 12px 0; padding: 10px 12px; background: #fee2e2;
+    border: 1px solid #fca5a5; border-radius: 8px;
+    font-family: system-ui, sans-serif; font-size: 13px; color: #dc2626;
+    display: none; line-height: 1.5;
+  }
+  .alert-banner.visible { display: block; }
+  .alert-banner strong { display: block; margin-bottom: 4px; }
+
+
+  /* Search bar */
+  .search-bar {
+    padding: 8px 12px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .search-input {
+    width: 100%; padding: 8px 12px 8px 34px;
+    border: 1px solid #e0ddd8; border-radius: 20px;
+    font-size: 14px; font-family: system-ui, sans-serif;
+    outline: none; background: #faf9f7;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+  }
+  .search-input:focus { border-color: var(--primary, #534AB7); }
+  .search-empty { text-align:center; color:#aaa; font-size:13px; padding:24px; font-family:system-ui,sans-serif; }
+
+    /* Freezer stock */
+  .freezer-card {
+    background: white; border: 1px solid #c9c5f5; border-radius: 10px;
+    margin-bottom: 8px; overflow: hidden; font-family: system-ui, sans-serif;
+  }
+  .freezer-card-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+    background: #EEEDFE;
+  }
+  .freezer-card-name { flex: 1; font-size: 14px; font-weight: 500; color: #1a1a1a; }
+  .freezer-card-total { font-size: 18px; font-weight: 700; color: #534AB7; }
+  .freezer-card-unit { font-size: 11px; color: #888; margin-left: 2px; }
+  .freezer-card-body { padding: 10px 14px; }
+  .freezer-sub-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 0; border-bottom: 1px solid #f0ede8; font-size: 13px;
+  }
+  .freezer-sub-row:last-child { border-bottom: none; }
+  .freezer-sub-name { color: #555; }
+  .freezer-sub-val { font-weight: 600; color: #534AB7; }
+  .freezer-sub-val.critical { color: #E24B4A; }
+  .freezer-sub-val.ok { color: #16a34a; }
+  .freezer-adj-row {
+    display: flex; align-items: center; gap: 6px; margin-top: 8px;
+    padding-top: 8px; border-top: 1px solid #f0ede8;
+  }
+  .freezer-adj-label { font-size: 12px; color: #888; flex: 1; }
+  .freezer-adj-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: 1px solid #c9c5f5;
+    background: white; cursor: pointer; font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .freezer-adj-btn.plus { background: #534AB7; color: white; border-color: #534AB7; }
+  .freezer-adj-val { font-size: 15px; font-weight: 700; color: #534AB7; min-width: 36px; text-align: center; }
+  .freezer-section-title { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: .05em; padding: 8px 4px 6px; font-family: system-ui, sans-serif; }
+  .freezer-reset-btn { width: 100%; padding: 10px; background: transparent; border: 1px solid #ddd; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 13px; color: #666; cursor: pointer; margin-top: 4px; }
+
+  /* Speech control bar */
+  #speech-bar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #EEEDFE;
+    border-top: 1px solid #c9c5f5;
+    flex-shrink: 0;
+    font-family: system-ui, sans-serif;
+  }
+  #speech-bar.visible { display: flex; }
+  #speech-bar .speech-label {
+    font-size: 12px;
+    color: #534AB7;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #speech-bar .speech-label i { margin-right: 4px; animation: pulse 1.5s infinite; }
+  .speech-ctrl-btn {
+    width: 34px; height: 34px; border-radius: 50%; border: none;
+    background: #534AB7; color: white; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; transition: all 0.15s;
+  }
+  .speech-ctrl-btn:hover { opacity: 0.82; }
+  .speech-ctrl-btn.stop { background: #E24B4A; }
+
+  /* Ingredient checklist */
+  .ingredient-item {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 4px !important;
+    border-radius: 6px;
+    transition: background 0.15s;
+    cursor: pointer;
+    user-select: none;
+  }
+  .ingredient-item:hover { background: rgba(83,74,183,0.07); }
+  .ingredient-item::before { display: none !important; }
+  .ingredient-checkbox {
+    width: 20px; height: 20px; border-radius: 5px;
+    border: 2px solid #534AB7; background: white;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.15s;
+    font-size: 13px; color: white;
+  }
+  .ingredient-item.checked .ingredient-checkbox {
+    background: #534AB7;
+    border-color: #534AB7;
+  }
+  .ingredient-item.checked .ingredient-text {
+    text-decoration: line-through;
+    color: #aaa;
+  }
+  .ingredient-text { font-size: 14px; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .checklist-progress {
+    font-size: 12px; font-family: system-ui, sans-serif;
+    color: #534AB7; margin-top: 8px; font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .checklist-progress-bar {
+    flex: 1; height: 4px; background: #e0ddd8; border-radius: 2px; overflow: hidden;
+  }
+  .checklist-progress-fill {
+    height: 100%; background: #534AB7; border-radius: 2px; transition: width 0.3s;
+  }
+  .checklist-reset-btn {
+    margin-top: 8px;
+    background: transparent; border: 1px solid #ccc; border-radius: 6px;
+    padding: 4px 10px; font-size: 12px; font-family: system-ui, sans-serif;
+    color: #666; cursor: pointer;
+  }
+  .checklist-reset-btn:hover { background: #f0ede8; }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- API Key setup -->
+  <div id="api-setup">
+    <div id="api-setup-box">
+      <div style="font-size:36px;margin-bottom:12px">🍞</div>
+      <h2>Asistente de Panadería</h2>
+      <p>Para usar el asistente con IA necesitás una <strong>API Key de Anthropic</strong>. Es gratuita para empezar.<br><br>
+        1. Entrá a <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a><br>
+        2. Creá una cuenta y generá tu API Key<br>
+        3. Pegala acá abajo
+      </p>
+      <input type="password" id="api-key-input" placeholder="sk-ant-..." autocomplete="off" />
+      <button id="save-api-btn" onclick="saveApiKey()">Guardar y comenzar</button>
+      <div id="api-error">Clave inválida. Asegurate de que empiece con sk-ant-</div>
+      <p style="margin-top:12px;font-size:12px;color:#999">La clave se guarda solo en tu dispositivo, nunca se envía a nadie más que a Anthropic.</p>
+    </div>
+  </div>
+
+  <div id="header">
+    <div class="logo">🍞</div>
+    <div>
+      <h1>Asistente de Panadería</h1>
+      <p>Tu ayudante inteligente de cocina</p>
+    </div>
+    <div class="status">
+      <div id="status-dot"></div>
+      <span id="status-text">Listo</span>
+    </div>
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('chat')" id="tab-chat">
+      <i class="ti ti-message-circle"></i>Asistente
+    </button>
+    <button class="tab" onclick="switchTab('recipes')" id="tab-recipes">
+      <i class="ti ti-book"></i>Recetas
+    </button>
+    <button class="tab" onclick="switchTab('timers')" id="tab-timers">
+      <i class="ti ti-clock"></i>Timers
+    </button>
+    <button class="tab" onclick="switchTab('pedidos-panaderia')" id="tab-pedidos-panaderia" style="position:relative;">
+      <i class="ti ti-bell"></i>Pedidos
+    </button>
+    <button class="tab" onclick="switchTab('log')" id="tab-log">
+      <i class="ti ti-clipboard-list"></i>Registro
+    </button>
+    <button class="tab" onclick="switchTab('freezer')" id="tab-freezer">
+      <i class="ti ti-snowflake"></i>Freezer
+    </button>
+    <button class="tab" onclick="switchTab('produccion')" id="tab-produccion">
+      <i class="ti ti-chart-bar"></i>Producción
+    </button>
+  </div>
+
+  <!-- CHAT -->
+  <div class="panel active" id="panel-chat">
+    <div id="chat-messages">
+      <div class="msg bot">
+        ¡Buenas! 🍞✨ Bienvenido a otro día de hacer magia en la panadería.
+        <div id="welcome-summary" style="margin-top:8px;font-size:13px;line-height:1.7;color:#444;"></div>
+      </div>
+    </div>
+    <div id="speech-bar">
+      <span class="speech-label"><i class="ti ti-volume"></i> <span id="speech-bar-label">Leyendo...</span></span>
+      <button class="speech-ctrl-btn" id="speech-pause-btn" onclick="toggleSpeechPause()" title="Pausar / Continuar"><i class="ti ti-player-pause" id="speech-pause-icon"></i></button>
+      <button class="speech-ctrl-btn stop" onclick="stopSpeech()" title="Detener"><i class="ti ti-player-stop"></i></button>
+    </div>
+    <div id="chat-input-area">
+      <input type="text" id="chat-input" placeholder="Escribí o usá el micrófono..." />
+      <button id="mic-btn" onclick="toggleMic()" title="Hablar por voz"><i class="ti ti-microphone"></i></button>
+      <button id="send-btn" onclick="sendMessage()" title="Enviar"><i class="ti ti-send"></i></button>
+    </div>
+  </div>
+
+  <!-- RECETAS -->
+  <div class="panel" id="panel-recipes">
+    <div class="search-bar">
+      <input class="search-input" id="search-recipes" placeholder="Buscar receta..." oninput="filterRecipes(this.value)" />
+    </div>
+    <div id="recipes-panel" style="flex:1;overflow-y:auto;"></div>
+    <button id="add-recipe-btn" onclick="openAddRecipe()">
+      <i class="ti ti-plus"></i> Agregar receta propia
+    </button>
+  </div>
+
+  <!-- TIMERS -->
+  <div class="panel" id="panel-timers">
+    <div id="timers-panel"></div>
+    <div id="new-timer-area">
+      <input type="text" id="timer-name-input" placeholder="Nombre (ej: Pan en horno)" />
+      <input type="number" id="timer-min-input" placeholder="Min" min="1" />
+      <button id="add-timer-btn" onclick="addTimer()"><i class="ti ti-plus"></i> Agregar</button>
+    </div>
+  </div>
+
+  <!-- REGISTRO -->
+  <div class="panel" id="panel-log">
+    <div class="search-bar">
+      <input class="search-input" id="search-log" placeholder="Buscar en el registro..." oninput="filterLog(this.value)" />
+    </div>
+    <div id="log-panel" style="flex:1;overflow-y:auto;"></div>
+    <button id="log-export-btn" onclick="exportLog()"><i class="ti ti-download"></i> Exportar registro del día</button>
+  </div>
+
+  <!-- PRODUCCIÓN SEMANAL -->
+  <div class="panel" id="panel-produccion">
+    <div id="produccion-panel"></div>
+  </div>
+
+  <!-- FREEZER STOCK -->
+  <div class="panel" id="panel-freezer">
+    <div id="freezer-panel" style="flex:1;overflow-y:auto;padding:12px;"></div>
+  </div>
+
+  <!-- MODAL NUEVA/EDITAR RECETA -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <h2 id="modal-title">Nueva receta</h2>
+      <input type="hidden" id="rec-editing-id" value="" />
+      <div class="form-group">
+        <label>Nombre de la receta</label>
+        <input type="text" id="rec-name" placeholder="Ej: Medialunas de manteca" />
+      </div>
+      <div class="form-group">
+        <label>Ingredientes (uno por línea, ej: 500g harina)</label>
+        <textarea id="rec-ingredients" placeholder="500g harina&#10;10g sal&#10;20g levadura"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Pasos (uno por línea)</label>
+        <textarea id="rec-steps" placeholder="Mezclar harina y sal&#10;Agregar levadura disuelta&#10;Amasar 10 minutos" style="min-height:100px"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Tiempo de cocción (minutos, opcional)</label>
+        <input type="number" id="rec-time" placeholder="25" />
+      </div>
+      <div class="modal-btns">
+        <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn-primary" id="modal-save-btn" onclick="saveRecipe()">Guardar receta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETALLE RECETA -->
+  <div id="recipe-detail">
+    <div id="recipe-detail-header">
+      <button onclick="closeRecipeDetail()"><i class="ti ti-arrow-left"></i></button>
+      <h2 id="recipe-detail-title"></h2>
+      <button id="complete-recipe-btn" onclick="completeRecipe()" title="Marcar como completada" style="background:#22c55e;border:none;color:white;border-radius:8px;padding:6px 12px;font-family:system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap;">
+        <i class="ti ti-circle-check"></i> Completada
+      </button>
+    </div>
+    <div id="recipe-detail-body"></div>
+    <div id="recipe-mic-bar" style="margin:0 12px 8px;display:flex;gap:8px;align-items:center;">
+      <button id="recipe-mic-btn" onclick="toggleRecipeMic()" style="flex:1;padding:10px;background:#f0ede8;color:#333;border:1px solid #ddd;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="ti ti-microphone" id="recipe-mic-icon"></i> <span id="recipe-mic-label">Hablarle al asistente</span>
+      </button>
+    </div>
+    <div id="recipe-speech-controls" style="margin:0 12px 12px;display:flex;gap:8px;align-items:center;">
+      <button id="speak-recipe-btn" onclick="speakRecipe()" style="flex:1;padding:10px;background:#534AB7;color:white;border:none;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="ti ti-volume" id="speak-recipe-icon"></i> <span id="speak-recipe-label">Leer receta en voz alta</span>
+      </button>
+      <button id="recipe-pause-btn" onclick="toggleSpeechPause()" title="Pausar / Continuar" style="display:none;width:42px;height:42px;border-radius:50%;border:none;background:#534AB7;color:white;cursor:pointer;align-items:center;justify-content:center;font-size:18px;">
+        <i class="ti ti-player-pause" id="recipe-pause-icon"></i>
+      </button>
+      <button id="recipe-stop-btn" onclick="stopSpeech()" title="Detener" style="display:none;width:42px;height:42px;border-radius:50%;border:none;background:#E24B4A;color:white;cursor:pointer;align-items:center;justify-content:center;font-size:18px;">
+        <i class="ti ti-player-stop"></i>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+// ── SUPABASE CONFIG ───────────────────────────────
+const SUPABASE_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+
+async function sbFetch(method, table, body=null, params='') {
+  const url = SUPABASE_URL + '/rest/v1/' + table + params;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { const err = await res.text(); console.error('Supabase error:', err); return null; }
+  return method === 'DELETE' ? null : await res.json();
+}
+
+async function sbUpsert(table, data) {
+  return sbFetch('POST', table, Array.isArray(data) ? data : [data]);
+}
+
+async function sbSelect(table, params='') {
+  return sbFetch('GET', table, null, params);
+}
+
+async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
+  await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
+}
+// ── END SUPABASE ──────────────────────────────────
+
+// Polyfill para Safari/iOS viejos
+if (!Array.prototype.findLastIndex) {
+  Array.prototype.findLastIndex = function(fn) {
+    for (let i = this.length - 1; i >= 0; i--) { if (fn(this[i], i, this)) return i; } return -1;
+  };
+}
+const RECIPES_KEY = 'panaderia_recipes';
+const LOG_KEY = 'panaderia_log_' + new Date().toDateString();
+const API_KEY_KEY = 'panaderia_api_key';
+
+const DEFAULT_RECIPES = [{"id": 1, "name": "Libritos Integrales", "ingredients": ["2800g harina trigo integral", "2000g harina trigo 000", "200g algarroba", "1000g manteca para el empaste con harina", "300cc aceite", "10g sal", "10g levadura", "1500g agua con hielo", "1 cucharadita aditivo"], "steps": ["Mezclar bien los secos menos el aditivo que hay que disolverlo en agua", "Agregar los húmedos", "Mezclar 10 minutos a máxima velocidad y luego otros 10 minutos a media marcha", "Dividir la masa en 2 y estirar hasta que quede un rectángulo para empastar", "Armar los empastes estirando las láminas de margarina de a 500g por empaste por masa y cerrar con almidón", "Dar una vuelta doble, dejar reposar 20 minutos y dar otra vuelta doble", "Cortar y llevar al freezer rotulado"], "cookTime": null}, {"id": 2, "name": "Libritos Clásicos", "ingredients": ["2500g trigo 000", "2500g trigo 0000", "1kg margarina para el empaste con almidón", "300cc aceite", "100g sal", "Poca levadura", "1500g agua con hielo", "1 litro leche fría", "1 cucharadita colmada aditivo", "5g levadura fresca"], "steps": ["Mezclar bien los secos menos el aditivo que hay que disolverlo en agua", "Agregar los húmedos", "Mezclar 10 minutos a máxima velocidad y luego otros 10 minutos a media marcha", "Dividir la masa en 2 y estirar hasta que quede un rectángulo para empastar", "Armar los empastes estirando las láminas de margarina de a 500g por empaste por masa y cerrar con almidón", "Dar una vuelta doble, dejar reposar 20 minutos y dar otra vuelta doble", "Cortar y llevar al freezer rotulado"], "cookTime": null}, {"id": 3, "name": "Cremonas", "ingredients": ["2500g trigo 000", "2500g trigo 0000", "1kg margarina para el empaste con almidón", "300cc aceite", "100g sal", "Poca levadura", "1500g agua con hielo", "1 litro leche fría", "1 cucharadita colmada aditivo", "5g levadura fresca"], "steps": ["Mezclar bien los secos menos el aditivo que hay que disolverlo en agua", "Agregar los húmedos", "Mezclar 10 minutos a máxima velocidad y luego otros 10 minutos a media marcha", "Dividir la masa en 2 y estirar hasta que quede un rectángulo para empastar", "Armar los empastes estirando las láminas de margarina de a 500g por empaste por masa y cerrar con almidón", "Dar una vuelta doble, dejar reposar 20 minutos y dar otra vuelta doble", "Cortar y llevar al freezer rotulado"], "cookTime": null}, {"id": 4, "name": "Bizcochitos de Manteca y Grasa", "ingredients": ["1kg grasa", "1kg manteca", "140g sal", "Poca agua", "1 cucharadita aditivo", "1 cucharadita frescura", "5kg harina 0000", "70g levadura"], "steps": ["Mezclar los secos", "Agregar el resto de los ingredientes", "Amasar de 10 a 15 minutos a máxima velocidad hasta que la masa quede lista", "Estirar y picar con el rodillo de clavos (PICA)", "Cortar y estibar en lata completa", "Tapar y guardar en cámara"], "cookTime": null}, {"id": 5, "name": "Libritos Veganos", "ingredients": ["140g sal", "10g levadura", "1kg margarina solo empaste", "1g aditivo", "200cc aceite", "5kg harina 0000", "1500ml agua con hielo"], "steps": ["Mezclar bien los secos menos el aditivo que hay que disolverlo en agua", "Agregar los húmedos", "Mezclar 10 minutos a máxima velocidad y luego otros 10 minutos a media marcha", "Dividir la masa en 2 y estirar hasta que quede un rectángulo para empastar", "Armar los empastes estirando las láminas de margarina de a 500g por empaste por masa y cerrar con almidón", "Dar una vuelta doble, dejar reposar 20 minutos y dar otra vuelta doble", "Cortar y llevar al freezer rotulado"], "cookTime": null}, {"id": 6, "name": "Palitos de Queso de Hojaldre", "ingredients": ["600g manteca", "100g sal", "200g azúcar", "2500g agua", "2500g margarina para empaste con almidón", "5kg harina 0000"], "steps": ["Mezclar bien los secos menos el aditivo que hay que disolverlo en agua", "Agregar los húmedos", "Mezclar 10 minutos a máxima velocidad y luego otros 10 minutos a media marcha", "Empastar: dar una vuelta simple, luego otra, luego una tercera, todas seguidas", "Dejar reposar 20 minutos y dar 2 vueltas simples más", "Estirar y cortar dos placas iguales de 5mm de espesor sin bordes", "Mojarlas y rellenar una con queso en hebras con pimentón", "Poner la otra masa por arriba y aplastar", "Cortar bastones del ancho y largo de un dedo", "Retorcer, estibar en placa y guardar tapado en cámara"], "cookTime": null}, {"id": 7, "name": "Palmeritas", "ingredients": ["Masa de palitos de queso (mitad)", "Azúcar c/n"], "steps": ["Estirar la masa a 5mm de espesor, 12cm de ancho por todo el largo", "Rellenar con azúcar", "Enrollar desde los bordes largos hacia adentro hasta que los rollos se unan", "Cortar porciones pequeñas y guardar en freezer rotuladas"], "cookTime": null}, {"id": 8, "name": "Masa para Pastelitos", "ingredients": ["750g margarina", "80g sal", "2500g agua", "2500g margarina para empaste", "5000g harina 0000", "1000g membrillo"], "steps": ["Mezclar bien los secos menos el aditivo que hay que disolverlo en agua", "Agregar los húmedos", "Mezclar 10 minutos a máxima velocidad y luego otros 10 minutos a media marcha", "Reposar 12 horas en heladera", "Empastar: dar una vuelta simple, luego otra, luego una tercera, todas seguidas", "Dejar reposar 20 minutos y dar 2 vueltas simples más", "Estirar, cortar placas de 5mm, rellenar con membrillo y armar", "Guardar tapado en cámara"], "cookTime": 120}, {"id": 9, "name": "Masa Empanadas Clásicas", "ingredients": ["1200g margarina", "100g sal", "1250ml agua", "6000g harina 0000"], "steps": ["Mezclar todo junto", "Bajar a 2mm de espesor", "Cortar con discos", "Folex y a la cámara rotulado en bolsas de a 20 unidades"], "cookTime": null}, {"id": 10, "name": "Masa Empanadas Integral", "ingredients": ["400g margarina", "100g sal", "1250g agua", "1000g harina 0000", "1000g harina integral", "200g algarroba"], "steps": ["Mezclar todo junto", "Bajar a 2mm de espesor", "Cortar con discos", "Folex y a la cámara rotulado en bolsas de a 20 unidades"], "cookTime": null}, {"id": 11, "name": "Medialunas de Manteca", "ingredients": ["2000g manteca para empaste", "250g harina 0000 para empaste", "50g sal", "10g levadura", "500g azúcar", "1 cucharadita mejorador", "1 cucharadita cúrcuma", "Ralladura de 1 naranja", "Ralladura de 1 limón", "2 tapitas de vainilla", "5300g harina 0000", "20g miel", "2 litros leche fría", "200cc aceite", "Agua helada c/n hasta 1 litro"], "steps": ["Mezclar los secos menos el aditivo y la cúrcuma, que se disuelven previamente en agua a temperatura ambiente", "Agregar los húmedos menos la levadura y el agua, mezclar 5 minutos y agregar la levadura", "Agregar el agua de a poco, controlando la humedad de la masa", "Mezclar 10 minutos a máxima velocidad y luego bajar a la mitad otros 10 minutos más", "Guardar la masa en el freezer por 20 minutos mínimo (no más de 1 hora)", "Hacer 8 masas iguales. Armar el empaste: 16kg manteca + 2kg harina 0000. Formar placas de 1,125kg cada una y llevar a heladera 30-60 min o freezer 20 min", "Dividir las 8 masas en 2 (16 bollos), estirar en rectángulo, empastar con almidón de maíz. Dar la 1ra vuelta simple a las 16 masas y volver al freezer. Repetir proceso para 2da y 3ra vuelta", "Masas 1-7: medialunas. Masa 8: roll de manzana y canela. Masas 9-12: lenguita invertida. Masas 13-16: popurrí", "Guardar en freezer vertical pasillo. Al finalizar, limpiar la amasadora"], "cookTime": null}, {"id": 12, "name": "Pan de Hamburguesa", "ingredients": ["125cc aceite girasol", "20g sal", "10g levadura", "200g azúcar", "5 huevos", "10g miel", "2500g harina 000", "500cc leche"], "steps": ["Mezclar todo junto", "Bajar a 6mm de espesor", "Cortar masitas de 100g, bollar y guardar", "Folex y a la cámara rotulado en bolsas de a 20 unidades"], "cookTime": null}, {"id": 13, "name": "Facturas Veganas", "ingredients": ["2400g margarina para el empaste", "20g sal", "10g levadura", "500g azúcar", "Ralladura de 1 naranja", "Ralladura de 1 limón", "5kg harina 0000", "50cc vainilla", "1 cucharadita aditivo", "1 cucharadita cúrcuma", "3 litros agua helada"], "steps": ["Mezclar los secos menos el aditivo y la cúrcuma, que se disuelven previamente en agua a temperatura ambiente", "Agregar los húmedos menos la levadura y el agua, mezclar 5 minutos y agregar la levadura", "Agregar el agua de a poco, controlando la humedad de la masa", "Mezclar 10 minutos a máxima velocidad y luego bajar a la mitad otros 10 minutos más", "Guardar la masa en el freezer por 20 minutos mínimo (no más de 1 hora)", "Armar 16 masas, empastar con 16kg margarina + 2kg harina 0000. Dar vueltas simples igual que medialunas", "Masas 1-7: medialunas. Masa 8: roll de manzana y canela. Masas 9-12: lenguita invertida. Masas 13-16: popurrí", "Guardar en freezer vertical pasillo. Al finalizar, limpiar la amasadora"], "cookTime": null}, {"id": 14, "name": "Rosca de Pascua", "ingredients": ["800g manteca", "30g sal", "50g levadura", "1500g azúcar", "10 huevos", "Ralladura de 1 limón", "5kg harina 0000", "20g vainilla", "20g miel", "1/2 cucharadita cúrcuma", "1 naranja", "Para masa madre: 500g harina 0000 + leche tibia + 70g levadura"], "steps": ["Preparar masa madre: mezclar 500g harina 0000 con 70g levadura y leche tibia hasta formar una masa muy blanda. Reservar", "Mezclar los secos, luego agregar los líquidos y hacer una masa estable", "Agregar la masa madre y amasar hasta integrar", "Al final agregar la manteca hasta integrar", "Bollar de a 500g, llevar al molde y dejar leudar"], "cookTime": null}, {"id": 15, "name": "Pebetes", "ingredients": ["250g margarina", "50g sal", "100g levadura", "200g azúcar", "1500g leche", "50g miel", "2500g harina 0000", "Vainilla c/n"], "steps": ["Mezclar los secos", "Agregar los húmedos y amasar 10 minutos a máxima velocidad", "Integrar la margarina y amasar otros 10 minutos más", "Armar bollos alargados de 120g y freezar"], "cookTime": 60}, {"id": 16, "name": "Pan Caserito / Francés", "ingredients": ["100g sal", "50g levadura", "300cc aceite", "5000g harina 0000"], "steps": ["Mezclar secos", "Agregar húmedos y amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 8 panes de molde de 800g c/u"], "cookTime": 60}, {"id": 17, "name": "Facturas de Grasa", "ingredients": ["750g manteca para empaste (blanda)", "750g grasa para empaste (blanda)", "200g harina 0000 para empaste", "150g sal", "50g levadura", "300g azúcar", "3500g harina 0000", "1300g agua con hielo"], "steps": ["Repetir esta receta 5 veces para la producción del día", "Mezclar los secos, incorporar los húmedos. Mientras se amasa armar el empaste", "Una vez listo el bollo, guardar en freezer 20 minutos", "Estirar en la laminadora hasta formar un rectángulo chico", "Dejar descansar bien tapado sin harina en la mesa hasta que la masa afloje", "Estirar la masa hasta el doble de ancho de forma pausada para no romperla", "Empastar estirando la mezcla por arriba de la masa estirada", "Enrollar como caracol toda la masa sellando las puntas", "Bañar la masa por todos lados con aceite y cubrir bien", "Estirar el choricito cada 20 minutos delicadamente", "Cortar de cada masa 100-120 unidades para armar facturas", "2,5 masas para vigilantes, 1 masa para sacramentos (mitad membrillo / mitad jamón y queso) y el resto para santiagueñas"], "cookTime": null}, {"id": 18, "name": "Pan Molde Blanco", "ingredients": ["100cc aceite", "100g sal", "10g levadura", "5000g harina 0000", "3 litros agua", "1 cucharadita aditivo", "1 cucharadita frescura"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u, o 16 prepizzas de 500g c/u, o 10 focaccias de 200g c/u"], "cookTime": 60}, {"id": 19, "name": "Pan Boniato (Calabaza)", "ingredients": ["100cc aceite", "100g sal", "10g levadura", "4000g harina 0000", "3 litros agua", "1 cucharadita aditivo", "1 cucharadita frescura", "1200g puré de calabaza", "2 cucharaditas cúrcuma", "600g azúcar"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u"], "cookTime": 60}, {"id": 20, "name": "Pan Molde Integral", "ingredients": ["50g aceite", "100g sal", "10g levadura", "300g semillas mix", "2000g harina 000", "3000g harina integral", "1 cucharadita aditivo", "1 cucharadita frescura", "3 litros agua"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u"], "cookTime": 60}, {"id": 21, "name": "Pan Molde Integral Sin Sal", "ingredients": ["50g aceite", "10g levadura", "300g semillas mix", "2000g harina 000", "3000g harina integral", "1 cucharadita aditivo", "1 cucharadita frescura", "3 litros agua"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u"], "cookTime": 60}, {"id": 22, "name": "Prepizza Integral", "ingredients": ["100g aceite", "100g sal", "10g levadura", "300g semillas mix", "2000g harina 000", "3000g harina integral", "1 cucharadita aditivo", "1 cucharadita frescura", "3 litros agua"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Hacer bollos de 200g c/u y estirar en placas de 6 unidades por placa"], "cookTime": null}, {"id": 23, "name": "Pan de Maíz", "ingredients": ["100cc aceite", "100g sal", "10g levadura", "4000g harina 0000", "3 litros agua", "1 cucharadita aditivo", "1 cucharadita frescura", "1200g polenta", "2 cucharaditas cúrcuma", "600g azúcar"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u"], "cookTime": 60}, {"id": 24, "name": "Pan de Centeno", "ingredients": ["50g aceite", "100g sal", "10g levadura", "300g semillas mix", "2000g harina 000", "3000g harina integral de centeno", "1 cucharadita aditivo", "1 cucharadita frescura", "3 litros agua"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u"], "cookTime": 60}, {"id": 25, "name": "Pan Molde de Espelta", "ingredients": ["50g aceite", "100g sal", "10g levadura", "300g semillas mix", "2000g harina 000", "3000g harina integral de espelta", "1 cucharadita aditivo", "1 cucharadita frescura", "3 litros agua"], "steps": ["Mezclar secos, luego agregar húmedos", "Amasar 10 minutos a máxima velocidad", "Con esta masa se pueden armar 10 panes de molde de 800g c/u"], "cookTime": 60}];
+let recipes = [];
+let log = [];
+let timers = [];
+let recognition = null;
+let isListening = false;
+let currentRecipe = null;
+let synth = window.speechSynthesis;
+let conversationHistory = [];
+let apiKey = '';
+
+function init() {
+  apiKey = localStorage.getItem(API_KEY_KEY) || '';
+  if (apiKey && apiKey.startsWith('sk-ant-')) {
+    document.getElementById('api-setup').classList.add('hidden');
+  }
+  // Versión del recetario — cambiar este número fuerza reset en todos los dispositivos
+  const RECIPES_VERSION = '2';
+  const savedVersion = localStorage.getItem(RECIPES_KEY + '_version');
+  if (savedVersion !== RECIPES_VERSION) {
+    // Primera vez o versión vieja — cargar recetas del archivo
+    recipes = DEFAULT_RECIPES;
+    localStorage.setItem(RECIPES_KEY + '_version', RECIPES_VERSION);
+    saveRecipes();
+  } else {
+    try { const r = localStorage.getItem(RECIPES_KEY); const parsed = r ? JSON.parse(r) : null; if (parsed && parsed.length > 0) { recipes = parsed; } else { recipes = DEFAULT_RECIPES; saveRecipes(); } } catch(e){ recipes = DEFAULT_RECIPES; saveRecipes(); }
+  }
+  try { const l = localStorage.getItem(LOG_KEY); if (l) log = JSON.parse(l); } catch(e){}
+  if (recipes.length === 0) {
+    recipes = [
+      { id: 1, name: 'Pan francés', cookTime: 25,
+        ingredients: ['500g harina 000','10g sal','5g azúcar','20g levadura fresca','300ml agua tibia','20ml aceite'],
+        steps: ['Disolver la levadura en agua tibia con el azúcar y dejar reposar 5 minutos.','Mezclar la harina con la sal y hacer un hueco en el centro.','Agregar la levadura activada y el aceite, mezclar hasta integrar.','Amasar durante 10 minutos hasta obtener una masa lisa.','Dejar leudar tapado en lugar cálido por 1 hora.','Desgasificar, dar forma y colocar en placa enharinada.','Dejar leudar 30 minutos más.','Hornear a 200°C por 25 minutos hasta dorar.']
+      },
+      { id: 2, name: 'Medialunas de manteca', cookTime: 18,
+        ingredients: ['500g harina','10g sal','80g azúcar','20g levadura','200ml leche tibia','2 huevos','200g manteca fría'],
+        steps: ['Mezclar harina, sal y azúcar.','Activar la levadura en leche tibia.','Agregar huevos y levadura a la harina, amasar 8 minutos.','Refrigerar la masa 30 minutos.','Extender la masa en rectángulo, colocar manteca fría en el centro.','Hacer pliegues tipo hojaldre, refrigerar 20 minutos, repetir 2 veces.','Cortar triángulos, enrollar y dar forma de medialuna.','Dejar leudar 1 hora a temperatura ambiente.','Pintar con huevo batido y hornear a 190°C por 18 minutos.']
+      }
+    ];
+    saveRecipes();
+  }
+  renderRecipes();
+  renderLog();
+  renderTimers();
+  loadProdState();
+  loadFreezerPan();
+  renderProduccion();
+  renderFreezer();
+  checkStockAlerts();
+  renderWelcomeSummary();
+  showLimpiezaIndicator();
+}
+
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val.startsWith('sk-ant-')) {
+    document.getElementById('api-error').style.display = 'block';
+    return;
+  }
+  apiKey = val;
+  localStorage.setItem(API_KEY_KEY, apiKey);
+  document.getElementById('api-setup').classList.add('hidden');
+}
+
+function saveRecipes() { try { localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)); } catch(e){} }
+function saveLog() { try { localStorage.setItem(LOG_KEY, JSON.stringify(log)); } catch(e){} }
+
+function addToLog(text, type) {
+  const time = new Date().toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+  log.push({ time, text, type });
+  saveLog();
+  renderLog();
+}
+
+function renderLog() {
+  const el = document.getElementById('log-panel');
+  if (log.length === 0) { el.innerHTML = '<div class="empty-state">El registro del día está vacío.<br>Las acciones se guardan automáticamente.</div>'; return; }
+  el.innerHTML = log.slice().reverse().map(e => `
+    <div class="log-entry">
+      <div class="log-time">${e.time}</div>
+      <div class="log-text"><span class="log-badge badge-${e.type}">${e.type}</span>${e.text}</div>
+    </div>`).join('');
+}
+
+
+function renderRecipeCards(arr, el) {
+  if (!el) el = document.getElementById('recipes-panel');
+  if (arr.length === 0) { el.innerHTML = '<div class="empty-state">No hay recetas cargadas todavía.<br>Agregá la primera con el botón de abajo.</div>'; return; }
+  el.innerHTML = arr.map(r => `
+    <div class="recipe-card" onclick="openRecipeDetail(${r.id})">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <h3>${r.name}</h3>
+          <p>${r.ingredients.length} ingredientes · ${r.steps.length} pasos${r.rendimiento ? ' · ' + r.rendimiento : ''}</p>
+          ${r.deposito ? `<span class="recipe-tag">${depIcon ? depIcon(r.deposito) : ''} ${depLabel ? depLabel(r.deposito) : r.deposito}</span>` : ''}
+          ${r.cookTime ? `<span class="recipe-tag">⏱ ${r.cookTime} min</span>` : ''}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+          <button class="recipe-action-btn" onclick="openEditRecipe(${r.id})" title="Editar"><i class="ti ti-pencil"></i></button>
+          <button class="recipe-action-btn danger" onclick="deleteRecipe(${r.id})" title="Eliminar"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function renderRecipes() {
+  const el = document.getElementById('recipes-panel');
+  if (recipes.length === 0) { el.innerHTML = '<div class="empty-state">No hay recetas cargadas todavía.<br>Agregá la primera con el botón de abajo.</div>'; return; }
+  renderRecipeCards(recipes, el);
+}
+
+// Checklist state: { recipeId: Set of checked indices }
+let checklistState = {};
+
+function toggleIngredient(recipeId, idx) {
+  if (!checklistState[recipeId]) checklistState[recipeId] = new Set();
+  const s = checklistState[recipeId];
+  if (s.has(idx)) s.delete(idx); else s.add(idx);
+  renderChecklist(recipeId);
+}
+
+function renderChecklist(recipeId) {
+  const recipe = recipes.find(r => r.id === recipeId);
+  if (!recipe) return;
+  const checked = checklistState[recipeId] || new Set();
+  const total = recipe.ingredients.length;
+  const done = checked.size;
+  const container = document.getElementById('ingredient-checklist-' + recipeId);
+  if (!container) return;
+  container.innerHTML = recipe.ingredients.map((ing, idx) => {
+    const isChecked = checked.has(idx);
+    return `<div class="ingredient-item ${isChecked ? 'checked' : ''}" onclick="toggleIngredient(${recipeId}, ${idx})">
+      <div class="ingredient-checkbox">${isChecked ? '✓' : ''}</div>
+      <span class="ingredient-text">${ing}</span>
+    </div>`;
+  }).join('') + `
+  <div class="checklist-progress">
+    <div class="checklist-progress-bar"><div class="checklist-progress-fill" style="width:${total ? (done/total*100) : 0}%"></div></div>
+    <span>${done}/${total}</span>
+    ${done > 0 ? `<button class="checklist-reset-btn" onclick="event.stopPropagation();resetChecklist(${recipeId})">Reiniciar</button>` : ''}
+  </div>`;
+}
+
+function resetChecklist(recipeId) {
+  checklistState[recipeId] = new Set();
+  renderChecklist(recipeId);
+}
+
+function openRecipeDetail(id) {
+  currentRecipe = recipes.find(r => r.id === id);
+  if (!currentRecipe) return;
+  document.getElementById('recipe-detail-title').textContent = currentRecipe.name;
+  const body = document.getElementById('recipe-detail-body');
+  body.innerHTML = `
+    <div class="ingredients-section">
+      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Mise en place</span>
+        <span style="font-size:11px;color:#888;font-weight:400;">Tildá lo que ya tenés listo</span>
+      </h4>
+      <div id="ingredient-checklist-${currentRecipe.id}"></div>
+    </div>
+    <div style="font-size:13px;color:#666;font-family:system-ui,sans-serif;margin-bottom:12px;margin-top:16px;">Pasos:</div>
+    ${currentRecipe.steps.map((s,i) => `
+      <div class="step-item">
+        <div class="step-num">${i+1}</div>
+        <div class="step-text">${s}</div>
+      </div>`).join('')}
+    ${currentRecipe.cookTime ? `
+      <div style="margin-top:8px">
+        <button class="btn-primary" style="display:flex;align-items:center;gap:8px" onclick="addTimerFromRecipe()">
+          ⏱ Iniciar timer de cocción (${currentRecipe.cookTime} min)
+        </button>
+      </div>` : ''}
+  `;
+  renderChecklist(currentRecipe.id);
+  // Reset speech controls UI in case they were in a speaking state
+  updateSpeechUI('', false);
+  document.getElementById('recipe-detail').classList.add('open');
+  // Reset complete button
+  const cb = document.getElementById('complete-recipe-btn');
+  if (cb) { cb.dataset.count = '0'; cb.style.background = '#22c55e'; cb.innerHTML = '<i class="ti ti-circle-check"></i> Completada'; }
+  addToLog('Consultó receta: ' + currentRecipe.name, 'receta');
+}
+
+function closeRecipeDetail() {
+  document.getElementById('recipe-detail').classList.remove('open');
+  stopSpeech();
+}
+
+function toggleRecipeMic() {
+  if (!currentRecipe) return;
+  // Pre-fill chat input with recipe context, go to chat tab and activate mic
+  const recipeName = currentRecipe.name;
+  closeRecipeDetail();
+  switchTab('chat');
+  // Small delay to let the tab switch render, then activate mic
+  setTimeout(() => {
+    toggleMic(recipeName);
+  }, 150);
+}
+
+
+// Mapa de nombre de receta → ID en PROD_CATALOG
+const RECIPE_TO_PROD = {
+  'Libritos Integrales': 'libritos_integrales',
+  'Libritos Clásicos': 'libritos_clasicos',
+  'Cremonas': 'cremonas',
+  'Bizcochitos de Manteca y Grasa': 'bizcochitos',
+  'Libritos Veganos': 'libritos_veganos',
+  'Palitos de Queso de Hojaldre': 'palitos_queso',
+  'Palmeritas': 'palmeritas',
+  'Masa para Pastelitos': 'pastelitos',
+  'Masa Empanadas Clásicas': 'emp_clasicas',
+  'Masa Empanadas Integral': 'emp_integral',
+  'Medialunas de Manteca': 'medialunas_manteca',
+  'Pan de Hamburguesa': 'pan_hamburguesa',
+  'Facturas Veganas': 'facturas_veganas',
+  'Rosca de Pascua': 'rosca',
+  'Pebetes': 'pan_caserito',
+  'Pan Caserito / Francés': 'pan_caserito',
+  'Facturas de Grasa': 'facturas_grasa',
+  'Pan Molde Blanco': 'pan_integral',
+  'Pan Boniato (Calabaza)': 'pan_integral',
+  'Pan Molde Integral': 'pan_integral',
+  'Pan Molde Integral Sin Sal': 'pan_integral',
+  'Prepizza Integral': 'prepizza_integral',
+  'Pan de Maíz': 'pan_maiz',
+  'Pan de Centeno': 'pan_centeno',
+  'Pan Molde de Espelta': 'pan_espelta',
+};
+
+function completeRecipe() {
+  if (!currentRecipe) return;
+  const btn = document.getElementById('complete-recipe-btn');
+
+  // Increment tanda count on button
+  const count = parseInt(btn.dataset.count || '0') + 1;
+  btn.dataset.count = count;
+  btn.style.background = '#16a34a';
+  btn.innerHTML = '<i class="ti ti-circle-check-filled"></i> ¡Completada! ×' + count;
+
+  // Log
+  addToLog('✅ Tanda ' + count + ' completada: ' + currentRecipe.name, 'receta');
+
+  // Sync to stock freezer via PROD_CATALOG
+  const prodId = RECIPE_TO_PROD[currentRecipe.name];
+  if (prodId) {
+    addTanda(prodId);
+  } else {
+    // Unknown recipe — just log it
+    saveFreezerPan();
+  }
+
+  // Visual feedback
+  btn.style.transform = 'scale(1.08)';
+  setTimeout(() => btn.style.transform = '', 200);
+}
+
+function addTimerFromRecipe() {
+  if (!currentRecipe) return;
+  addTimerWithData(currentRecipe.name + ' (horno)', currentRecipe.cookTime);
+  switchTab('timers');
+  closeRecipeDetail();
+}
+
+// ── Speech state ──────────────────────────────
+let isSpeaking = false;
+let isPaused = false;
+let currentUtterance = null;
+
+function speak(text, label) {
+  if (!synth) return;
+  synth.cancel();
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  currentUtterance.lang = 'es-AR';
+  currentUtterance.rate = 0.95;
+  currentUtterance.onstart = () => {
+    isSpeaking = true; isPaused = false;
+    updateSpeechUI(label || 'Hablando...', true);
+  };
+  currentUtterance.onend = currentUtterance.onerror = () => {
+    isSpeaking = false; isPaused = false;
+    updateSpeechUI('', false);
+  };
+  synth.speak(currentUtterance);
+}
+
+function toggleSpeechPause() {
+  if (!synth || !isSpeaking) return;
+  if (isPaused) {
+    synth.resume();
+    isPaused = false;
+    updateSpeechUI(null, true, false);
+  } else {
+    synth.pause();
+    isPaused = true;
+    updateSpeechUI(null, true, true);
+  }
+}
+
+function stopSpeech() {
+  if (!synth) return;
+  synth.cancel();
+  isSpeaking = false; isPaused = false;
+  updateSpeechUI('', false);
+}
+
+function updateSpeechUI(label, speaking, paused) {
+  // Chat speech bar
+  const bar = document.getElementById('speech-bar');
+  if (bar) {
+    if (speaking) {
+      bar.classList.add('visible');
+      if (label !== null && label !== undefined) document.getElementById('speech-bar-label').textContent = label;
+    } else {
+      bar.classList.remove('visible');
+    }
+    const pi = document.getElementById('speech-pause-icon');
+    if (pi) pi.className = (paused === true) ? 'ti ti-player-play' : 'ti ti-player-pause';
+  }
+  // Recipe detail controls
+  const speakBtn = document.getElementById('speak-recipe-btn');
+  const pauseBtn = document.getElementById('recipe-pause-btn');
+  const stopBtn = document.getElementById('recipe-stop-btn');
+  const speakLabel = document.getElementById('speak-recipe-label');
+  const speakIcon = document.getElementById('speak-recipe-icon');
+  if (speakBtn && pauseBtn && stopBtn) {
+    if (speaking) {
+      speakBtn.style.flex = '0 0 auto';
+      speakBtn.style.padding = '10px 14px';
+      if (speakLabel) speakLabel.textContent = '';
+      if (speakIcon) speakIcon.className = 'ti ti-volume';
+      pauseBtn.style.display = 'flex';
+      stopBtn.style.display = 'flex';
+      const rpi = document.getElementById('recipe-pause-icon');
+      if (rpi) rpi.className = (paused === true) ? 'ti ti-player-play' : 'ti ti-player-pause';
+    } else {
+      speakBtn.style.flex = '1';
+      speakBtn.style.padding = '10px';
+      if (speakLabel) speakLabel.textContent = 'Leer receta en voz alta';
+      if (speakIcon) speakIcon.className = 'ti ti-volume';
+      pauseBtn.style.display = 'none';
+      stopBtn.style.display = 'none';
+    }
+  }
+}
+
+function speakRecipe() {
+  if (!currentRecipe) return;
+  if (isSpeaking) { stopSpeech(); return; }
+  const text = currentRecipe.name + '. Ingredientes: ' + currentRecipe.ingredients.join(', ') + '. Pasos: ' + currentRecipe.steps.map((s,i) => 'Paso '+(i+1)+': '+s).join('. ');
+  speak(text, 'Leyendo: ' + currentRecipe.name);
+  addToLog('Leyó en voz alta: ' + currentRecipe.name, 'receta');
+}
+
+function openAddRecipe() {
+  document.getElementById('modal-title').textContent = 'Nueva receta';
+  document.getElementById('modal-save-btn').textContent = 'Guardar receta';
+  document.getElementById('rec-editing-id').value = '';
+  ['rec-name','rec-ingredients','rec-steps','rec-time'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function openEditRecipe(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('modal-title').textContent = 'Editar receta';
+  document.getElementById('modal-save-btn').textContent = 'Guardar cambios';
+  document.getElementById('rec-editing-id').value = id;
+  document.getElementById('rec-name').value = r.name;
+  document.getElementById('rec-ingredients').value = r.ingredients.join('\n');
+  document.getElementById('rec-steps').value = r.steps.join('\n');
+  document.getElementById('rec-time').value = r.cookTime || '';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+function deleteRecipe(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm('¿Eliminar la receta "' + r.name + '"? Esta acción no se puede deshacer.')) return;
+  recipes = recipes.filter(x => x.id !== id);
+  saveRecipes();
+  renderRecipes();
+  addToLog('Receta eliminada: ' + r.name, 'receta');
+}
+
+function saveRecipe() {
+  const name = document.getElementById('rec-name').value.trim();
+  const ingRaw = document.getElementById('rec-ingredients').value.trim();
+  const stepsRaw = document.getElementById('rec-steps').value.trim();
+  const cookTime = parseInt(document.getElementById('rec-time').value) || null;
+  if (!name || !ingRaw || !stepsRaw) { alert('Completá nombre, ingredientes y pasos.'); return; }
+  const ingredients = ingRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const steps = stepsRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const editingId = document.getElementById('rec-editing-id').value;
+  if (editingId) {
+    const idx = recipes.findIndex(x => x.id === parseInt(editingId));
+    if (idx !== -1) {
+      recipes[idx] = { ...recipes[idx], name, ingredients, steps, cookTime };
+      addToLog('Receta editada: ' + name, 'receta');
+    }
+  } else {
+    recipes.push({ id: Date.now(), name, ingredients, steps, cookTime });
+    addToLog('Receta agregada: ' + name, 'receta');
+  }
+  saveRecipes();
+  renderRecipes();
+  closeModal();
+}
+
+let timerIntervals = {};
+function addTimer() {
+  const name = document.getElementById('timer-name-input').value.trim() || 'Timer';
+  const mins = parseInt(document.getElementById('timer-min-input').value) || 5;
+  addTimerWithData(name, mins);
+  document.getElementById('timer-name-input').value = '';
+  document.getElementById('timer-min-input').value = '';
+}
+
+function addTimerWithData(name, mins) {
+  const id = Date.now();
+  timers.push({ id, name, totalSecs: mins * 60, remaining: mins * 60, running: false, done: false });
+  addToLog('Timer creado: ' + name + ' (' + mins + ' min)', 'timer');
+  renderTimers();
+}
+
+function renderTimers() {
+  const el = document.getElementById('timers-panel');
+  if (timers.length === 0) { el.innerHTML = '<div class="empty-state">No hay timers activos.<br>Agregá uno con el formulario de abajo.</div>'; return; }
+  el.innerHTML = timers.map(t => {
+    const m = Math.floor(t.remaining / 60).toString().padStart(2,'0');
+    const s = (t.remaining % 60).toString().padStart(2,'0');
+    return `<div class="timer-card" id="timer-${t.id}">
+      <div class="timer-name">${t.name}</div>
+      <div class="timer-display ${t.done?'done':''}" id="td-${t.id}">${t.done ? '¡Listo!' : m+':'+s}</div>
+      <div class="timer-btns">
+        ${!t.done ? `<button class="timer-btn" onclick="toggleTimer(${t.id})">${t.running?'Pausar':'Iniciar'}</button><button class="timer-btn" onclick="resetTimer(${t.id})">Reiniciar</button>` : ''}
+        <button class="timer-btn" onclick="removeTimer(${t.id})">Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (!t) return;
+  t.running = !t.running;
+  if (t.running) {
+    timerIntervals[id] = setInterval(() => {
+      t.remaining--;
+      if (t.remaining <= 0) {
+        t.remaining = 0; t.running = false; t.done = true;
+        clearInterval(timerIntervals[id]);
+        speak('¡Atención! El timer ' + t.name + ' terminó.', '¡Timer terminado!');
+        addToLog('Timer completado: ' + t.name, 'timer');
+        renderTimers();
+        return;
+      }
+      const el = document.getElementById('td-' + id);
+      if (el) { const m = Math.floor(t.remaining/60).toString().padStart(2,'0'); const s=(t.remaining%60).toString().padStart(2,'0'); el.textContent = m+':'+s; }
+    }, 1000);
+  } else {
+    clearInterval(timerIntervals[id]);
+  }
+  renderTimers();
+}
+
+function resetTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (!t) return;
+  clearInterval(timerIntervals[id]);
+  t.remaining = t.totalSecs; t.running = false; t.done = false;
+  renderTimers();
+}
+
+function removeTimer(id) {
+  clearInterval(timerIntervals[id]);
+  timers = timers.filter(t => t.id !== id);
+  renderTimers();
+}
+
+// speak() replaced above
+
+function setStatus(text, listening) {
+  document.getElementById('status-text').textContent = text;
+  document.getElementById('status-dot').className = listening ? 'listening' : '';
+}
+
+function toggleMic(recipeContext) {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    addBotMessage('Tu navegador no soporta reconocimiento de voz. Probá con Chrome.');
+    return;
+  }
+  if (isListening) { recognition && recognition.stop(); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition._recipeContext = recipeContext || null;
+  recognition.lang = 'es-AR'; recognition.interimResults = false; recognition.maxAlternatives = 1;
+  recognition.onstart = () => { isListening = true; document.getElementById('mic-btn').classList.add('listening'); setStatus('Escuchando...', true); };
+  recognition.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      const ctx = recognition._recipeContext;
+      document.getElementById('chat-input').value = ctx ? `[Receta: ${ctx}] ${text}` : text;
+      recognition._recipeContext = null;
+      sendMessage();
+    };
+  recognition.onerror = recognition.onend = () => { isListening = false; document.getElementById('mic-btn').classList.remove('listening'); setStatus('Listo', false); };
+  recognition.start();
+}
+
+function addBotMessage(text) {
+  const el = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg bot'; div.textContent = text;
+  el.appendChild(div); el.scrollTop = el.scrollHeight;
+  return div;
+}
+
+function addUserMessage(text) {
+  const el = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg user'; div.textContent = text;
+  el.appendChild(div); el.scrollTop = el.scrollHeight;
+}
+
+function buildSystemPrompt(recipeCtx) {
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const hoy = dias[new Date().getDay()];
+  const hora = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+  // Build production context
+  let prodCtx = '';
+  if (typeof PROD_CATALOG !== 'undefined') {
+    const pendientes = [];
+    const completos = [];
+    const freezerInfo = [];
+
+    for (const cat of PROD_CATALOG) {
+      if (cat.pedidoOnly || !cat.cuota) continue;
+      const item = prodState[cat.id] || { tandasHechas: 0 };
+      const hechas = item.tandasHechas;
+      const faltan = Math.max(0, cat.tandas - hechas);
+      const freezer = getFreezerTotal(cat.id);
+      const dayKey = hoy.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+      const metaHoy = cat.dias[dayKey] || null;
+
+      if (faltan > 0) {
+        pendientes.push(`- ${cat.nombre}: ${hechas}/${cat.tandas} tandas hechas, faltan ${faltan} tandas (rinde ${cat.rendimiento} ${cat.unidad}/tanda). Freezer actual: ${freezer} ${cat.unidad}${metaHoy ? '. Meta hoy: ' + metaHoy + ' ' + cat.unidad : ''}`);
+      } else {
+        completos.push(`- ${cat.nombre}: ✅ cuota semanal completa`);
+      }
+    }
+
+    if (pendientes.length > 0) prodCtx += '\nPRODUCCIÓN PENDIENTE ESTA SEMANA:\n' + pendientes.join('\n');
+    if (completos.length > 0) prodCtx += '\n\nPRODUCCIÓN COMPLETA ESTA SEMANA:\n' + completos.join('\n');
+  }
+
+  return `Sos el asistente interno de esta panadería. Tu único rol es ayudar al equipo con dos cosas:
+
+1. RECETAS: Solo podés recomendar, explicar y guiar paso a paso las recetas cargadas en el sistema. Si piden una receta que no está, decí cuáles están disponibles. Nunca inventes recetas.
+
+2. ORGANIZACIÓN DEL DÍA: Planificás el día de trabajo usando los datos reales de producción que te doy abajo. Cuando te pidan organizar el día, usá esos datos para decirle al empleado exactamente qué tandas hacer, en qué orden, y qué priorizar según lo que falta para la cuota semanal y las metas del día.
+
+REGLAS:
+- Si te preguntan algo fuera de recetas u organización, respondé: "Solo puedo ayudarte con las recetas del recetario y la organización del día de trabajo."
+- Respondé siempre en español rioplatense, de forma clara y práctica.
+- Usá un tono cálido, alegre y empático — como un compañero de trabajo que te da una mano y te da energía para arrancar el día. Podés usar algún emoji ocasionalmente para darle vida al mensaje 🍞.
+- Reconocé el esfuerzo del empleado cuando completa tandas o avanza en la producción. Un "¡Excelente, seguís sumando!" o "¡Vamos bien!" va perfecto.
+- Si el día tiene mucha carga, animá al equipo con buena onda en lugar de solo listar tareas.
+- Cuando organices el día, sé específico: decí cuántas tandas hacer de cada cosa, en qué orden, y por qué.
+- Considerá que las facturas de manteca tienen el proceso más largo (freezer → empaste → vueltas → laminado), entonces siempre arrancan primero.
+
+PLANIFICACIÓN SEMANAL DE LA PANADERÍA:
+- LUNES: panes de molde, prepizzas, bizcochitos de grasa, hojaldre (palitos y palmeritas), pan caserito. Meta: entre 8 y 10 tandas para estar holgados.
+- MARTES: todos los libritos (integrales, clásicos, veganos si hay pedido), cremonas (todas las variedades), y armado de los empastes para las facturas de grasa y de manteca del resto de la semana.
+- MIÉRCOLES: facturas de manteca — las 8 tandas juntas en el día.
+- JUEVES: todas las facturas de grasa — se pueden hacer hasta 7 masas en 8 horas.
+- VIERNES: día reservado para pedidos específicos (pastelitos, roscas, veganos, hamburguesas, etc).
+- SÁBADO y DOMINGO: libres (no hay producción programada).
+
+Cuando el empleado pregunte qué hacer hoy, usá esta guía como base y combinala con los datos reales de producción pendiente para darle un plan concreto y ordenado.
+
+--- CONTEXTO ACTUAL ---
+Hoy: ${hoy}, ${hora}hs
+${recipeCtx ? 'Recetas en el sistema:\n' + recipeCtx : 'Sin recetas cargadas.'}
+${prodCtx || '\nNo hay datos de producción disponibles aún.'}
+--- FIN CONTEXTO ---`;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!apiKey) { addBotMessage('Necesitás configurar tu API Key primero. Recargá la página.'); return; }
+  input.value = '';
+  addUserMessage(text);
+  addToLog('Consulta: ' + text.substring(0, 80), 'tarea');
+  const thinking = addBotMessage('...');
+  thinking.className = 'msg bot thinking';
+  const recipeCtx = recipes.length > 0 ? '\n\nRecetas disponibles:\n' + recipes.map(r => `- ${r.name}: ${r.ingredients.join(', ')}. Pasos: ${r.steps.join(' | ')}`).join('\n') : '';
+  conversationHistory.push({ role: 'user', content: text });
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: buildSystemPrompt(recipeCtx),
+        messages: conversationHistory.slice(-10)
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const reply = data.content && data.content[0] ? data.content[0].text : 'No pude procesar eso. Intentá de nuevo.';
+    thinking.className = 'msg bot'; thinking.textContent = reply;
+    conversationHistory.push({ role: 'assistant', content: reply });
+    document.getElementById('chat-messages').scrollTop = 99999;
+    speak(reply, 'Asistente respondiendo...');
+  } catch(e) {
+    thinking.className = 'msg bot';
+    thinking.textContent = 'Error al conectar. Revisá tu API Key y conexión a internet. (' + e.message + ')';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  document.getElementById('api-key-input').addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
+  init();
+});
+
+// ── PRODUCCIÓN SEMANAL ────────────────────────────────────
+const PROD_KEY = 'panaderia_prod_' + getWeekId();
+const FREEZER_KEY = 'panaderia_freezer_persistent';
+
+function getWeekId() {
+  const d = new Date();
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return d.getFullYear() + '_w' + week;
+}
+
+function getDayName() {
+  return ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'][new Date().getDay()];
+}
+
+const PROD_CATALOG = [
+  { id:'libritos_integrales', nombre:'Libritos Integrales', unidad:'kg', rendimiento:8, cuota:8, tandas:1, pedidoOnly:false,
+    dias:{lunes:null,martes:null,miercoles:null,jueves:null,viernes:null,sabado:null,domingo:null} },
+  { id:'libritos_clasicos', nombre:'Libritos Clásicos', unidad:'kg', rendimiento:8, cuota:17, tandas:3, pedidoOnly:false,
+    dias:{lunes:1.7,martes:1.7,miercoles:1.7,jueves:1.7,viernes:2.55,sabado:3.4,domingo:3.4} },
+  { id:'cremonas', nombre:'Cremonas (todas variedades)', unidad:'u', rendimiento:15, cuota:67, tandas:5, pedidoOnly:false,
+    dias:{lunes:8,martes:8,miercoles:8,jueves:11,viernes:12,sabado:12,domingo:8} },
+  { id:'bizcochitos', nombre:'Bizcochitos Manteca y Grasa', unidad:'kg', rendimiento:8, cuota:8, tandas:1, pedidoOnly:false,
+    dias:{lunes:2,martes:null,miercoles:2,jueves:null,viernes:2,sabado:2,domingo:null} },
+  { id:'palitos_queso', nombre:'Palitos de Queso Hojaldre', unidad:'kg', rendimiento:8, cuota:8, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:1,viernes:1,sabado:1,domingo:2} },
+  { id:'palmeritas', nombre:'Palmeritas', unidad:'kg', rendimiento:4, cuota:3, tandas:1, pedidoOnly:false,
+    dias:{lunes:0.5,martes:null,miercoles:0.5,jueves:null,viernes:1,sabado:1,domingo:null} },
+  { id:'emp_clasicas', nombre:'Tapas Empanadas Clásicas', unidad:'u', rendimiento:80, cuota:190, tandas:3, pedidoOnly:false,
+    dias:{lunes:27,martes:27,miercoles:27,jueves:27,viernes:27,sabado:27,domingo:27} },
+  { id:'emp_integral', nombre:'Tapas Empanadas Integral', unidad:'u', rendimiento:15, cuota:30, tandas:2, pedidoOnly:false,
+    dias:{lunes:4,martes:4,miercoles:4,jueves:4,viernes:5,sabado:5,domingo:4} },
+  { id:'medialunas_manteca', nombre:'Facturas de Manteca', unidad:'u', rendimiento:120, cuota:1000, tandas:8, pedidoOnly:false,
+    dias:{lunes:89,martes:89,miercoles:89,jueves:172,viernes:247,sabado:247,domingo:68} },
+  { id:'facturas_grasa', nombre:'Facturas de Grasa', unidad:'u', rendimiento:110, cuota:600, tandas:5, pedidoOnly:false,
+    dias:{lunes:56,martes:56,miercoles:56,jueves:74,viernes:216,sabado:116,domingo:56} },
+  { id:'pan_caserito', nombre:'Pan Caserito / Francés', unidad:'kg', rendimiento:8, cuota:44, tandas:6, pedidoOnly:false,
+    dias:{lunes:4,martes:4,miercoles:4,jueves:10,viernes:8,sabado:8,domingo:4} },
+  { id:'pan_integral', nombre:'Pan Molde Integral', unidad:'u', rendimiento:10, cuota:20, tandas:2, pedidoOnly:false,
+    dias:{lunes:3,martes:3,miercoles:3,jueves:3,viernes:3,sabado:3,domingo:2} },
+  { id:'prepizza_integral', nombre:'Prepizza Integral (paq. 3u)', unidad:'pkg', rendimiento:14, cuota:14, tandas:1, pedidoOnly:false,
+    dias:{lunes:2,martes:2,miercoles:2,jueves:2,viernes:2,sabado:2,domingo:2} },
+  { id:'pan_maiz', nombre:'Pan de Maíz', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
+  { id:'pan_centeno', nombre:'Pan de Centeno', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
+  { id:'pan_espelta', nombre:'Pan Molde de Espelta', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
+  { id:'libritos_veganos', nombre:'Libritos Veganos', unidad:'kg', rendimiento:8, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
+  { id:'pastelitos', nombre:'Masa Pastelitos', unidad:'u', rendimiento:50, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
+  { id:'facturas_veganas', nombre:'Facturas Veganas', unidad:'u', rendimiento:120, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
+  { id:'rosca', nombre:'Rosca de Pascua', unidad:'u', rendimiento:7, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
+  { id:'pan_hamburguesa', nombre:'Pan de Hamburguesa', unidad:'kg', rendimiento:3.5, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
+];
+
+let prodState = {};
+let freezerState = {};
+
+
+function getFreezerTotal(prodId) {
+  // Get total units from freezerPanState for a given product
+  const map = PROD_TO_FREEZER[prodId];
+  if (!map) return freezerPanState[prodId] ? freezerPanState[prodId].total : 0;
+  const fp = freezerPanState[map.id];
+  if (!fp) return 0;
+  if (fp.subtipos && Object.keys(fp.subtipos).length > 0) {
+    return Object.values(fp.subtipos).reduce((a,b) => a+b, 0);
+  }
+  return fp.total || 0;
+}
+
+function loadProdState() {
+  try { prodState = JSON.parse(localStorage.getItem(PROD_KEY) || '{}'); } catch(e){ prodState = {}; }
+  // freezerState is derived from freezerPanState — loaded separately via loadFreezerPan()
+}
+
+function saveProdState() {
+  localStorage.setItem(PROD_KEY, JSON.stringify(prodState));
+  saveFreezerPan();
+}
+
+function getProdItem(id) {
+  if (!prodState[id]) prodState[id] = { tandasHechas: 0 };
+  return prodState[id];
+}
+
+async function addTanda(id) {
+  const item = getProdItem(id);
+  item.tandasHechas++;
+  const cat = PROD_CATALOG.find(c => c.id === id);
+  updateFreezerFromTanda(id, 1);
+  saveProdState();
+  renderProduccion();
+  addToLog('🏭 Tanda completada: ' + cat.nombre + ' (' + item.tandasHechas + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
+
+  // ── INTEGRACIÓN: descontar ingredientes de la receta del depósito ──
+  try {
+    // Buscar la receta correspondiente en el catálogo de recetas
+    const receta = (typeof recipes !== 'undefined') ? recipes.find(r =>
+      r.name.toLowerCase().includes(cat.nombre.toLowerCase()) ||
+      cat.nombre.toLowerCase().includes(r.name.toLowerCase().split(' ')[0])
+    ) : null;
+    if (receta && receta.ingredients) {
+      await descontarIngredientesDeposito(receta.ingredients, 'panaderia');
+    }
+  } catch(e) { console.warn('addTanda integración error:', e); }
+}
+
+function removeTanda(id) {
+  const item = getProdItem(id);
+  if (item.tandasHechas <= 0) return;
+  item.tandasHechas--;
+  updateFreezerFromTanda(id, -1);
+  saveProdState();
+  renderProduccion();
+}
+
+function renderProduccion() {
+  const el = document.getElementById('produccion-panel');
+  if (!el) return;
+  const dayName = getDayName();
+  const [year, wk] = getWeekId().split('_w');
+
+  const activos = PROD_CATALOG.filter(c => !c.pedidoOnly && c.cuota);
+  const pedido = PROD_CATALOG.filter(c => c.pedidoOnly);
+
+  let html = `<div class="prod-week-label">Semana ${wk} · ${year} · Hoy: ${dayName}</div>`;
+  html += `<div class="prod-section-title">📋 Cuotas semanales</div>`;
+
+  for (const cat of activos) {
+    const item = getProdItem(cat.id);
+    const hechas = item.tandasHechas;
+    const total = cat.tandas;
+    const pct = Math.min(100, Math.round((hechas / total) * 100));
+    const unidadesHechas = Math.round(hechas * cat.rendimiento * 10) / 10;
+    const freezer = getFreezerTotal(cat.id);
+    const hoyTarget = cat.dias[dayName] || null;
+    const status = pct >= 100 ? 'ok' : pct >= 50 ? 'warn' : 'danger';
+    const badge = pct >= 100 ? '✓ Completo' : `${hechas}/${total} tandas`;
+
+    html += `<div class="prod-card">
+      <div class="prod-card-header">
+        <div class="prod-card-name">${cat.nombre}</div>
+        <span class="prod-card-badge ${status}">${badge}</span>
+      </div>
+      <div class="prod-card-body">
+        <div class="prod-progress-row">
+          <span class="prod-progress-label">Semana (${cat.unidad})</span>
+          <div class="prod-progress-bar"><div class="prod-progress-fill ${status}" style="width:${pct}%"></div></div>
+          <span class="prod-progress-count">${unidadesHechas}/${cat.cuota}</span>
+        </div>
+        <div class="prod-tandas-row">
+          <span class="prod-tandas-label">Tandas completadas</span>
+          <div class="prod-tanda-btns">
+            <button class="prod-tanda-btn minus" onclick="removeTanda('${cat.id}')">−</button>
+            <span class="prod-tanda-count">${hechas}</span>
+            <button class="prod-tanda-btn plus" onclick="addTanda('${cat.id}')">+</button>
+          </div>
+        </div>
+        <div class="prod-freezer-row">
+          <span class="prod-freezer-label">🧊 Stock freezer</span>
+          <div style="text-align:right">
+            <div class="prod-freezer-value">${freezer} ${cat.unidad}</div>
+            ${hoyTarget ? `<div class="prod-freezer-sub">Meta hoy: ${hoyTarget} ${cat.unidad}</div>` : ''}
+          </div>
+        </div>
+        ${hoyTarget ? `<div class="prod-day-detail">📅 Hoy necesitás: <strong>${hoyTarget} ${cat.unidad}</strong> — ${freezer >= hoyTarget ? '✅ cubierto' : '⚠️ faltan ' + (Math.round((hoyTarget - freezer)*10)/10) + ' ' + cat.unidad}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="prod-section-title" style="margin-top:4px">📦 Solo por pedido</div>`;
+  for (const cat of pedido) {
+    const freezer = getFreezerTotal(cat.id);
+    html += `<div class="prod-card">
+      <div class="prod-card-header">
+        <div class="prod-card-name">${cat.nombre}</div>
+        <span class="prod-card-badge warn">A pedido</span>
+      </div>
+      <div class="prod-card-body">
+        <div class="prod-tandas-row">
+          <span class="prod-tandas-label">Tandas realizadas</span>
+          <div class="prod-tanda-btns">
+            <button class="prod-tanda-btn minus" onclick="removeTanda('${cat.id}')">−</button>
+            <span class="prod-tanda-count">${getProdItem(cat.id).tandasHechas}</span>
+            <button class="prod-tanda-btn plus" onclick="addTanda('${cat.id}')">+</button>
+          </div>
+        </div>
+        <div class="prod-freezer-row">
+          <span class="prod-freezer-label">🧊 Stock freezer</span>
+          <span class="prod-freezer-value">${freezer} ${cat.unidad}</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html += `<button class="prod-reset-week" onclick="resetWeek()">🔄 Reiniciar semana (no borra freezer)</button>`;
+  el.innerHTML = html;
+}
+
+function resetWeek() {
+  if (!confirm('¿Reiniciar el conteo de tandas de esta semana?\nEl stock del freezer se mantiene.')) return;
+  prodState = {};
+  saveProdState();
+  renderProduccion();
+}
+
+
+function updateAlertUI(alerts, tabId, title) {
+  const tab = document.getElementById(tabId);
+  if (tab) {
+    const existing = tab.querySelector('.tab-badge');
+    if (existing) existing.remove();
+    if (alerts.length > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'tab-badge';
+      badge.textContent = alerts.length;
+      tab.appendChild(badge);
+    }
+  }
+  let banner = document.getElementById('alert-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'alert-banner';
+    banner.className = 'alert-banner';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  if (alerts.length > 0) {
+    banner.innerHTML = '<strong>' + title + '</strong>' + alerts.map(a => '• ' + a).join('<br>');
+    banner.classList.add('visible');
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+
+function renderWelcomeSummary() {
+  const el = document.getElementById('welcome-summary');
+  if (!el) return;
+
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const diasLimpieza = ['lunes','miércoles','viernes'];
+  const hoy = dias[new Date().getDay()];
+  const hora = new Date().getHours();
+  const lines = [];
+
+  // Día y bienvenida
+  lines.push('📅 Hoy es <strong>' + hoy + '</strong>.');
+
+  // Limpieza
+  if (diasLimpieza.includes(hoy)) lines.push('🧹 Hoy toca <strong>limpieza general a las 15hs</strong>.');
+
+  // Producción pendiente del día
+  if (typeof PROD_CATALOG !== 'undefined') {
+    const pendientes = [];
+    const dayKey = hoy.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    for (const cat of PROD_CATALOG) {
+      if (cat.pedidoOnly || !cat.cuota) continue;
+      const item = prodState[cat.id] || { tandasHechas: 0 };
+      const faltan = Math.max(0, cat.tandas - item.tandasHechas);
+      const metaHoy = cat.dias[dayKey] || null;
+      if (metaHoy && faltan > 0) pendientes.push(cat.nombre + ' (' + faltan + ' tanda' + (faltan > 1 ? 's' : '') + ')');
+    }
+    if (pendientes.length > 0) lines.push('🏭 Para hoy: ' + pendientes.slice(0,3).join(', ') + (pendientes.length > 3 ? ' y más...' : '') + '.');
+    else if (Object.keys(prodState).length > 0) lines.push('✅ ¡Toda la producción del día completada!');
+  }
+
+  // Freezer crítico
+  const criticos = [];
+  if (typeof FREEZER_CATALOG !== 'undefined') {
+    for (const cat of FREEZER_CATALOG) {
+      const fp = freezerPanState[cat.id];
+      if (!fp) { criticos.push(cat.nombre); continue; }
+      if (cat.subtipos && cat.subtipos.length > 0) {
+        const total = Object.values(fp.subtipos || {}).reduce((a,b)=>a+b,0);
+        if (total === 0) criticos.push(cat.nombre);
+      } else if (fp.total === 0) criticos.push(cat.nombre);
+    }
+  }
+  if (criticos.length > 0) lines.push('🚨 Sin stock en freezer: ' + criticos.slice(0,3).join(', ') + (criticos.length > 3 ? '...' : '') + '.');
+
+  el.innerHTML = lines.join(' ') + (lines.length > 1 ? '<br><span style="color:#888;font-size:12px;">Escribí o hablá para que te arme el plan del día.</span>' : '');
+}
+
+function checkStockAlerts() {
+  const alerts = [];
+  const dayName = getDayName();
+  if (typeof PROD_CATALOG === 'undefined') return;
+
+  // Check produccion vs meta del día
+  for (const cat of PROD_CATALOG) {
+    if (cat.pedidoOnly || !cat.cuota) continue;
+    const freezer = getFreezerTotal(cat.id);
+    const metaHoy = cat.dias[dayName] || null;
+    if (metaHoy && freezer < metaHoy) {
+      alerts.push(cat.nombre + ': meta hoy ' + metaHoy + ' ' + cat.unidad + ', freezer tiene ' + freezer);
+    }
+  }
+
+  // Check freezer catalog subtipos — alert if any subtipo is 0
+  if (typeof FREEZER_CATALOG !== 'undefined') {
+    for (const cat of FREEZER_CATALOG) {
+      const fp = freezerPanState[cat.id];
+      if (!fp) continue;
+      if (cat.subtipos && cat.subtipos.length > 0) {
+        for (const sub of cat.subtipos) {
+          const val = (fp.subtipos && fp.subtipos[sub.id]) || 0;
+          if (val === 0) alerts.push('🧊 ' + sub.nombre + ' (freezer): sin stock');
+        }
+      } else if (fp.total === 0) {
+        alerts.push('🧊 ' + cat.nombre + ': sin stock en freezer');
+      }
+    }
+  }
+
+  updateAlertUI(alerts, 'tab-produccion', '⚠️ Stock crítico en freezer:');
+  renderWelcomeSummary();
+}
+
+
+function filterRecipes(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('recipes-panel');
+  if (!el) return;
+  const cards = el.querySelectorAll('.recipe-card');
+  let visible = 0;
+  cards.forEach((card, i) => {
+    const r = recipes[i];
+    if (!r) return;
+    const match = !q || r.name.toLowerCase().includes(q) || r.ingredients.join(' ').toLowerCase().includes(q);
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  let empty = el.querySelector('.search-empty');
+  if (visible === 0 && q) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'search-empty'; el.appendChild(empty); }
+    empty.textContent = 'No se encontraron resultados para "' + q + '"';
+    empty.style.display = '';
+  } else if (empty) { empty.style.display = 'none'; }
+}
+
+function filterStock(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('stock-panel');
+  if (!el) return;
+  const cards = el.querySelectorAll('.stock-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const name = card.querySelector('.stock-card-name');
+    const match = !q || (name && name.textContent.toLowerCase().includes(q));
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  // Also hide section titles if all items under them are hidden
+  el.querySelectorAll('.stock-section-title').forEach(title => {
+    let next = title.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains('stock-section-title')) {
+      if (next.style.display !== 'none') hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    title.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function filterLog(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('log-panel');
+  if (!el) return;
+  const items = el.querySelectorAll('.log-item');
+  let visible = 0;
+  items.forEach(item => {
+    const text = item.querySelector('.log-text');
+    const match = !q || (text && text.textContent.toLowerCase().includes(q));
+    item.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  let empty = el.querySelector('.search-empty');
+  if (visible === 0 && q) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'search-empty'; el.appendChild(empty); }
+    empty.textContent = 'No se encontraron entradas para "' + q + '"';
+    empty.style.display = '';
+  } else if (empty) { empty.style.display = 'none'; }
+}
+
+
+// ── ALARMA LIMPIEZA GENERAL ──────────────────────────
+const DIAS_LIMPIEZA = [1, 3, 5]; // lunes=1, miercoles=3, viernes=5
+const ALARMA_LIMPIEZA_HORA = 15;
+let alarmaLimpiezaActivada = false;
+
+let alarmaHieloActivada = false;
+
+function checkAlarmaLimpieza() {
+  const now = new Date();
+  const dia = now.getDay();
+  const hora = now.getHours();
+  const min = now.getMinutes();
+
+  // Alarma hielo — todos los días a las 15hs
+  if (hora === 15 && min === 0 && !alarmaHieloActivada) {
+    alarmaHieloActivada = true;
+    dispararAlarmaHielo();
+  }
+
+  // Alarma limpieza — lunes/miércoles/viernes a las 15hs
+  if (!DIAS_LIMPIEZA.includes(dia)) return;
+  if (hora === ALARMA_LIMPIEZA_HORA && min === 0 && !alarmaLimpiezaActivada) {
+    dispararAlarmaLimpieza();
+  }
+}
+
+function dispararAlarmaHielo() {
+  // Banner
+  let banner = document.getElementById('hielo-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'hielo-banner';
+    banner.style.cssText = 'margin:8px 12px 0;padding:12px 14px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;font-family:system-ui,sans-serif;font-size:13px;color:#0369a1;display:none;line-height:1.5;animation:pulse 1.5s infinite;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  banner.innerHTML = '<strong style="display:block;margin-bottom:4px;">🧊 ¡GUARDAR HIELO EN EL FREEZER! 15:00hs</strong>Acordate de poner el hielo ahora.';
+  banner.style.display = 'block';
+
+  // Notificación del sistema
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('🧊 ¡Guardar hielo en el freezer!', {
+      body: 'Son las 15:00hs — guardá el hielo en el freezer ahora.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧊</text></svg>',
+      requireInteraction: true,
+    });
+  }
+
+  // Sonido distintivo (tono más grave)
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f, s, d) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.3, ctx.currentTime + s);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + s + d);
+      o.start(ctx.currentTime + s); o.stop(ctx.currentTime + s + d + 0.1);
+    }
+    beep(440, 0, 0.3); beep(440, 0.4, 0.3); beep(550, 0.8, 0.6);
+  } catch(e) {}
+
+  if (typeof addToLog === 'function') addToLog('🧊 ALARMA: Guardar hielo en el freezer (15:00hs)', 'alarma');
+}
+
+function dispararAlarmaLimpieza() {
+  alarmaLimpiezaActivada = true;
+
+  // Banner en el chat
+  let banner = document.getElementById('limpieza-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'limpieza-banner';
+    banner.style.cssText = 'margin:8px 12px 0;padding:12px 14px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;font-family:system-ui,sans-serif;font-size:13px;color:#854d0e;display:none;line-height:1.5;animation:pulse 1.5s infinite;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  banner.innerHTML = '<strong style="display:block;margin-bottom:4px;">🧹 ¡HORA DE LIMPIEZA GENERAL! 15:00hs</strong>Todos los sectores se ponen a limpiar ahora.';
+  banner.style.display = 'block';
+
+  // Notificación del sistema
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('🧹 ¡Limpieza general!', {
+      body: 'Son las 15:00hs — todos los sectores a limpiar.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧹</text></svg>',
+      requireInteraction: true,
+    });
+  }
+
+  // Sonido
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f, s, d) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.3, ctx.currentTime + s);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + s + d);
+      o.start(ctx.currentTime + s); o.stop(ctx.currentTime + s + d + 0.1);
+    }
+    beep(660, 0, 0.2); beep(770, 0.25, 0.2); beep(880, 0.5, 0.4);
+  } catch(e) {}
+
+  if (typeof addToLog === 'function') addToLog('🧹 ALARMA: Limpieza general 15:00hs', 'limpieza');
+}
+
+// Mostrar indicador de próxima limpieza en el chat
+function showLimpiezaIndicator() {
+  const now = new Date();
+  const dia = now.getDay();
+  const hora = now.getHours();
+  if (!DIAS_LIMPIEZA.includes(dia)) return;
+  if (hora >= ALARMA_LIMPIEZA_HORA) return; // ya pasó
+  const min = now.getMinutes();
+  const minRestantes = (ALARMA_LIMPIEZA_HORA * 60) - (hora * 60 + min);
+  const hR = Math.floor(minRestantes / 60);
+  const mR = minRestantes % 60;
+  let ind = document.getElementById('limpieza-indicator');
+  if (!ind) {
+    ind = document.createElement('div');
+    ind.id = 'limpieza-indicator';
+    ind.style.cssText = 'margin:8px 12px 0;padding:8px 12px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;font-family:system-ui,sans-serif;font-size:12px;color:#854d0e;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(ind, msgs);
+  }
+  ind.innerHTML = '🧹 Hoy toca limpieza general — alarma en ' + (hR > 0 ? hR + 'h ' : '') + mR + 'min (15:00hs)';
+}
+
+setInterval(checkAlarmaLimpieza, 60000);
+
+
+// ── FREEZER PANADERÍA ─────────────────────────────────
+const FREEZER_PAN_KEY = 'panaderia_freezer_v2';
+
+// Catalog: productos del freezer con subtipos
+// unidadesPorTanda: cuántas unidades produce 1 tanda (o masa)
+// subtipos: desglose dentro del producto (opcional)
+const FREEZER_CATALOG = [
+  {
+    // 8 tandas = 16 masitas: 9 medialunas + 3 lenguitas + 1 roll + 3 popurrí
+    id: 'medialunas_manteca', nombre: 'Facturas de Manteca', unidad: 'u',
+    subtipos: [
+      { id: 'medialuna', nombre: 'Medialunas', unidadesPorTanda: 558 },
+      { id: 'lenguita', nombre: 'Lenguita invertida', unidadesPorTanda: 180 },
+      { id: 'roll', nombre: 'Roll de manzana', unidadesPorTanda: 52 },
+      { id: 'popurri', nombre: 'Popurrí (remolino, moño, canastita, cuellito)', unidadesPorTanda: 210 },
+    ]
+  },
+  {
+    // 5 masas por día: 100 u/masa = 500 total → 250 medialuna grasa / 150 santiagueña / 100 vigilante / 50 sac membrillo / 50 sac jyq
+    id: 'facturas_grasa', nombre: 'Facturas de Grasa', unidad: 'u',
+    subtipos: [
+      { id: 'medialuna_grasa', nombre: 'Medialuna grasa', unidadesPorTanda: 250 },
+      { id: 'santiaguena', nombre: 'Santiagueñas', unidadesPorTanda: 150 },
+      { id: 'vigilante', nombre: 'Vigilantes', unidadesPorTanda: 100 },
+      { id: 'sacramento_membrillo', nombre: 'Sacramento membrillo', unidadesPorTanda: 50 },
+      { id: 'sacramento_jyq', nombre: 'Sacramento jamón y queso', unidadesPorTanda: 50 },
+    ]
+  },
+  { id: 'cremonas', nombre: 'Cremonas (todas)', unidad: 'u', unidadesPorTanda: 15, subtipos: [
+    { id: 'cremona_comun', nombre: 'Comunes', unidadesPorMasa: 5 },
+    { id: 'cremona_jyq', nombre: 'Jamón y queso', unidadesPorMasa: 5 },
+    { id: 'cremona_membrillo', nombre: 'Membrillo', unidadesPorMasa: 5 },
+  ]},
+  { id: 'libritos_clasicos', nombre: 'Libritos Clásicos', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
+  { id: 'libritos_integrales', nombre: 'Libritos Integrales', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
+  { id: 'pan_caserito', nombre: 'Pan Caserito / Francés', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
+  { id: 'bizcochitos', nombre: 'Bizcochitos Manteca y Grasa', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
+  { id: 'palitos_queso', nombre: 'Palitos de Queso Hojaldre', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
+  { id: 'palmeritas', nombre: 'Palmeritas', unidad: 'kg', unidadesPorTanda: 4, subtipos: [] },
+  { id: 'emp_clasicas', nombre: 'Tapas Empanadas Clásicas', unidad: 'u', unidadesPorTanda: 80, subtipos: [] },
+  { id: 'emp_integral', nombre: 'Tapas Empanadas Integral', unidad: 'u', unidadesPorTanda: 15, subtipos: [] },
+];
+
+// Mapa de produccion → freezer
+const PROD_TO_FREEZER = {
+  'medialunas_manteca': { id: 'medialunas_manteca' },
+  'facturas_grasa': { id: 'facturas_grasa' },
+  'cremonas': { id: 'cremonas' },
+  'libritos_clasicos': { id: 'libritos_clasicos' },
+  'libritos_integrales': { id: 'libritos_integrales' },
+  'pan_caserito': { id: 'pan_caserito' },
+  'bizcochitos': { id: 'bizcochitos' },
+  'palitos_queso': { id: 'palitos_queso' },
+  'palmeritas': { id: 'palmeritas' },
+  'emp_clasicas': { id: 'emp_clasicas' },
+  'emp_integral': { id: 'emp_integral' },
+};
+
+let freezerPanState = {}; // { productId: { total, subtipos: { subtipId: cantidad } } }
+
+function loadFreezerPan() {
+  try { freezerPanState = JSON.parse(localStorage.getItem(FREEZER_PAN_KEY) || '{}'); } catch(e){ freezerPanState = {}; }
+}
+
+function saveFreezerPan() {
+  localStorage.setItem(FREEZER_PAN_KEY, JSON.stringify(freezerPanState));
+  // Sync to Supabase
+  const rows = Object.entries(freezerPanState).map(([id, data]) => ({
+    id, nombre: FREEZER_CATALOG.find(c=>c.id===id)?.nombre || id,
+    total: data.total || 0, subtipos: data.subtipos || {}
+  }));
+  if (rows.length > 0) sbUpsert('freezer_panaderia', rows).catch(()=>{});
+}
+
+function getFreezerProduct(id) {
+  if (!freezerPanState[id]) freezerPanState[id] = { total: 0, subtipos: {} };
+  return freezerPanState[id];
+}
+
+// Called when a tanda is completed from produccion tab
+function updateFreezerFromTanda(prodId, cantidad) {
+  const map = PROD_TO_FREEZER[prodId];
+  if (!map) return;
+  const cat = FREEZER_CATALOG.find(c => c.id === map.id);
+  if (!cat) return;
+  const fp = getFreezerProduct(map.id);
+
+  if (cat.subtipos && cat.subtipos.length > 0) {
+    for (const sub of cat.subtipos) {
+      if (!fp.subtipos[sub.id]) fp.subtipos[sub.id] = 0;
+      const unidades = Math.round((sub.unidadesPorTanda || 0) * cantidad);
+      fp.subtipos[sub.id] = Math.max(0, fp.subtipos[sub.id] + unidades);
+    }
+    fp.total = Object.values(fp.subtipos).reduce((a,b) => a+b, 0);
+  } else {
+    const unidades = (cat.unidadesPorTanda || 1) * cantidad;
+    fp.total = Math.max(0, Math.round((fp.total + unidades) * 10) / 10);
+  }
+  saveFreezerPan();
+  renderFreezer();
+}
+
+function adjustFreezerManual(productId, subtipId, delta) {
+  const fp = getFreezerProduct(productId);
+  if (subtipId) {
+    if (!fp.subtipos[subtipId]) fp.subtipos[subtipId] = 0;
+    fp.subtipos[subtipId] = Math.max(0, fp.subtipos[subtipId] + delta);
+    fp.total = Object.values(fp.subtipos).reduce((a,b) => a+b, 0);
+  } else {
+    fp.total = Math.max(0, fp.total + delta);
+  }
+  saveFreezerPan();
+  renderFreezer();
+  if (delta < 0) addToLog('📤 Cocina retiró del freezer: ' + productId + ' (' + Math.abs(delta) + ')', 'freezer');
+}
+
+function renderFreezer() {
+  const el = document.getElementById('freezer-panel');
+  if (!el) return;
+  let html = '<div class="freezer-section-title">🧊 Stock actual del freezer</div>';
+
+  for (const cat of FREEZER_CATALOG) {
+    const fp = getFreezerProduct(cat.id);
+    const total = cat.subtipos && cat.subtipos.length > 0
+      ? Object.values(fp.subtipos || {}).reduce((a,b) => a+b, 0)
+      : fp.total;
+
+    html += `<div class="freezer-card">
+      <div class="freezer-card-header">
+        <span class="freezer-card-name">${cat.nombre}</span>
+        <span class="freezer-card-total">${Math.round(total * 10)/10}</span>
+        <span class="freezer-card-unit">${cat.unidad}</span>
+      </div>`;
+
+    if (cat.subtipos && cat.subtipos.length > 0) {
+      html += '<div class="freezer-card-body">';
+      for (const sub of cat.subtipos) {
+        const val = (fp.subtipos && fp.subtipos[sub.id]) || 0;
+        html += `<div class="freezer-sub-row">
+          <span class="freezer-sub-name">${sub.nombre}</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button class="freezer-adj-btn" onclick="adjustFreezerManual('${cat.id}','${sub.id}',-1)">−</button>
+            <span class="freezer-sub-val ${val === 0 ? 'critical' : val > 20 ? 'ok' : ''}">${Math.round(val)}</span>
+            <button class="freezer-adj-btn plus" onclick="adjustFreezerManual('${cat.id}','${sub.id}',1)">+</button>
+          </div>
+        </div>`;
+      }
+      html += '</div>';
+    } else {
+      html += `<div class="freezer-card-body">
+        <div class="freezer-adj-row">
+          <span class="freezer-adj-label">Ajuste manual</span>
+          <button class="freezer-adj-btn" onclick="adjustFreezerManual('${cat.id}',null,-1)">−</button>
+          <span class="freezer-adj-val">${Math.round(fp.total * 10)/10}</span>
+          <button class="freezer-adj-btn plus" onclick="adjustFreezerManual('${cat.id}',null,1)">+</button>
+        </div>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  html += `<button class="freezer-reset-btn" onclick="if(confirm('¿Resetear todo el stock del freezer?')) { freezerPanState={}; saveFreezerPan(); renderFreezer(); }">🔄 Resetear freezer</button>`;
+  el.innerHTML = html;
+}
+
+
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+function exportLog() {
+  const text = '=== REGISTRO DE PANADERÍA - ' + new Date().toLocaleDateString('es-AR') + ' ===\n\n' +
+    log.map(e => `[${e.time}] [${e.type.toUpperCase()}] ${e.text}`).join('\n');
+  const blob = new Blob([text], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'registro_panaderia_' + new Date().toISOString().slice(0,10) + '.txt';
+  a.click(); URL.revokeObjectURL(url);
+}
+
+
+// ══════════════════════════════════════════════════════
+// INTEGRACIÓN CENTRAL — PANADERIA
+// ══════════════════════════════════════════════════════
+
+let pedidos_panaderia = [];
+
+async function publishStockToCentral_panaderia() {
+
+  try {
+    // El freezer ya se sube en saveFreezerPan — aquí sólo publicamos alertas
+    await checkAndPublishAlerts_panaderia();
+  } catch(e) { console.warn('publishStock error:', e); }
+
+}
+
+async function checkAndPublishAlerts_panaderia() {
+
+  try {
+    // Alertas basadas en freezerPanState
+    const alertas = [];
+    if (typeof freezerPanState !== 'undefined') {
+      for (const [id, qty] of Object.entries(freezerPanState)) {
+        const cat = (typeof FREEZER_CATALOG !== 'undefined') ? FREEZER_CATALOG.find(c=>c.id===id) : null;
+        const nombre = cat ? cat.nombre : id;
+        if (!qty || qty <= 0) {
+          alertas.push({ sector: 'panaderia', tipo: 'sin_stock', mensaje: `Sin stock: ${nombre}`, producto_id: id });
+        } else if (qty <= 5) {
+          alertas.push({ sector: 'panaderia', tipo: 'stock_bajo', mensaje: `Stock bajo (${qty}): ${nombre}`, producto_id: id });
+        }
+      }
+    }
+    if (alertas.length > 0) {
+      await sbFetch('DELETE', 'alertas_sistema', null, '?sector=eq.panaderia&leida=eq.false');
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) { console.warn('checkAlerts error:', e); }
+
+}
+
+async function loadPedidos_panaderia() {
+  try {
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.panaderia&estado=neq.entregado&order=created_at.desc');
+    if (rows) {
+      pedidos_panaderia = rows;
+      renderPedidos_panaderia();
+      updatePedidosBadge_panaderia();
+    }
+  } catch(e) { console.warn('loadPedidos error:', e); }
+}
+
+function renderPedidos_panaderia() {
+  const el = document.getElementById('pedidos-panaderia-list');
+  if (!el) return;
+  if (pedidos_panaderia.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:#aaa;font-family:system-ui,sans-serif;font-size:13px;">Sin pedidos pendientes ✓</div>';
+    return;
+  }
+  const icons = {salon:'🏪',central:'🏭',cocina:'🍳',panaderia:'🍞',pasteleria:'🍰',deposito:'🏭'};
+  el.innerHTML = pedidos_panaderia.map(p => {
+    const hora = new Date(p.created_at).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+    let btns = '';
+    if (p.estado === 'pendiente') {
+      btns = `<button onclick="cambiarEstadoPedido_panaderia(${p.id},'en_proceso')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">▶ Tomar</button>
+              <button onclick="cambiarEstadoPedido_panaderia(${p.id},'entregado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
+    } else if (p.estado === 'en_proceso') {
+      btns = `<button onclick="cambiarEstadoPedido_panaderia(${p.id},'listo')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#E65100;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">✓ Listo para entregar</button>`;
+    } else if (p.estado === 'listo') {
+      btns = `<button onclick="cambiarEstadoPedido_panaderia(${p.id},'entregado')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#22c55e;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">📦 Marcar entregado</button>`;
+    }
+    const estadoColors = {pendiente:'#fef9c3;color:#92400e',en_proceso:'#dbeafe;color:#1e40af',listo:'#dcfce7;color:#166534'};
+    return `<div style="background:#fff;border:1px solid ${p.urgente?'#fca5a5':'#eee'};border-radius:10px;padding:12px;margin-bottom:8px;${p.urgente?'background:#fff8f8;':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;color:#1a1a1a;font-family:system-ui,sans-serif;">${p.urgente?'🔴 ':''}${p.producto}</div>
+          <div style="font-size:11px;color:#aaa;margin-top:3px;font-family:system-ui,sans-serif;">${icons[p.desde_sector]||'📋'} ${p.desde_sector} · ${hora}${p.nota?' · &ldquo;'+p.nota+'&rdquo;':''}</div>
+          <span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;margin-top:4px;background:${(estadoColors[p.estado]||'').split(';')[0]};${(estadoColors[p.estado]||'').split(';')[1]?'color:'+((estadoColors[p.estado]||'').split(';')[1]).replace('color:',''):''};font-family:system-ui,sans-serif;">${p.estado.replace('_',' ')}</span>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:#E65100;font-family:system-ui,sans-serif;">${p.cantidad}<span style="font-size:11px;font-weight:400;color:#aaa;"> ${p.unidad}</span></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;">${btns}</div>
+    </div>`;
+  }).join('');
+}
+
+async function cambiarEstadoPedido_panaderia(id, nuevoEstado) {
+  try {
+    await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
+    if (nuevoEstado === 'entregado') {
+      pedidos_panaderia = pedidos_panaderia.filter(p => p.id !== id);
+    } else {
+      const p = pedidos_panaderia.find(p => p.id === id);
+      if (p) p.estado = nuevoEstado;
+    }
+    renderPedidos_panaderia();
+    updatePedidosBadge_panaderia();
+    if (typeof addToLog === 'function') addToLog('📋 Pedido ' + nuevoEstado.replace('_',' ') + ': ' + (pedidos_panaderia.find(p=>p.id===id)?.producto||''), 'pedido');
+  } catch(e) { console.warn('cambiarEstado error:', e); }
+}
+
+function updatePedidosBadge_panaderia() {
+  const tab = document.getElementById('tab-pedidos-panaderia');
+  if (!tab) return;
+  const existing = tab.querySelector('.int-badge');
+  if (existing) existing.remove();
+  const pendientes = pedidos_panaderia.filter(p => p.estado === 'pendiente').length;
+  if (pendientes > 0) {
+    const b = document.createElement('span');
+    b.className = 'int-badge';
+    b.style.cssText = 'position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;background:#E24B4A;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;animation:pulse 2s infinite;';
+    b.textContent = pendientes;
+    tab.appendChild(b);
+  }
+}
+
+setInterval(loadPedidos_panaderia, 60000);
+
+
+
+// ══════════════════════════════════════════════════════════════════
+// MÓDULO DE INTEGRACIÓN DE FLUJOS — Conecta todos los sectores
+// ══════════════════════════════════════════════════════════════════
+
+// ── MAPA: nombre de leudado → ID del freezer de panadería ─────────
+const LEUDADO_TO_FREEZER = {
+  'medialunas de manteca':    'medialunas_manteca',
+  'lenguita invertida':       'medialunas_manteca',
+  'popurrí + roll':           'medialunas_manteca',
+  'vigilantes':               'facturas_grasa',
+  'medialuna grasa':          'facturas_grasa',
+  'vigilantes (12) + medialuna grasa (12)': 'facturas_grasa',
+  'santiagueñas + sacramentos': 'facturas_grasa',
+  'santiagueñas':             'facturas_grasa',
+  'sacramentos':              'facturas_grasa',
+  'medialunas grasa':         'facturas_grasa',
+  'cremonas':                 'cremonas',
+  'cremonas (jyq, membrillo, comunes)': 'cremonas',
+  'cremonas jyq':             'cremonas',
+  'cremonas membrillo + simples': 'cremonas',
+  'libritos':                 'libritos_clasicos',
+  'libritos integrales':      'libritos_integrales',
+  'tortitas negras':          'facturas_grasa',
+  'palitos de queso':         'palitos_queso',
+  'palmeritas':               'palmeritas',
+  'bizcochitos':              'bizcochitos',
+  'pan caserito':             'pan_caserito',
+  'rolls':                    'medialunas_manteca',
+  'roll de manzana':          'medialunas_manteca',
+  'popurrí':                  'medialunas_manteca',
+  'empanadas clásicas':       'emp_clasicas',
+  'empanadas integrales':     'emp_integral',
+};
+
+// ── MAPA: ingrediente texto libre → ID materia prima depósito ──────
+const ING_TO_MP = {
+  'harina 0000':        { id: 'harina_0000', factor: 0.001 },  // g → kg
+  'harina 000':         { id: 'harina_000',  factor: 0.001 },
+  'harina trigo 000':   { id: 'harina_000',  factor: 0.001 },
+  'harina trigo 0000':  { id: 'harina_0000', factor: 0.001 },
+  'trigo 000':          { id: 'harina_000',  factor: 0.001 },
+  'trigo 0000':         { id: 'harina_0000', factor: 0.001 },
+  'harina integral':    { id: 'harina_integral', factor: 0.001 },
+  'harina trigo integral': { id: 'harina_integral', factor: 0.001 },
+  'harina de espelta':  { id: 'harina_espelta', factor: 0.001 },
+  'harina integral de espelta': { id: 'harina_espelta', factor: 0.001 },
+  'harina integral de centeno': { id: 'harina_centeno', factor: 0.001 },
+  'harina de centeno':  { id: 'harina_centeno', factor: 0.001 },
+  'harina de almendras': { id: 'harina_almendras', factor: 0.001 },
+  'harina de coco':     { id: 'harina_coco', factor: 0.001 },
+  'manteca':            { id: 'manteca',   factor: 0.001 },
+  'margarina':          { id: 'margarina', factor: 0.001 },
+  'sal':                { id: 'sal',       factor: 0.001 },
+  'levadura':           { id: 'levadura',  factor: 0.001 },
+  'levadura fresca':    { id: 'levadura',  factor: 0.001 },
+  'azucar':             { id: 'azucar',    factor: 0.001 },
+  'azúcar':             { id: 'azucar',    factor: 0.001 },
+  'aceite':             { id: 'aceite',    factor: 0.001 },
+  'aceite girasol':     { id: 'aceite',    factor: 0.001 },
+  'leche':              { id: 'leche',     factor: 0.001 },
+  'huevos':             { id: 'huevos',    factor: 1 },
+  'huevo':              { id: 'huevos',    factor: 1 },
+  'grasa':              { id: 'grasa',     factor: 0.001 },
+  'miel':               { id: 'miel',      factor: 0.001 },
+  'membrillo':          { id: 'membrillo', factor: 0.001 },
+  'almidón':            { id: 'almidon',   factor: 0.001 },
+  'almidón de maíz':    { id: 'almidon',   factor: 0.001 },
+  'polenta':            { id: 'polenta',   factor: 0.001 },
+};
+
+// ── PARSEAR ingrediente texto → { mpId, cantidad, unidad } ────────
+function parsearIngrediente(ingText) {
+  const txt = ingText.toLowerCase().trim();
+  // Extraer número y unidad del inicio: "2800g harina 0000" → [2800, 'g', 'harina 0000']
+  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|cc|ml|lt?|u|cucharad[ai]ta?s?|cucharas?|litros?)?\s+(.+)/);
+  if (!match) return null;
+
+  let cantidad = parseFloat(match[1].replace(',', '.'));
+  const unidad = match[2] || 'u';
+  const nombreIng = match[3].trim();
+
+  // Convertir a kg si está en gramos o cc/ml
+  let cantKg = cantidad;
+  if (unidad === 'g') cantKg = cantidad / 1000;
+  else if (unidad === 'cc' || unidad === 'ml') cantKg = cantidad / 1000;
+  else if (unidad === 'kg' || unidad === 'lt' || unidad === 'l' || unidad === 'litros') cantKg = cantidad;
+
+  // Buscar match en ING_TO_MP
+  let mpId = null;
+  for (const [key, val] of Object.entries(ING_TO_MP)) {
+    if (nombreIng.includes(key)) {
+      mpId = val.id;
+      break;
+    }
+  }
+  if (!mpId) return null;
+  return { mpId, cantKg };
+}
+
+// ── DESCONTAR INGREDIENTES DEL DEPÓSITO ──────────────────────────
+async function descontarIngredientesDeposito(ingredients, sector) {
+  if (!ingredients || ingredients.length === 0) return;
+  try {
+    // Leer stock actual del depósito
+    const rows = await sbSelect('deposito_stock', '');
+    if (!rows) return;
+    const stockMap = {};
+    rows.forEach(r => stockMap[r.id] = r.cantidad || 0);
+
+    const updates = [];
+    const alertas = [];
+
+    for (const ing of ingredients) {
+      const parsed = parsearIngrediente(ing);
+      if (!parsed) continue;
+      const { mpId, cantKg } = parsed;
+      if (stockMap[mpId] === undefined) continue;
+
+      const nuevo = Math.max(0, Math.round((stockMap[mpId] - cantKg) * 100) / 100);
+      stockMap[mpId] = nuevo;
+      updates.push({ id: mpId, cantidad: nuevo });
+
+      // Verificar si quedó bajo mínimo
+      if (nuevo <= 0) {
+        alertas.push({ sector: 'deposito', tipo: 'sin_stock', mensaje: `Sin stock: ${mpId} (usado por ${sector})`, producto_id: mpId });
+      } else if (nuevo <= 5) {
+        alertas.push({ sector: 'deposito', tipo: 'stock_bajo', mensaje: `Stock bajo (${nuevo}kg): ${mpId}`, producto_id: mpId });
+      }
+    }
+
+    // Actualizar depósito en Supabase
+    if (updates.length > 0) {
+      await sbUpsert('deposito_stock', updates);
+    }
+
+    // Publicar alertas
+    if (alertas.length > 0) {
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) {
+    console.warn('descontarIngredientes error:', e);
+  }
+}
+
+// ── SUMAR PRODUCTO AL SALÓN ───────────────────────────────────────
+async function sumarProductoAlSalon(productoNombre, productoId, cantidad, sectorOrigen) {
+  if (!cantidad || cantidad <= 0) return;
+  try {
+    // Leer stock actual del salón para este producto
+    const rows = await sbSelect('salon_stock', '?id=eq.' + encodeURIComponent(productoId));
+    const actual = rows && rows.length > 0 ? (rows[0].cantidad || 0) : 0;
+    const nuevo = actual + cantidad;
+
+    await sbUpsert('salon_stock', [{
+      id: productoId,
+      nombre: productoNombre,
+      cantidad: nuevo,
+      sector: sectorOrigen,
+    }]);
+
+    // Crear recepción en salón para que quede registrado
+    await sbUpsert('salon_recepciones', [{
+      producto_id: productoId,
+      producto_nombre: productoNombre,
+      cantidad: cantidad,
+      sector_origen: sectorOrigen,
+    }]);
+
+  } catch(e) {
+    console.warn('sumarProductoAlSalon error:', e);
+  }
+}
+
+// ── DESCONTAR DEL FREEZER DE PANADERÍA ───────────────────────────
+async function descontarDelFreezer(nombreProducto, cantidad) {
+  try {
+    // Encontrar el ID del freezer usando el nombre
+    const nombreLower = nombreProducto.toLowerCase();
+    let freezerId = null;
+    for (const [key, val] of Object.entries(LEUDADO_TO_FREEZER)) {
+      if (nombreLower.includes(key)) { freezerId = val; break; }
+    }
+    if (!freezerId) return;
+
+    const rows = await sbSelect('freezer_panaderia', '?id=eq.' + freezerId);
+    if (!rows || rows.length === 0) return;
+
+    const actual = rows[0].total || 0;
+    const nuevo = Math.max(0, actual - cantidad);
+
+    await sbUpsert('freezer_panaderia', [{ id: freezerId, total: nuevo }]);
+
+    // Alerta si quedó bajo
+    if (nuevo <= 0) {
+      await sbUpsert('alertas_sistema', [{
+        sector: 'panaderia',
+        tipo: 'sin_stock',
+        mensaje: `Freezer vacío: ${nombreProducto}`,
+        producto_id: freezerId,
+      }]);
+    } else if (nuevo <= 20) {
+      await sbUpsert('alertas_sistema', [{
+        sector: 'panaderia',
+        tipo: 'stock_bajo',
+        mensaje: `Freezer bajo (${nuevo}u): ${nombreProducto}`,
+        producto_id: freezerId,
+      }]);
+    }
+  } catch(e) {
+    console.warn('descontarDelFreezer error:', e);
+  }
+}
+
+
+</script>
+</body>
+</html>
