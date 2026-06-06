@@ -547,13 +547,89 @@ function mostrarResultadoFactura(data, filename) {
         ℹ️ Para los productos sin coincidencia, seleccioná manualmente a qué materia prima corresponde.
       </div>
       ${productos.map((p, i) => {
-        // Intentar match automático
-        const pNorm = p.nombre.toLowerCase();
-        const match = stockData.find(s => {
-          const sNorm = s.nombre.toLowerCase();
-          const words = pNorm.split(' ').filter(w => w.length > 3);
-          return words.some(w => sNorm.includes(w)) || sNorm.split(' ').some(w => w.length > 3 && pNorm.includes(w));
-        });
+        // Match inteligente con palabras clave y equivalencias
+        const pNorm = p.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        
+        // Tabla de palabras clave por producto
+        const KEYWORDS = {
+          'harina_0000': ['harina 0000','harina cuatro ceros','harina 0000','000/0','4 ceros','hna 0000'],
+          'harina_000': ['harina 000','harina tres ceros','hna 000'],
+          'harina_integral': ['harina integral','integral trigo'],
+          'harina_espelta': ['espelta'],
+          'harina_centeno': ['centeno'],
+          'harina_almendras': ['almendra','almendras'],
+          'harina_coco': ['coco harina','harina de coco'],
+          'manteca': ['manteca','butter'],
+          'margarina': ['margarina'],
+          'grasa': ['grasa','bovigras','vacuna','grasa ref'],
+          'aceite': ['aceite','girasol aceite'],
+          'leche': ['leche','larga vida','entera','descremada'],
+          'azucar': ['azucar','azúcar','sucrose'],
+          'azucar_impalpable': ['impalpable'],
+          'sal': ['sal fina','sal gruesa','cloruro sodio'],
+          'levadura': ['levadura','fermipan','calsa'],
+          'huevos': ['huevo','huevos'],
+          'nueces': ['nuez','nueces'],
+          'almendras': ['almendra pelada','almendras tostadas'],
+          'chocolate': ['chocolate','cobertura'],
+          'cacao_amargo': ['cacao','cocoa'],
+          'algarroba': ['algarroba'],
+          'polenta': ['polenta','maiz polenta'],
+          'miel': ['miel'],
+          'canela': ['canela'],
+          'vainilla': ['vainilla','esencia'],
+          'eritritol': ['eritritol','eritrol'],
+          'coco_rallado': ['coco rallado','coco desecado'],
+          'premezcla_integral': ['premezcla','premezcla integral'],
+          'semillas_mix': ['semillas','mix semillas','semilla'],
+          'carne_picada': ['picada','carne picada','carne molida'],
+          'pollo': ['pollo','pechuga','pollo entero'],
+          'cerdo': ['cerdo','bondiola','paleta cerdo'],
+          'jamon': ['jamon','jamón','paleta cocida'],
+          'queso_maquina': ['queso maquina','queso en fetas','queso tybo'],
+          'muzza': ['mozzarella','muzza','muzzarella'],
+          'queso_crema': ['queso crema','philadelphia'],
+          'nalga': ['nalga','peceto'],
+          'cebolla': ['cebolla'],
+          'morron': ['morrón','morron','pimiento'],
+          'papa': ['papa','papas'],
+          'zapallito': ['zapallito','zucchini'],
+          'calabaza': ['calabaza','zapallo'],
+          'zanahoria': ['zanahoria'],
+          'manzana': ['manzana'],
+          'membrillo': ['membrillo','dulce membrillo'],
+          'mayonesa': ['mayonesa','mayo'],
+          'pan_miga': ['miga','pan lactal','sandwich'],
+          'almidon': ['almidon','almidón','maicena','fecula'],
+          'harina_leudante': ['leudante','leudante harina'],
+          'dulce_leche': ['dulce de leche','ddl'],
+        };
+        
+        // Buscar por keywords primero
+        let match = null;
+        for (const [id, keywords] of Object.entries(KEYWORDS)) {
+          if (keywords.some(kw => pNorm.includes(kw))) {
+            match = stockData.find(s => s.id === id);
+            if (match) break;
+          }
+        }
+        
+        // Si no encontró por keywords, intentar match por palabras del nombre del stock
+        if (!match) {
+          match = stockData.find(s => {
+            const sNorm = s.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+            const sWords = sNorm.split(' ').filter(w => w.length > 3);
+            const pWords = pNorm.split(' ').filter(w => w.length > 3);
+            return sWords.some(w => pNorm.includes(w)) || pWords.some(w => sNorm.includes(w));
+          });
+        }
+        
+        // Guardar equivalencia aprendida
+        const savedEquivs = JSON.parse(localStorage.getItem('deposito_equivalencias') || '{}');
+        if (!match && savedEquivs[pNorm.split(' ').slice(0,2).join(' ')]) {
+          const savedId = savedEquivs[pNorm.split(' ').slice(0,2).join(' ')];
+          match = stockData.find(s => s.id === savedId);
+        }
 
         if (match) {
           // Match automático — mostrar con tick y selector por si quiere cambiarlo
@@ -607,6 +683,15 @@ async function aplicarFactura() {
 
     const stockItem = stockData.find(s => s.id === matchId);
     if (!stockItem) continue;
+
+    // Guardar equivalencia para futuras facturas
+    const nombreFactura = sel.closest('.factura-item')?.querySelector('.fi-name')?.textContent || '';
+    if (nombreFactura) {
+      const equivKey = nombreFactura.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(' ').slice(0,3).join(' ');
+      const equivs = JSON.parse(localStorage.getItem('deposito_equivalencias') || '{}');
+      equivs[equivKey] = matchId;
+      localStorage.setItem('deposito_equivalencias', JSON.stringify(equivs));
+    }
 
     const nuevaCantidad = (Number(stockItem.cantidad) || 0) + cantidad;
     try {
