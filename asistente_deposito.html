@@ -18,43 +18,42 @@
 }
 html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
 body{display:flex;flex-direction:column;align-items:center;padding:16px}
-
-/* HEADER */
-.header{width:100%;max-width:600px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.header{width:100%;max-width:640px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .header-left{display:flex;align-items:center;gap:10px}
 .header-icon{font-size:24px}
-.header-title{font-size:15px;font-weight:700;color:var(--text)}
+.header-title{font-size:15px;font-weight:700}
 .header-sub{font-size:11px;color:var(--text2)}
 .status{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green)}
 .status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-
-/* TABS */
-.tabs{width:100%;max-width:600px;display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.tabs{width:100%;max-width:640px;display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
 .tab{flex:1;padding:10px 4px;text-align:center;font-size:11px;color:var(--text2);cursor:pointer;border:none;background:none;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px}
-.tab .tab-icon{font-size:16px}
+.tab .ti{font-size:16px}
 .tab.active{color:var(--blue2);background:var(--bg3);border-bottom:2px solid var(--blue)}
 .tab:hover:not(.active){color:var(--text);background:var(--bg3)}
-
-/* PANELS */
-.panel{width:100%;max-width:600px;display:none}
+.panel{width:100%;max-width:640px;display:none}
 .panel.active{display:block}
-
-/* CARDS */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:10px}
-.card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.card-title{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px}
 
-/* STOCK */
+/* FILTROS */
+.filtros{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.filtro-btn{padding:5px 10px;border-radius:20px;border:1px solid var(--border);background:none;color:var(--text2);font-size:11px;cursor:pointer;transition:all .15s}
+.filtro-btn.active{background:var(--blue);border-color:var(--blue);color:#fff}
 .search-box{width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;margin-bottom:10px}
 .search-box:focus{outline:none;border-color:var(--blue)}
 .search-box::placeholder{color:var(--text3)}
+
+/* STOCK */
+.seccion-titulo{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px 4px;border-top:1px solid var(--border);margin-top:4px}
+.seccion-titulo:first-child{border-top:none;margin-top:0}
 .stock-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--border);transition:background .1s}
 .stock-item:last-child{border-bottom:none}
 .stock-item:hover{background:var(--bg3)}
-.stock-name{font-size:13px;font-weight:500;color:var(--text)}
+.stock-name{font-size:13px;font-weight:500}
 .stock-meta{font-size:11px;color:var(--text3);margin-top:2px}
 .stock-right{display:flex;align-items:center;gap:8px}
-.stock-qty{font-size:15px;font-weight:700;color:var(--text)}
+.stock-qty{font-size:15px;font-weight:700}
 .stock-unit{font-size:11px;color:var(--text3)}
 .badge{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600}
 .badge-ok{background:var(--green-dim);color:var(--green)}
@@ -63,50 +62,47 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
 .edit-btn{background:none;border:1px solid var(--border);border-radius:6px;color:var(--text2);padding:4px 8px;cursor:pointer;font-size:11px}
 .edit-btn:hover{border-color:var(--blue);color:var(--blue2)}
 
-/* EDIT MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100;display:none}
+/* BOTÓN AGREGAR */
+.btn-agregar{width:100%;padding:10px;background:var(--bg3);border:1px dashed var(--border2);border-radius:var(--radius);color:var(--blue2);font-size:13px;cursor:pointer;text-align:center;margin-top:8px;transition:all .15s}
+.btn-agregar:hover{background:var(--blue-dim);border-color:var(--blue)}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:100}
 .modal-overlay.open{display:flex}
-.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:90%;max-width:360px}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:20px;width:90%;max-width:380px;max-height:90vh;overflow-y:auto}
 .modal-title{font-size:14px;font-weight:700;margin-bottom:14px}
 .form-row{margin-bottom:10px}
 .form-label{font-size:11px;color:var(--text2);margin-bottom:4px;display:block}
 .form-input{width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
 .form-input:focus{outline:none;border-color:var(--blue)}
+.form-select{width:100%;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
 .modal-actions{display:flex;gap:8px;margin-top:14px}
 .btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
 .btn-primary{background:var(--blue);color:#fff}
 .btn-primary:hover{background:var(--blue2)}
 .btn-secondary{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
-.btn-secondary:hover{color:var(--text)}
-.btn-danger{background:var(--red-dim);color:var(--red);border:1px solid var(--red-dim)}
 
 /* FACTURAS */
 .upload-area{border:2px dashed var(--border2);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;transition:all .15s;margin-bottom:12px}
-.upload-area:hover{border-color:var(--blue);background:var(--blue-dim)}
-.upload-area.dragging{border-color:var(--blue);background:var(--blue-dim)}
+.upload-area:hover,.upload-area.dragging{border-color:var(--blue);background:var(--blue-dim)}
 .upload-icon{font-size:32px;margin-bottom:8px}
-.upload-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.upload-title{font-size:13px;font-weight:600;margin-bottom:4px}
 .upload-sub{font-size:11px;color:var(--text2)}
 #file-input{display:none}
-
 .factura-result{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:10px}
-.factura-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+.factura-item{padding:10px 0;border-bottom:1px solid var(--border)}
 .factura-item:last-child{border-bottom:none}
-.fi-name{font-size:13px;color:var(--text)}
+.fi-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.fi-name{font-size:13px;font-weight:500}
 .fi-qty{font-size:13px;font-weight:700;color:var(--blue2)}
-.fi-match{font-size:11px;color:var(--text3);margin-top:2px}
-.fi-check{color:var(--green)}
+.fi-hint{font-size:11px;color:var(--text3);margin-bottom:4px}
+.fi-ok{color:var(--green)}
 .fi-warn{color:var(--yellow)}
-
 .loading{text-align:center;padding:20px;color:var(--text2)}
 .loading-spinner{font-size:24px;animation:spin 1s linear infinite;display:block;margin:0 auto 8px}
 @keyframes spin{to{transform:rotate(360deg)}}
-
-/* HISTORIAL */
 .hist-item{display:flex;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
 .hist-item:last-child{border-bottom:none}
-.hist-date{font-size:11px;color:var(--text3)}
-.hist-products{font-size:12px;color:var(--text2);margin-top:2px}
 .hist-count{font-size:11px;font-weight:700;color:var(--blue2);background:var(--blue-dim);padding:2px 8px;border-radius:4px}
 
 /* PEDIDOS */
@@ -115,31 +111,22 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
 .pedido-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .pedido-sector{font-size:11px;font-weight:700;color:var(--blue2)}
 .pedido-time{font-size:10px;color:var(--text3)}
-.pedido-product{font-size:13px;color:var(--text);font-weight:500}
-.pedido-qty{font-size:12px;color:var(--text2)}
-.pedido-actions{display:flex;gap:6px;margin-top:6px}
 .badge-urgente{background:var(--red-dim);color:var(--red);font-size:10px;padding:1px 6px;border-radius:4px}
 
-/* EMPTY */
 .empty{text-align:center;padding:30px 20px;color:var(--text3)}
 .empty-icon{font-size:32px;margin-bottom:8px}
-
-/* ALERTS */
 .alert{padding:10px 12px;border-radius:6px;margin-bottom:8px;font-size:12px;display:flex;align-items:center;gap:8px}
-.alert-success{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
-.alert-error{background:var(--red-dim);color:var(--red);border:1px solid var(--red)}
 .alert-info{background:var(--blue-dim);color:var(--blue2);border:1px solid var(--blue)}
 
-/* ASISTENTE */
+/* CHAT */
 .chat-messages{min-height:200px;max-height:300px;overflow-y:auto;margin-bottom:10px}
 .msg{padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:13px;line-height:1.5}
-.msg-assistant{background:var(--bg3);color:var(--text)}
+.msg-assistant{background:var(--bg3)}
 .msg-user{background:var(--blue-dim);color:var(--blue2);text-align:right}
 .chat-input-row{display:flex;gap:8px}
 .chat-input{flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
 .chat-input:focus{outline:none;border-color:var(--blue)}
 
-/* NOTIF */
 #notif{position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:300px}
 .notif{padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500;animation:slideIn .3s ease;box-shadow:0 4px 12px rgba(0,0,0,.4)}
 .notif-success{background:#166534;color:#86efac;border:1px solid #16a34a}
@@ -149,24 +136,54 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
 </style>
 </head>
 <body>
-
 <div id="notif"></div>
 
-<!-- MODAL EDITAR STOCK -->
+<!-- MODAL EDITAR/NUEVO -->
 <div class="modal-overlay" id="modal-edit">
   <div class="modal">
-    <div class="modal-title">✏️ Editar stock</div>
+    <div class="modal-title" id="modal-titulo">✏️ Editar stock</div>
     <div class="form-row">
-      <label class="form-label">Producto</label>
-      <input class="form-input" id="edit-nombre" readonly style="opacity:.6">
+      <label class="form-label">Nombre del producto</label>
+      <input class="form-input" id="edit-nombre" placeholder="Ej: Bolsas camiseta, Chipa, Yogur...">
     </div>
     <div class="form-row">
-      <label class="form-label">Cantidad actual</label>
-      <input class="form-input" id="edit-cantidad" type="number" step="0.01" min="0">
+      <label class="form-label">Cantidad</label>
+      <input class="form-input" id="edit-cantidad" type="number" step="0.01" min="0" placeholder="0">
     </div>
     <div class="form-row">
       <label class="form-label">Unidad</label>
-      <input class="form-input" id="edit-unidad" readonly style="opacity:.6">
+      <select class="form-select" id="edit-unidad">
+        <option value="kg">kg</option>
+        <option value="g">g</option>
+        <option value="lt">lt</option>
+        <option value="ml">ml</option>
+        <option value="u">unidades</option>
+        <option value="paq">paquetes</option>
+        <option value="caj">cajas</option>
+        <option value="doc">docenas</option>
+        <option value="rollo">rollos</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Sección</label>
+      <select class="form-select" id="edit-categoria">
+        <option value="harinas_secos">🌾 Harinas y secos</option>
+        <option value="refrigerado">❄️ Refrigerado</option>
+        <option value="freezer">🧊 Freezer</option>
+        <option value="verduleria">🥦 Verdulería</option>
+        <option value="carnes">🥩 Carnes</option>
+        <option value="limpieza">🧹 Limpieza</option>
+        <option value="papelera">📦 Papelera</option>
+        <option value="reventa">🏪 Reventa</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Stock mínimo (alerta)</label>
+      <input class="form-input" id="edit-minimo" type="number" step="0.1" min="0" placeholder="0">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Proveedor</label>
+      <input class="form-input" id="edit-proveedor" placeholder="Nombre del proveedor">
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="saveEdit()">Guardar</button>
@@ -189,35 +206,28 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
 
 <!-- TABS -->
 <div class="tabs">
-  <button class="tab active" onclick="showTab('stock')">
-    <span class="tab-icon">📦</span>Stock
-  </button>
-  <button class="tab" onclick="showTab('facturas')">
-    <span class="tab-icon">🧾</span>Facturas
-  </button>
-  <button class="tab" onclick="showTab('pedidos')">
-    <span class="tab-icon">🔔</span>Pedidos
-  </button>
-  <button class="tab" onclick="showTab('asistente')">
-    <span class="tab-icon">🤖</span>Asistente
-  </button>
+  <button class="tab active" onclick="showTab('stock')"><span class="ti">📦</span>Stock</button>
+  <button class="tab" onclick="showTab('facturas')"><span class="ti">🧾</span>Facturas</button>
+  <button class="tab" onclick="showTab('pedidos')"><span class="ti">🔔</span>Pedidos</button>
+  <button class="tab" onclick="showTab('asistente')"><span class="ti">🤖</span>Asistente</button>
 </div>
 
 <!-- PANEL STOCK -->
 <div class="panel active" id="panel-stock">
   <input class="search-box" id="search" placeholder="🔍 Buscar materia prima..." oninput="renderStock()">
+  <div class="filtros" id="filtros-container"></div>
   <div class="card" id="stock-container">
     <div class="loading"><span class="loading-spinner">⏳</span>Cargando stock...</div>
   </div>
+  <button class="btn-agregar" onclick="openNuevo()">➕ Agregar nueva materia prima manualmente</button>
 </div>
 
 <!-- PANEL FACTURAS -->
 <div class="panel" id="panel-facturas">
   <div id="api-notice" class="alert alert-info" style="display:none">
-    ⚠️ Ingresá tu API Key de Anthropic para activar la lectura de facturas.
+    ⚠️ Configurá tu API Key para activar la lectura de facturas con IA.
     <button class="btn btn-primary" style="margin-left:auto;padding:4px 10px;font-size:11px" onclick="pedirApiKey()">Configurar</button>
   </div>
-
   <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()"
     ondragover="event.preventDefault();this.classList.add('dragging')"
     ondragleave="this.classList.remove('dragging')"
@@ -227,19 +237,13 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
     <div class="upload-sub">Foto (.jpg, .png) o PDF — la IA lee los productos y cantidades</div>
   </div>
   <input type="file" id="file-input" accept="image/*,.pdf" onchange="procesarFactura(event)">
-
   <div id="factura-loading" style="display:none" class="loading">
-    <span class="loading-spinner">🔄</span>
-    Analizando factura con IA...
+    <span class="loading-spinner">🔄</span>Analizando factura con IA...
   </div>
-
   <div id="factura-result" style="display:none"></div>
-
   <div class="card">
     <div class="card-title">📋 Historial de facturas</div>
-    <div id="historial-container">
-      <div class="empty"><div class="empty-icon">📄</div>Sin facturas cargadas aún.</div>
-    </div>
+    <div id="historial-container"><div class="empty"><div class="empty-icon">📄</div>Sin facturas cargadas aún.</div></div>
   </div>
 </div>
 
@@ -247,9 +251,7 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
 <div class="panel" id="panel-pedidos">
   <div class="card">
     <div class="card-title">📥 Pedidos de sectores</div>
-    <div id="pedidos-container">
-      <div class="loading"><span class="loading-spinner">⏳</span>Cargando...</div>
-    </div>
+    <div id="pedidos-container"><div class="loading"><span class="loading-spinner">⏳</span>Cargando...</div></div>
   </div>
 </div>
 
@@ -258,7 +260,7 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
   <div class="card">
     <div class="card-title">🤖 Asistente de depósito</div>
     <div class="chat-messages" id="chat-messages">
-      <div class="msg msg-assistant">¡Hola! Soy tu asistente de depósito. Puedo ayudarte a consultar stock, registrar entradas y más. ¿En qué te ayudo?</div>
+      <div class="msg msg-assistant">¡Hola! Soy tu asistente de depósito. Puedo ayudarte a consultar stock, registrar entradas y más.</div>
     </div>
     <div class="chat-input-row">
       <input class="chat-input" id="chat-input" placeholder="Escribí tu consulta..." onkeydown="if(event.key==='Enter')sendChat()">
@@ -268,117 +270,229 @@ body{display:flex;flex-direction:column;align-items:center;padding:16px}
 </div>
 
 <script>
-// ══════════════════════════════════════════════
-// CONFIG
-// ══════════════════════════════════════════════
 const SUPABASE_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
 const API_KEY_STORE = 'deposito_api_key';
 
+const SECCIONES = {
+  'harinas_secos': {label:'🌾 Harinas y secos', color:'#a16207'},
+  'refrigerado':   {label:'❄️ Refrigerado',     color:'#0284c7'},
+  'freezer':       {label:'🧊 Freezer',          color:'#7c3aed'},
+  'verduleria':    {label:'🥦 Verdulería',        color:'#16a34a'},
+  'carnes':        {label:'🥩 Carnes',            color:'#dc2626'},
+  'limpieza':      {label:'🧹 Limpieza',          color:'#0891b2'},
+  'papelera':      {label:'📦 Papelera',          color:'#92400e'},
+  'reventa':       {label:'🏪 Reventa',           color:'#9333ea'},
+  'panaderia':     {label:'🍞 Panadería',         color:'#ca8a04'},
+  'pasteleria':    {label:'🍰 Pastelería',        color:'#db2777'},
+  'cocina':        {label:'🍳 Cocina',            color:'#059669'},
+  'todos':         {label:'🏭 General',           color:'#6b7280'},
+};
+
+// Keywords para matching de facturas
+const KEYWORDS = {
+  'harina_0000':['harina 0000','cuatro ceros','0000','hna 0000','fidepan','campodonico'],
+  'harina_000':['harina 000','tres ceros','hna 000'],
+  'harina_integral':['harina integral','integral trigo'],
+  'harina_espelta':['espelta'],
+  'harina_centeno':['centeno'],
+  'harina_almendras':['almendra harina','harina almendra'],
+  'harina_coco':['harina coco','coco harina'],
+  'manteca':['manteca','corlasa','butter'],
+  'margarina':['margarina'],
+  'grasa':['grasa','bovigras','grasa vacuna','grasa refinada'],
+  'aceite':['aceite','girasol'],
+  'leche':['leche','larga vida','sancor','la serenisima'],
+  'azucar':['azucar','azúcar','ledesma'],
+  'azucar_impalpable':['impalpable'],
+  'sal':['sal fina','sal gruesa','sal iodada'],
+  'levadura':['levadura','fermipan','calsa','lallemand'],
+  'huevos':['huevo','huevos','maple'],
+  'nueces':['nuez','nueces'],
+  'almendras':['almendra pelada','almendras tostadas'],
+  'chocolate':['chocolate','cobertura','baño'],
+  'cacao_amargo':['cacao','cocoa'],
+  'algarroba':['algarroba'],
+  'polenta':['polenta'],
+  'miel':['miel'],
+  'canela':['canela'],
+  'eritritol':['eritritol'],
+  'coco_rallado':['coco rallado','coco desecado'],
+  'premezcla_integral':['premezcla'],
+  'semillas_mix':['semillas','mix semillas'],
+  'carne_picada':['picada','carne picada'],
+  'pollo':['pollo','pechuga'],
+  'cerdo':['cerdo','bondiola'],
+  'jamon':['jamon','jamón','paleta cocida'],
+  'queso_maquina':['queso maquina','queso feta','tybo'],
+  'muzzarella':['mozzarella','muzza','muzzarella'],
+  'queso_crema':['queso crema'],
+  'nalga':['nalga','peceto'],
+  'cebolla':['cebolla'],
+  'morron':['morrón','morron','pimiento'],
+  'papa':['papa '],
+  'zapallito':['zapallito','zucchini'],
+  'calabaza':['calabaza','zapallo'],
+  'zanahoria':['zanahoria'],
+  'manzana':['manzana'],
+  'membrillo':['membrillo'],
+  'mayonesa':['mayonesa'],
+  'almidon':['almidon','almidón','maicena'],
+  'dulce_leche':['dulce de leche','ddl'],
+};
+
 let stockData = [];
 let historial = JSON.parse(localStorage.getItem('deposito_historial') || '[]');
+let equivalencias = JSON.parse(localStorage.getItem('deposito_equivalencias') || '{}');
 let editingId = null;
+let modoNuevo = false;
+let filtroActivo = 'todos_filtro';
 let apiKey = localStorage.getItem(API_KEY_STORE) || '';
 
-// ══════════════════════════════════════════════
-// SUPABASE
-// ══════════════════════════════════════════════
-async function sbFetch(table, params = '', method = 'GET', body = null) {
-  const url = SUPABASE_URL + '/rest/v1/' + table + params;
+async function sbFetch(table, params='', method='GET', body=null) {
+  const url = SUPABASE_URL+'/rest/v1/'+table+params;
   const opts = {
     method,
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_KEY,
-      'Content-Type': 'application/json',
-      'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
+    headers:{
+      'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,
+      'Content-Type':'application/json',
+      'Prefer': method==='POST'?'return=representation':'return=minimal'
     }
   };
-  if (body) opts.body = JSON.stringify(body);
+  if(body) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
-  }
-  if (method === 'GET') return res.json();
+  if(!res.ok){ const e=await res.text(); throw new Error(e); }
+  if(method==='GET') return res.json();
+  if(method==='POST') return res.json();
   return res;
 }
 
-// ══════════════════════════════════════════════
-// NOTIFICACIONES
-// ══════════════════════════════════════════════
-function notif(msg, type = 'info') {
+function notif(msg, type='info') {
   const el = document.createElement('div');
   el.className = `notif notif-${type}`;
   el.textContent = msg;
   document.getElementById('notif').appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  setTimeout(()=>el.remove(), 4000);
 }
 
-// ══════════════════════════════════════════════
-// TABS
-// ══════════════════════════════════════════════
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    const names = ['stock','facturas','pedidos','asistente'];
-    t.classList.toggle('active', names[i] === name);
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    t.classList.toggle('active', ['stock','facturas','pedidos','asistente'][i]===name);
   });
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.getElementById('panel-' + name).classList.add('active');
-  if (name === 'pedidos') loadPedidos();
-  if (name === 'facturas') checkApiKey();
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  if(name==='pedidos') loadPedidos();
+  if(name==='facturas') checkApiKey();
 }
 
-// ══════════════════════════════════════════════
-// STOCK
-// ══════════════════════════════════════════════
 async function loadStock() {
   try {
     stockData = await sbFetch('deposito_stock', '?order=nombre.asc');
+    renderFiltros();
     renderStock();
   } catch(e) {
-    notif('Error al cargar stock: ' + e.message, 'error');
-    document.getElementById('stock-container').innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Error al cargar stock.</div>';
+    notif('Error al cargar stock: '+e.message, 'error');
+    document.getElementById('stock-container').innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Error al cargar. Verificá tu conexión.</div>';
   }
+}
+
+function renderFiltros() {
+  const secciones = [...new Set(stockData.map(s => s.categoria || s.sector || 'general'))].sort();
+  const cont = document.getElementById('filtros-container');
+  cont.innerHTML = `<button class="filtro-btn active" onclick="setFiltro('todos_filtro',this)">Todos</button>` +
+    secciones.map(s => {
+      const info = SECCIONES[s] || {label: s};
+      return `<button class="filtro-btn" onclick="setFiltro('${s}',this)">${info.label || s}</button>`;
+    }).join('');
+}
+
+function setFiltro(filtro, btn) {
+  filtroActivo = filtro;
+  document.querySelectorAll('.filtro-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderStock();
 }
 
 function renderStock() {
   const q = (document.getElementById('search').value || '').toLowerCase();
-  const items = stockData.filter(s => s.nombre.toLowerCase().includes(q));
+  let items = stockData.filter(s => {
+    const cat = s.categoria || s.sector || 'general';
+    const matchFiltro = filtroActivo === 'todos_filtro' || cat === filtroActivo;
+    const matchSearch = s.nombre.toLowerCase().includes(q);
+    return matchFiltro && matchSearch;
+  });
+
   const cont = document.getElementById('stock-container');
   if (!items.length) {
     cont.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>No hay resultados.</div>';
     return;
   }
-  cont.innerHTML = items.map(s => {
-    const pct = s.stock_minimo > 0 ? s.cantidad / s.stock_minimo : 1;
-    const badge = s.cantidad <= 0 ? '<span class="badge badge-out">SIN STOCK</span>' :
-                  pct < 1 ? '<span class="badge badge-low">BAJO</span>' :
-                  '<span class="badge badge-ok">OK</span>';
-    return `<div class="stock-item">
-      <div>
-        <div class="stock-name">${s.nombre}</div>
-        <div class="stock-meta">Mín: ${s.stock_minimo || 0} ${s.unidad} · ${s.proveedor || '—'}</div>
-      </div>
-      <div class="stock-right">
-        ${badge}
-        <div style="text-align:right">
-          <span class="stock-qty">${Number(s.cantidad).toFixed(1)}</span>
-          <span class="stock-unit"> ${s.unidad}</span>
+
+  // Agrupar por sección
+  const grupos = {};
+  items.forEach(s => {
+    const cat = s.categoria || s.sector || 'general';
+    if (!grupos[cat]) grupos[cat] = [];
+    grupos[cat].push(s);
+  });
+
+  let html = '';
+  for (const [cat, items2] of Object.entries(grupos)) {
+    const info = SECCIONES[cat] || {label: cat};
+    html += `<div class="seccion-titulo">${info.label || cat}</div>`;
+    html += items2.map(s => {
+      const pct = s.stock_minimo > 0 ? s.cantidad / s.stock_minimo : 1;
+      const badge = s.cantidad <= 0 ? '<span class="badge badge-out">SIN STOCK</span>' :
+                    pct < 1 ? '<span class="badge badge-low">BAJO</span>' :
+                    '<span class="badge badge-ok">OK</span>';
+      return `<div class="stock-item">
+        <div>
+          <div class="stock-name">${s.nombre}</div>
+          <div class="stock-meta">${s.proveedor || '—'} · Mín: ${s.stock_minimo||0} ${s.unidad}</div>
         </div>
-        <button class="edit-btn" onclick="openEdit('${s.id}')">✏️</button>
-      </div>
-    </div>`;
-  }).join('');
+        <div class="stock-right">
+          ${badge}
+          <div style="text-align:right">
+            <span class="stock-qty">${Number(s.cantidad).toFixed(1)}</span>
+            <span class="stock-unit"> ${s.unidad}</span>
+          </div>
+          <button class="edit-btn" onclick="openEdit('${s.id}')">✏️</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  cont.innerHTML = html;
 }
 
 function openEdit(id) {
+  modoNuevo = false;
   const item = stockData.find(s => s.id === id);
   if (!item) return;
   editingId = id;
+  document.getElementById('modal-titulo').textContent = '✏️ Editar stock';
   document.getElementById('edit-nombre').value = item.nombre;
+  document.getElementById('edit-nombre').readOnly = true;
+  document.getElementById('edit-nombre').style.opacity = '.6';
   document.getElementById('edit-cantidad').value = item.cantidad;
   document.getElementById('edit-unidad').value = item.unidad;
+  document.getElementById('edit-categoria').value = item.categoria || item.sector || 'harinas_secos';
+  document.getElementById('edit-minimo').value = item.stock_minimo || 0;
+  document.getElementById('edit-proveedor').value = item.proveedor || '';
+  document.getElementById('modal-edit').classList.add('open');
+}
+
+function openNuevo() {
+  modoNuevo = true;
+  editingId = null;
+  document.getElementById('modal-titulo').textContent = '➕ Nueva materia prima';
+  document.getElementById('edit-nombre').value = '';
+  document.getElementById('edit-nombre').readOnly = false;
+  document.getElementById('edit-nombre').style.opacity = '1';
+  document.getElementById('edit-cantidad').value = '0';
+  document.getElementById('edit-unidad').value = 'u';
+  document.getElementById('edit-categoria').value = 'harinas_secos';
+  document.getElementById('edit-minimo').value = '0';
+  document.getElementById('edit-proveedor').value = '';
   document.getElementById('modal-edit').classList.add('open');
 }
 
@@ -388,26 +502,46 @@ function closeModal() {
 }
 
 async function saveEdit() {
-  const cantidad = parseFloat(document.getElementById('edit-cantidad').value);
-  if (isNaN(cantidad) || cantidad < 0) { notif('Cantidad inválida', 'error'); return; }
+  const nombre = document.getElementById('edit-nombre').value.trim();
+  const cantidad = parseFloat(document.getElementById('edit-cantidad').value) || 0;
+  const unidad = document.getElementById('edit-unidad').value;
+  const categoria = document.getElementById('edit-categoria').value;
+  const stock_minimo = parseFloat(document.getElementById('edit-minimo').value) || 0;
+  const proveedor = document.getElementById('edit-proveedor').value.trim();
+
+  if (!nombre) { notif('El nombre es obligatorio', 'error'); return; }
+
   try {
-    await sbFetch('deposito_stock', `?id=eq.${editingId}`, 'PATCH', {
-      cantidad,
-      updated_at: new Date().toISOString()
-    });
-    const idx = stockData.findIndex(s => s.id === editingId);
-    if (idx >= 0) stockData[idx].cantidad = cantidad;
+    if (modoNuevo) {
+      // Crear ID único basado en el nombre
+      const id = nombre.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/__+/g,'_') + '_' + Date.now();
+      const nuevo = await sbFetch('deposito_stock', '', 'POST', {
+        id, nombre, cantidad, unidad, categoria, sector: categoria,
+        stock_minimo, proveedor, updated_at: new Date().toISOString()
+      });
+      if (nuevo && nuevo[0]) stockData.push(nuevo[0]);
+      else await loadStock();
+      notif('✓ Producto agregado al stock', 'success');
+    } else {
+      await sbFetch('deposito_stock', `?id=eq.${editingId}`, 'PATCH', {
+        cantidad, unidad, categoria, sector: categoria,
+        stock_minimo, proveedor, updated_at: new Date().toISOString()
+      });
+      const idx = stockData.findIndex(s => s.id === editingId);
+      if (idx >= 0) {
+        stockData[idx] = {...stockData[idx], cantidad, unidad, categoria, stock_minimo, proveedor};
+      }
+      notif('✓ Stock actualizado', 'success');
+    }
+    renderFiltros();
     renderStock();
     closeModal();
-    notif('Stock actualizado ✓', 'success');
   } catch(e) {
-    notif('Error al guardar: ' + e.message, 'error');
+    notif('Error al guardar: '+e.message, 'error');
   }
 }
 
-// ══════════════════════════════════════════════
-// FACTURAS CON IA
-// ══════════════════════════════════════════════
+// ── FACTURAS ──
 function checkApiKey() {
   document.getElementById('api-notice').style.display = apiKey ? 'none' : 'flex';
 }
@@ -436,75 +570,80 @@ function procesarFactura(e) {
   if (file) procesarFacturaFile(file);
 }
 
+function matchProducto(nombreFactura) {
+  const norm = nombreFactura.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  
+  // 1. Buscar en equivalencias aprendidas
+  for (const [key, id] of Object.entries(equivalencias)) {
+    if (norm.includes(key)) {
+      const found = stockData.find(s => s.id === id);
+      if (found) return found;
+    }
+  }
+  
+  // 2. Buscar por keywords predefinidas
+  for (const [id, keywords] of Object.entries(KEYWORDS)) {
+    if (keywords.some(kw => norm.includes(kw))) {
+      const found = stockData.find(s => s.id === id);
+      if (found) return found;
+    }
+  }
+  
+  // 3. Match por palabras del nombre del stock
+  return stockData.find(s => {
+    const sNorm = s.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const sWords = sNorm.split(' ').filter(w => w.length > 3);
+    return sWords.some(w => norm.includes(w));
+  }) || null;
+}
+
 async function procesarFacturaFile(file) {
   if (!apiKey) { pedirApiKey(); return; }
-
   document.getElementById('factura-loading').style.display = 'block';
   document.getElementById('factura-result').style.display = 'none';
 
   try {
     const base64 = await fileToBase64(file);
     const isImage = file.type.startsWith('image/');
-
-    const messages = [{
-      role: 'user',
-      content: [
-        {
-          type: isImage ? 'image' : 'document',
-          source: {
-            type: 'base64',
-            media_type: file.type,
-            data: base64
-          }
-        },
-        {
-          type: 'text',
-          text: `Analizá esta factura de proveedor de una panadería/pastelería artesanal.
-Extraé todos los productos con sus cantidades y unidades.
-Respondé SOLO con JSON, sin texto adicional, en este formato exacto:
-{
-  "proveedor": "nombre del proveedor o null",
-  "fecha": "fecha de la factura o null",
-  "productos": [
-    {"nombre": "nombre del producto", "cantidad": 5.0, "unidad": "kg"},
-    ...
-  ]
-}
-Normalizá las unidades a: kg, lt, g, ml, u (unidades).
-Convertí gramos a kg si es más de 1000g.`
-        }
-      ]
-    }];
-
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type':'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
       },
       body: JSON.stringify({
         model: 'claude-opus-4-5',
-        max_tokens: 1000,
-        messages
+        max_tokens: 1500,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: isImage ? 'image' : 'document', source: { type:'base64', media_type:file.type, data:base64 } },
+            { type: 'text', text: `Analizá esta factura de proveedor de una panadería/pastelería artesanal argentina.
+Extraé TODOS los productos con sus cantidades y unidades.
+Respondé SOLO con JSON válido, sin texto adicional:
+{
+  "proveedor": "nombre del proveedor",
+  "fecha": "fecha o null",
+  "productos": [
+    {"nombre": "nombre exacto del producto", "cantidad": 5.0, "unidad": "kg"},
+    ...
+  ]
+}
+Normalizá unidades: kg, lt, g, ml, u, paq, caj, doc. Convertí gramos>1000 a kg.` }
+          ]
+        }]
       })
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'Error de API');
-    }
-
+    if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'Error API'); }
     const data = await res.json();
     const text = data.content[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-
+    const parsed = JSON.parse(text.replace(/```json|```/g,'').trim());
     mostrarResultadoFactura(parsed, file.name);
-
   } catch(e) {
-    notif('Error al procesar factura: ' + e.message, 'error');
+    notif('Error al procesar factura: '+e.message, 'error');
   } finally {
     document.getElementById('factura-loading').style.display = 'none';
     document.getElementById('file-input').value = '';
@@ -512,9 +651,9 @@ Convertí gramos a kg si es más de 1000g.`
 }
 
 function fileToBase64(file) {
-  return new Promise((res, rej) => {
+  return new Promise((res,rej)=>{
     const r = new FileReader();
-    r.onload = () => res(r.result.split(',')[1]);
+    r.onload = ()=>res(r.result.split(',')[1]);
     r.onerror = rej;
     r.readAsDataURL(file);
   });
@@ -523,145 +662,47 @@ function fileToBase64(file) {
 function mostrarResultadoFactura(data, filename) {
   const cont = document.getElementById('factura-result');
   cont.style.display = 'block';
-
   const productos = data.productos || [];
   if (!productos.length) {
-    cont.innerHTML = '<div class="alert alert-error">❌ No se encontraron productos en la factura.</div>';
+    cont.innerHTML = '<div class="alert alert-info">❌ No se encontraron productos.</div>';
     return;
   }
 
-  // Opciones del selector con todos los productos del stock
-  const stockOpts = stockData.map(s => `<option value="${s.id}">${s.nombre} (${Number(s.cantidad).toFixed(1)} ${s.unidad})</option>`).join('') +
-    `<option value="">— Ignorar este producto —</option>`;
+  const stockOpts = stockData.map(s =>
+    `<option value="${s.id}">${s.nombre} (stock: ${Number(s.cantidad).toFixed(1)} ${s.unidad})</option>`
+  ).join('') + '<option value="">— No registrar —</option>';
 
   cont.innerHTML = `
     <div class="factura-result">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div>
-          <div style="font-size:13px;font-weight:700">${data.proveedor || 'Proveedor desconocido'}</div>
-          <div style="font-size:11px;color:var(--text3)">${data.fecha || ''} · ${productos.length} productos detectados</div>
+          <div style="font-size:13px;font-weight:700">${data.proveedor || 'Proveedor'}</div>
+          <div style="font-size:11px;color:var(--text3)">${data.fecha||''} · ${productos.length} productos</div>
         </div>
         <button class="btn btn-primary" onclick="aplicarFactura()" style="padding:6px 14px;font-size:12px">✅ Aplicar al stock</button>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">
-        ℹ️ Para los productos sin coincidencia, seleccioná manualmente a qué materia prima corresponde.
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">
+        Verificá o corregí la materia prima asignada a cada producto de la factura.
       </div>
       ${productos.map((p, i) => {
-        // Match inteligente con palabras clave y equivalencias
-        const pNorm = p.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-        
-        // Tabla de palabras clave por producto
-        const KEYWORDS = {
-          'harina_0000': ['harina 0000','harina cuatro ceros','harina 0000','000/0','4 ceros','hna 0000'],
-          'harina_000': ['harina 000','harina tres ceros','hna 000'],
-          'harina_integral': ['harina integral','integral trigo'],
-          'harina_espelta': ['espelta'],
-          'harina_centeno': ['centeno'],
-          'harina_almendras': ['almendra','almendras'],
-          'harina_coco': ['coco harina','harina de coco'],
-          'manteca': ['manteca','butter'],
-          'margarina': ['margarina'],
-          'grasa': ['grasa','bovigras','vacuna','grasa ref'],
-          'aceite': ['aceite','girasol aceite'],
-          'leche': ['leche','larga vida','entera','descremada'],
-          'azucar': ['azucar','azúcar','sucrose'],
-          'azucar_impalpable': ['impalpable'],
-          'sal': ['sal fina','sal gruesa','cloruro sodio'],
-          'levadura': ['levadura','fermipan','calsa'],
-          'huevos': ['huevo','huevos'],
-          'nueces': ['nuez','nueces'],
-          'almendras': ['almendra pelada','almendras tostadas'],
-          'chocolate': ['chocolate','cobertura'],
-          'cacao_amargo': ['cacao','cocoa'],
-          'algarroba': ['algarroba'],
-          'polenta': ['polenta','maiz polenta'],
-          'miel': ['miel'],
-          'canela': ['canela'],
-          'vainilla': ['vainilla','esencia'],
-          'eritritol': ['eritritol','eritrol'],
-          'coco_rallado': ['coco rallado','coco desecado'],
-          'premezcla_integral': ['premezcla','premezcla integral'],
-          'semillas_mix': ['semillas','mix semillas','semilla'],
-          'carne_picada': ['picada','carne picada','carne molida'],
-          'pollo': ['pollo','pechuga','pollo entero'],
-          'cerdo': ['cerdo','bondiola','paleta cerdo'],
-          'jamon': ['jamon','jamón','paleta cocida'],
-          'queso_maquina': ['queso maquina','queso en fetas','queso tybo'],
-          'muzza': ['mozzarella','muzza','muzzarella'],
-          'queso_crema': ['queso crema','philadelphia'],
-          'nalga': ['nalga','peceto'],
-          'cebolla': ['cebolla'],
-          'morron': ['morrón','morron','pimiento'],
-          'papa': ['papa','papas'],
-          'zapallito': ['zapallito','zucchini'],
-          'calabaza': ['calabaza','zapallo'],
-          'zanahoria': ['zanahoria'],
-          'manzana': ['manzana'],
-          'membrillo': ['membrillo','dulce membrillo'],
-          'mayonesa': ['mayonesa','mayo'],
-          'pan_miga': ['miga','pan lactal','sandwich'],
-          'almidon': ['almidon','almidón','maicena','fecula'],
-          'harina_leudante': ['leudante','leudante harina'],
-          'dulce_leche': ['dulce de leche','ddl'],
-        };
-        
-        // Buscar por keywords primero
-        let match = null;
-        for (const [id, keywords] of Object.entries(KEYWORDS)) {
-          if (keywords.some(kw => pNorm.includes(kw))) {
-            match = stockData.find(s => s.id === id);
-            if (match) break;
-          }
-        }
-        
-        // Si no encontró por keywords, intentar match por palabras del nombre del stock
-        if (!match) {
-          match = stockData.find(s => {
-            const sNorm = s.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-            const sWords = sNorm.split(' ').filter(w => w.length > 3);
-            const pWords = pNorm.split(' ').filter(w => w.length > 3);
-            return sWords.some(w => pNorm.includes(w)) || pWords.some(w => sNorm.includes(w));
-          });
-        }
-        
-        // Guardar equivalencia aprendida
-        const savedEquivs = JSON.parse(localStorage.getItem('deposito_equivalencias') || '{}');
-        if (!match && savedEquivs[pNorm.split(' ').slice(0,2).join(' ')]) {
-          const savedId = savedEquivs[pNorm.split(' ').slice(0,2).join(' ')];
-          match = stockData.find(s => s.id === savedId);
-        }
-
-        if (match) {
-          // Match automático — mostrar con tick y selector por si quiere cambiarlo
-          return `<div class="factura-item" style="flex-direction:column;align-items:flex-start;gap:6px" data-idx="${i}">
-            <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-              <div>
-                <div class="fi-name">${p.nombre}</div>
-                <div class="fi-match"><span class="fi-check">✓</span> Coincide automáticamente</div>
-              </div>
-              <div class="fi-qty">+${p.cantidad} ${p.unidad}</div>
+        const match = matchProducto(p.nombre);
+        return `<div class="factura-item" data-nombre="${p.nombre.replace(/"/g,'&quot;')}">
+          <div class="fi-header">
+            <div>
+              <div class="fi-name">${p.nombre}</div>
+              <div class="fi-hint ${match ? 'fi-ok' : 'fi-warn'}">${match ? '✓ Coincide: '+match.nombre : '⚠ Seleccioná manualmente'}</div>
             </div>
-            <select class="form-input match-select" data-cantidad="${p.cantidad}" style="font-size:12px;padding:5px 8px">
-              ${stockData.map(s => `<option value="${s.id}" ${s.id === match.id ? 'selected' : ''}>${s.nombre} (${Number(s.cantidad).toFixed(1)} ${s.unidad})</option>`).join('')}
-            </select>
-
-          </div>`;
-        } else {
-          // Sin match — selector obligatorio
-          return `<div class="factura-item" style="flex-direction:column;align-items:flex-start;gap:6px;border-left:3px solid var(--yellow)" data-idx="${i}">
-            <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
-              <div>
-                <div class="fi-name">${p.nombre}</div>
-                <div class="fi-match"><span class="fi-warn">⚠</span> Seleccioná a qué producto corresponde</div>
-              </div>
-              <div class="fi-qty">+${p.cantidad} ${p.unidad}</div>
-            </div>
-            <select class="form-input match-select" data-cantidad="${p.cantidad}" style="font-size:12px;padding:5px 8px">
-              ${stockOpts}
-            </select>
-
-          </div>`;
-        }
+            <div class="fi-qty">+${p.cantidad} ${p.unidad}</div>
+          </div>
+          <select class="form-input match-select" data-cantidad="${p.cantidad}" style="font-size:12px;padding:5px 8px">
+            ${match ?
+              `<option value="${match.id}" selected>${match.nombre} (stock: ${Number(match.cantidad).toFixed(1)} ${match.unidad})</option>` +
+              stockData.filter(s=>s.id!==match.id).map(s=>`<option value="${s.id}">${s.nombre} (stock: ${Number(s.cantidad).toFixed(1)} ${s.unidad})</option>`).join('') +
+              '<option value="">— No registrar —</option>'
+              : stockOpts
+            }
+          </select>
+        </div>`;
       }).join('')}
     </div>`;
 
@@ -670,12 +711,11 @@ function mostrarResultadoFactura(data, filename) {
 
 async function aplicarFactura() {
   const selects = document.querySelectorAll('.match-select');
-  let aplicados = 0;
-  let ignorados = 0;
-  let errores = 0;
+  let aplicados = 0, ignorados = 0, errores = 0;
 
   for (const sel of selects) {
     const matchId = sel.value;
+    const nombreFactura = sel.closest('.factura-item')?.dataset.nombre || '';
     if (!matchId) { ignorados++; continue; }
 
     const cantidad = parseFloat(sel.dataset.cantidad);
@@ -684,26 +724,21 @@ async function aplicarFactura() {
     const stockItem = stockData.find(s => s.id === matchId);
     if (!stockItem) continue;
 
-    // Guardar equivalencia para futuras facturas
-    const nombreFactura = sel.closest('.factura-item')?.querySelector('.fi-name')?.textContent || '';
+    // Guardar equivalencia
     if (nombreFactura) {
-      const equivKey = nombreFactura.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(' ').slice(0,3).join(' ');
-      const equivs = JSON.parse(localStorage.getItem('deposito_equivalencias') || '{}');
-      equivs[equivKey] = matchId;
-      localStorage.setItem('deposito_equivalencias', JSON.stringify(equivs));
+      const key = nombreFactura.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(' ').slice(0,3).join(' ');
+      equivalencias[key] = matchId;
+      localStorage.setItem('deposito_equivalencias', JSON.stringify(equivalencias));
     }
 
-    const nuevaCantidad = (Number(stockItem.cantidad) || 0) + cantidad;
+    const nuevaCantidad = (Number(stockItem.cantidad)||0) + cantidad;
     try {
       await sbFetch('deposito_stock', `?id=eq.${matchId}`, 'PATCH', {
-        cantidad: nuevaCantidad,
-        updated_at: new Date().toISOString()
+        cantidad: nuevaCantidad, updated_at: new Date().toISOString()
       });
       stockItem.cantidad = nuevaCantidad;
       aplicados++;
-    } catch(e) {
-      errores++;
-    }
+    } catch(e) { errores++; }
   }
 
   if (window._facturaData) {
@@ -714,38 +749,35 @@ async function aplicarFactura() {
       productos: window._facturaData.data.productos.length,
       aplicados
     });
-    localStorage.setItem('deposito_historial', JSON.stringify(historial.slice(0, 20)));
+    localStorage.setItem('deposito_historial', JSON.stringify(historial.slice(0,20)));
     renderHistorial();
   }
 
   renderStock();
   document.getElementById('factura-result').style.display = 'none';
-
-  if (aplicados > 0) notif(`✓ ${aplicados} productos actualizados en stock`, 'success');
-  if (ignorados > 0) notif(`ℹ️ ${ignorados} productos ignorados`, 'info');
-  if (errores > 0) notif(`⚠ ${errores} errores al guardar`, 'error');
+  if (aplicados > 0) notif(`✓ ${aplicados} productos actualizados`, 'success');
+  if (ignorados > 0) notif(`ℹ ${ignorados} productos no registrados`, 'info');
+  if (errores > 0) notif(`⚠ ${errores} errores`, 'error');
 }
 
 function renderHistorial() {
   const cont = document.getElementById('historial-container');
   if (!historial.length) {
-    cont.innerHTML = '<div class="empty"><div class="empty-icon">📄</div>Sin facturas cargadas aún.</div>';
+    cont.innerHTML = '<div class="empty"><div class="empty-icon">📄</div>Sin facturas cargadas.</div>';
     return;
   }
-  cont.innerHTML = historial.map(h => `
+  cont.innerHTML = historial.map(h=>`
     <div class="hist-item">
       <div>
-        <div style="font-size:13px;font-weight:500">${h.proveedor || h.filename}</div>
-        <div class="hist-products">${h.aplicados} de ${h.productos} productos aplicados</div>
-        <div class="hist-date">${h.fecha}</div>
+        <div style="font-size:13px;font-weight:500">${h.proveedor||h.filename}</div>
+        <div style="font-size:11px;color:var(--text2)">${h.aplicados} de ${h.productos} aplicados</div>
+        <div style="font-size:10px;color:var(--text3)">${h.fecha}</div>
       </div>
       <div class="hist-count">${h.aplicados}✓</div>
     </div>`).join('');
 }
 
-// ══════════════════════════════════════════════
-// PEDIDOS
-// ══════════════════════════════════════════════
+// ── PEDIDOS ──
 async function loadPedidos() {
   try {
     const pedidos = await sbFetch('pedidos_sector', '?hacia_sector=eq.deposito&estado=eq.pendiente&order=created_at.desc&limit=30');
@@ -754,76 +786,57 @@ async function loadPedidos() {
       cont.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>No hay pedidos pendientes.</div>';
       return;
     }
-    cont.innerHTML = pedidos.map(p => `
+    cont.innerHTML = pedidos.map(p=>`
       <div class="pedido-item">
         <div class="pedido-header">
           <span class="pedido-sector">📍 ${p.desde_sector?.toUpperCase()}</span>
           <span class="pedido-time">${new Date(p.created_at).toLocaleString('es-AR')}</span>
         </div>
-        <div class="pedido-product">${p.producto} ${p.urgente ? '<span class="badge-urgente">URGENTE</span>' : ''}</div>
-        <div class="pedido-qty">${p.cantidad} ${p.unidad || ''} ${p.nota ? '· ' + p.nota : ''}</div>
-        <div class="pedido-actions">
+        <div style="font-size:13px;font-weight:500">${p.producto} ${p.urgente?'<span class="badge-urgente">URGENTE</span>':''}</div>
+        <div style="font-size:12px;color:var(--text2)">${p.cantidad} ${p.unidad||''} ${p.nota?'· '+p.nota:''}</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
           <button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="atenderPedido(${p.id},'completado')">✓ Atendido</button>
           <button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="atenderPedido(${p.id},'rechazado')">✗ Sin stock</button>
         </div>
       </div>`).join('');
-  } catch(e) {
-    notif('Error al cargar pedidos', 'error');
-  }
+  } catch(e) { notif('Error al cargar pedidos', 'error'); }
 }
 
 async function atenderPedido(id, estado) {
   try {
-    await sbFetch('pedidos_sector', `?id=eq.${id}`, 'PATCH', { estado, updated_at: new Date().toISOString() });
-    notif(estado === 'completado' ? '✓ Pedido atendido' : '✗ Pedido rechazado', estado === 'completado' ? 'success' : 'error');
+    await sbFetch('pedidos_sector', `?id=eq.${id}`, 'PATCH', {estado, updated_at: new Date().toISOString()});
+    notif(estado==='completado'?'✓ Pedido atendido':'✗ Pedido rechazado', estado==='completado'?'success':'error');
     loadPedidos();
-  } catch(e) {
-    notif('Error: ' + e.message, 'error');
-  }
+  } catch(e) { notif('Error: '+e.message, 'error'); }
 }
 
-// ══════════════════════════════════════════════
-// ASISTENTE CHAT
-// ══════════════════════════════════════════════
+// ── ASISTENTE ──
 let chatHistory = [];
-
 async function sendChat() {
   if (!apiKey) { pedirApiKey(); return; }
   const input = document.getElementById('chat-input');
   const msg = input.value.trim();
   if (!msg) return;
   input.value = '';
-
   addMsg(msg, 'user');
-  chatHistory.push({ role: 'user', content: msg });
+  chatHistory.push({role:'user', content:msg});
 
-  const stockResumen = stockData.slice(0, 30).map(s => `${s.nombre}: ${s.cantidad} ${s.unidad}`).join(', ');
-
+  const resumen = stockData.slice(0,40).map(s=>`${s.nombre}: ${s.cantidad} ${s.unidad}`).join(', ');
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 500,
-        system: `Sos el asistente del depósito de PolyArtesanal, una panadería/pastelería artesanal. 
-Stock actual (primeros 30): ${stockResumen}.
-Respondé en español, de forma concisa y útil. Si te preguntan por stock, dá los datos exactos.`,
+        model:'claude-opus-4-5', max_tokens:500,
+        system:`Sos el asistente del depósito de PolyArtesanal. Stock actual: ${resumen}. Respondé en español, conciso y útil.`,
         messages: chatHistory.slice(-10)
       })
     });
     const data = await res.json();
     const reply = data.content[0].text;
-    chatHistory.push({ role: 'assistant', content: reply });
+    chatHistory.push({role:'assistant', content:reply});
     addMsg(reply, 'assistant');
-  } catch(e) {
-    addMsg('Error al conectar con la IA: ' + e.message, 'assistant');
-  }
+  } catch(e) { addMsg('Error: '+e.message, 'assistant'); }
 }
 
 function addMsg(text, role) {
@@ -835,14 +848,8 @@ function addMsg(text, role) {
   cont.scrollTop = cont.scrollHeight;
 }
 
-// ══════════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', async () => {
-  if (!apiKey) {
-    // Mostrar aviso en facturas pero no bloquear el resto
-    document.getElementById('api-notice').style.display = 'flex';
-  }
+  if (!apiKey) document.getElementById('api-notice').style.display = 'flex';
   await loadStock();
   renderHistorial();
 });
