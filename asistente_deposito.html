@@ -348,52 +348,57 @@ const MP_CATALOG = [
 // ── STATE ──────────────────────────────────────────
 async function initStockFromCatalog() {
   try {
-    const rows = await sbSelect('deposito_stock', '?order=id');
+    const rows = await sbSelect('deposito_stock', '?order=sector,nombre');
     if (rows && rows.length > 0) {
+      // Supabase es la fuente de verdad — reconstruir catálogo desde ahí
       rows.forEach(r => {
-        stockState[r.id] = r.cantidad || 0;
-        // Si es un item dinámico que no está en el catálogo, agregarlo
-        if (!MP_CATALOG.find(m => m.id === r.id) && r.id) {
+        stockState[r.id] = parseFloat(r.cantidad) || 0;
+        // Actualizar o agregar al catálogo local
+        const existing = MP_CATALOG.find(m => m.id === r.id);
+        if (existing) {
+          // Actualizar datos del catálogo con los de Supabase
+          existing.nombre = r.nombre || existing.nombre;
+          existing.sector = r.sector || existing.sector;
+          existing.stockMinimo = parseFloat(r.stock_minimo) || existing.stockMinimo;
+          existing.consumoSemanal = parseFloat(r.consumo_semanal) || existing.consumoSemanal;
+          existing.proveedor = r.proveedor || existing.proveedor;
+          existing.unidad = r.unidad || existing.unidad;
+        } else {
+          // Item nuevo en Supabase que no está en el catálogo — agregar
           MP_CATALOG.push({
-            id: r.id, nombre: r.nombre || r.id,
-            unidad: r.unidad || 'u', sector: r.sector || 'todos',
-            consumoSemanal: r.consumo_semanal || 0,
-            stockMinimo: r.stock_minimo || 0,
+            id: r.id,
+            nombre: r.nombre || r.id,
+            unidad: r.unidad || 'u',
+            sector: r.sector || 'todos',
+            consumoSemanal: parseFloat(r.consumo_semanal) || 1,
+            stockMinimo: parseFloat(r.stock_minimo) || 0,
             proveedor: r.proveedor || '—'
           });
         }
       });
-      console.log('✓ Stock depósito cargado desde Supabase:', rows.length, 'items');
+      console.log('✓ Stock y catálogo cargados desde Supabase:', rows.length, 'items');
     } else {
-      // Supabase vacío — cargar localStorage como fallback
-      try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e){ stockState = {}; }
-      console.log('ℹ️ Supabase vacío, usando localStorage');
+      console.log('ℹ️ Supabase vacío — usando catálogo base');
+      for (const mp of MP_CATALOG) {
+        if (stockState[mp.id] === undefined) stockState[mp.id] = 0;
+      }
     }
   } catch(e) {
-    console.warn('⚠️ Error cargando desde Supabase, usando localStorage:', e);
-    try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e2){ stockState = {}; }
+    console.warn('⚠️ Error Supabase, usando catálogo local:', e);
+    for (const mp of MP_CATALOG) {
+      if (stockState[mp.id] === undefined) stockState[mp.id] = 0;
+    }
   }
-  // Asegurar que todos los items del catálogo existan en stockState
-  for (const mp of MP_CATALOG) {
-    if (stockState[mp.id] === undefined) stockState[mp.id] = 0;
-  }
-  // NO llamar saveStock() aquí para no sobreescribir Supabase con ceros
 }
 
 function saveStock() {
   localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
-  // Include dynamic items too
-  const allItems = [...MP_CATALOG, ...MP_CATALOG.filter(m=>m.id.startsWith('mp_'))];
-  const seen = new Set();
-  const rows = MP_CATALOG.filter(mp => {
-    if (seen.has(mp.id)) return false;
-    seen.add(mp.id); return true;
-  }).map(mp => ({
+  const rows = MP_CATALOG.map(mp => ({
     id: mp.id, nombre: mp.nombre, cantidad: stockState[mp.id]||0,
     unidad: mp.unidad, sector: mp.sector, stock_minimo: mp.stockMinimo,
     consumo_semanal: mp.consumoSemanal, proveedor: mp.proveedor
   }));
-  sbUpsert('deposito_stock', rows).catch(e => console.warn('Error guardando en Supabase:', e));
+  sbUpsert('deposito_stock', rows).catch(()=>{});
 }
 
 function adjustStock(id, delta) {
@@ -416,20 +421,36 @@ function renderStock(filterQ) {
   const el = document.getElementById('stock-list');
   if (!el) return;
 
-  const sectors = [
-    { key: 'panaderia', label: '🍞 Panadería' },
-    { key: 'pasteleria', label: '🍰 Pastelería' },
-    { key: 'cocina', label: '🍳 Cocina' },
-    { key: 'todos', label: '🏭 Todos los sectores' },
-    { key: 'limpieza', label: '🧴 Limpieza' },
-    { key: 'papeleria', label: '📦 Papelería' },
-  ];
+  // Build sectors dynamically from catalog
+  const allSectors = new Set();
+  MP_CATALOG.forEach(mp => {
+    // Handle combined sectors like 'panaderia+pasteleria'
+    (mp.sector || 'otros').split('+').forEach(s => allSectors.add(s.trim()));
+  });
+
+  const SECTOR_META = {
+    'panaderia': '🍞 Panadería',
+    'pasteleria': '🍰 Pastelería',
+    'cocina': '🍳 Cocina',
+    'todos': '🏭 Todos los sectores',
+    'limpieza': '🧴 Limpieza',
+    'papeleria': '📦 Papelería',
+    'harinas_secos': '🌾 Harinas y Secos',
+    'lacteos': '🥛 Lácteos',
+    'otros': '📋 Otros',
+  };
+
+  const sectors = [...allSectors].map(key => ({
+    key,
+    label: SECTOR_META[key] || ('📦 ' + key.charAt(0).toUpperCase() + key.slice(1))
+  })).sort((a,b) => a.label.localeCompare(b.label));
 
   let html = '';
   for (const sec of sectors) {
     const items = MP_CATALOG.filter(mp => {
-      const inSector = mp.sector === sec.key || mp.sector.includes(sec.key);
-      const matchQ = !filterQ || mp.nombre.toLowerCase().includes(filterQ) || mp.proveedor.toLowerCase().includes(filterQ);
+      const secs = (mp.sector || '').split('+').map(s => s.trim());
+      const inSector = secs.includes(sec.key);
+      const matchQ = !filterQ || mp.nombre.toLowerCase().includes(filterQ) || (mp.proveedor||'').toLowerCase().includes(filterQ);
       return inSector && matchQ;
     });
     if (!items.length) continue;
@@ -793,9 +814,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (!MP_CATALOG.find(x => x.id === mp.id)) MP_CATALOG.push(mp);
     }
   } catch(e){}
-  // Mostrar loading mientras carga de Supabase
-  document.getElementById('stock-list').innerHTML = '<div style="text-align:center;padding:40px;color:#666;font-size:14px;">⏳ Cargando stock desde la base de datos...</div>';
-  await initStockFromCatalog();
+  initStockFromCatalog();
   try { facturasHistory = JSON.parse(localStorage.getItem(FACTURAS_KEY) || '[]'); } catch(e){}
   renderStock();
   checkAlerts();
