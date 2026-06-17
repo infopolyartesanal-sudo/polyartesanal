@@ -138,6 +138,7 @@
   <div id="tabs">
     <button class="tab active" onclick="switchTab('stock')" id="tab-stock"><i class="ti ti-package"></i>Stock</button>
     <button class="tab" onclick="switchTab('recepcion')" id="tab-recepcion"><i class="ti ti-truck-delivery"></i>Recepción</button>
+    <button class="tab" onclick="switchTab('comanda')" id="tab-comanda"><i class="ti ti-send"></i>Comanda</button>
     <button class="tab" onclick="switchTab('egresos')" id="tab-egresos"><i class="ti ti-arrow-up"></i>Egresos</button>
     <button class="tab" onclick="switchTab('informe')" id="tab-informe"><i class="ti ti-printer"></i>Informe</button>
     <button class="tab" onclick="switchTab('pedidos-salon')" id="tab-pedidos-salon" style="position:relative;">
@@ -192,9 +193,9 @@
 
   <!-- RECEPCIÓN -->
   <div class="panel" id="panel-recepcion">
-    <div id="despachos-pendientes" style="padding:12px;border-bottom:1px solid var(--border);flex-shrink:0;"></div>
+    <div id="despachos-pendientes-wrap" style="padding:12px 12px 0;"></div>
     <div class="recepcion-form">
-      <div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:8px;">✍️ Carga manual <span style="font-weight:400;color:#888;">(si llegó algo sin despachar)</span></div>
+      <div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:8px;">📦 Registrar mercadería recibida</div>
       <div class="recepcion-row">
         <select class="recepcion-select" id="rec-producto">
           <option value="">— Seleccioná producto —</option>
@@ -212,6 +213,38 @@
       </div>
     </div>
     <div class="recepcion-history" id="recepcion-history"></div>
+  </div>
+
+  <!-- COMANDA -->
+  <div class="panel" id="panel-comanda">
+    <div style="padding:14px;overflow-y:auto;flex:1;">
+      <div style="background:#fff;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:700;color:var(--primary-dark);margin-bottom:10px;">📤 Pedir a un sector</div>
+        <label style="font-size:12px;color:#555;">Sector</label>
+        <select id="cmd-sector" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px;margin:4px 0 10px;">
+          <option value="panaderia">🍞 Panadería</option>
+          <option value="pasteleria">🍰 Pastelería</option>
+          <option value="cocina">🍳 Cocina</option>
+        </select>
+        <label style="font-size:12px;color:#555;">¿Qué necesitás?</label>
+        <input id="cmd-producto" placeholder="Ej: Medialunas de manteca" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px;margin:4px 0 10px;" />
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;"><label style="font-size:12px;color:#555;">Cantidad</label>
+            <input id="cmd-cantidad" type="number" min="1" placeholder="0" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px;margin-top:4px;" /></div>
+          <div style="width:120px;"><label style="font-size:12px;color:#555;">Unidad</label>
+            <select id="cmd-unidad" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px;margin-top:4px;">
+              <option value="u">unidades</option><option value="docena">docenas</option><option value="bandeja">bandejas</option><option value="kg">kg</option>
+            </select></div>
+        </div>
+        <input id="cmd-nota" placeholder="Nota (opcional)" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px;margin:10px 0;" />
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#333;margin-bottom:12px;cursor:pointer;">
+          <input type="checkbox" id="cmd-urgente" /> 🔴 Marcar como urgente
+        </label>
+        <button onclick="enviarComanda()" style="width:100%;padding:13px;background:var(--primary-dark);color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;"><i class="ti ti-send"></i> Enviar comanda</button>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:#555;margin-bottom:8px;">Comandas enviadas</div>
+      <div id="mis-comandas-list"></div>
+    </div>
   </div>
 
   <!-- INSUMOS -->
@@ -544,7 +577,7 @@ function registrarRecepcion() {
   const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
   recepciones.unshift({ prodId, nombre, cantidad, sector, time: now });
   localStorage.setItem(RECEPCION_KEY, JSON.stringify(recepciones));
-  sbUpsert('salon_recepciones', { producto_id: prodId, producto_nombre: nombre, cantidad, sector_origen: sector, destino: 'salon', estado: 'confirmado', confirmado_at: new Date().toISOString() }).catch(()=>{});
+  sbUpsert('salon_recepciones', { producto_id: prodId, producto_nombre: nombre, cantidad, sector_origen: sector }).catch(()=>{});
   renderRecepcionHistory();
   renderStock();
   addToLog(`📦 Recepción desde ${sector}: ${cantidad} ${nombre}`);
@@ -564,71 +597,6 @@ function renderRecepcionHistory() {
       <div class="ri-text">+${r.cantidad} × ${r.nombre}</div>
       <div class="ri-sector">${SECTOR_LABELS[r.sector] || r.sector}</div>
     </div>`).join('');
-}
-
-// ── DESPACHOS PENDIENTES DE CONFIRMAR ─────────────
-let despachosPendientes = [];
-
-async function loadDespachosPendientes() {
-  try {
-    const rows = await sbSelect('salon_recepciones',
-      '?destino=eq.salon&estado=eq.despachado&order=created_at.asc');
-    despachosPendientes = rows || [];
-  } catch(e) {
-    console.warn('loadDespachosPendientes error:', e);
-    despachosPendientes = [];
-  }
-  renderDespachosPendientes();
-}
-
-function renderDespachosPendientes() {
-  const el = document.getElementById('despachos-pendientes');
-  if (!el) return;
-  if (!despachosPendientes.length) {
-    el.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:6px;">📥 Despachos pendientes</div>' +
-      '<div style="text-align:center;color:#aaa;padding:14px;font-size:13px;">No hay despachos esperando confirmación.</div>';
-    return;
-  }
-  el.innerHTML = '<div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:6px;">📥 Despachos pendientes (' + despachosPendientes.length + ')</div>' +
-    despachosPendientes.map(d => {
-      const hora = d.created_at ? new Date(d.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}) : '';
-      const sec = SECTOR_LABELS[d.sector_origen] || d.sector_origen || '';
-      return `<div class="recepcion-item" style="display:flex;align-items:center;gap:8px;">
-        <div style="flex:1;">
-          <div class="ri-text">${d.cantidad} × ${d.producto_nombre || d.producto_id}</div>
-          <div class="ri-sector">${sec}${hora ? ' · ' + hora : ''}</div>
-        </div>
-        <button class="recepcion-btn" style="background:var(--primary);" onclick="confirmarDespacho('${d.id}')">✓ Confirmar</button>
-      </div>`;
-    }).join('');
-}
-
-async function confirmarDespacho(id) {
-  const d = despachosPendientes.find(x => String(x.id) === String(id));
-  if (!d) return;
-  const prodId = d.producto_id;
-  const cant = d.cantidad || 0;
-  // 1) Marcar el despacho como confirmado en Supabase
-  try {
-    await sbFetch('PATCH', 'salon_recepciones',
-      { estado: 'confirmado', confirmado_at: new Date().toISOString() },
-      '?id=eq.' + encodeURIComponent(id));
-  } catch(e) { console.warn('confirmarDespacho PATCH error:', e); }
-  // 2) Sumar al stock del Salón (el Salón es el único dueño de salon_stock)
-  if (prodId) {
-    stockState[prodId] = (stockState[prodId] || 0) + cant;
-    saveStock();
-  }
-  // 3) Registrar en el historial local del día
-  const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
-  recepciones.unshift({ prodId, nombre: d.producto_nombre || prodId, cantidad: cant, sector: d.sector_origen, time: now });
-  localStorage.setItem(RECEPCION_KEY, JSON.stringify(recepciones));
-  addToLog(`✓ Confirmado desde ${d.sector_origen}: ${cant} ${d.producto_nombre || prodId}`);
-  // 4) Sacarlo de la lista de pendientes y refrescar
-  despachosPendientes = despachosPendientes.filter(x => String(x.id) !== String(id));
-  renderDespachosPendientes();
-  renderRecepcionHistory();
-  renderStock();
 }
 
 // ── INSUMOS CONSUMIDOS ────────────────────────────
@@ -904,7 +872,8 @@ function switchTab(name) {
   document.getElementById('panel-'+name).classList.add('active');
   if (name==='stock') renderStock();
   if (name==='insumos') renderInsumosPanel();
-  if (name==='recepcion') { loadDespachosPendientes(); renderRecepcionHistory(); }
+  if (name==='recepcion') { renderRecepcionHistory(); loadDespachosPendientes(); }
+  if (name==='comanda') loadMisComandas();
   if (name==='egresos') { initEgresosSelect(); renderEgresosHistory(); }
   if (name==='informe') renderInforme();
 }
@@ -953,6 +922,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderInsumosPanel();
   renderRecepcionHistory();
   loadDespachosPendientes();
+  loadMisComandas();
   checkAlerts();
   document.getElementById('chat-input').addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
 });
@@ -1074,7 +1044,6 @@ function updatePedidosBadge_salon() {
 }
 
 setInterval(loadPedidos_salon, 60000);
-setInterval(loadDespachosPendientes, 60000);
 
 
 // Hook: al guardar stock publicar alertas al central
@@ -1084,6 +1053,112 @@ saveStock = function(...args) {
   setTimeout(publishStockToCentral_salon, 400);
 };
 
+
+// ── DESPACHOS POR CONFIRMAR (recepción real) ──────────────
+let despachosPend = [];
+async function loadDespachosPendientes(){
+  try {
+    const rows = await sbSelect('salon_recepciones', '?estado=eq.despachado&order=created_at.asc');
+    despachosPend = rows || [];
+    renderDespachosPendientes();
+    updateRecepcionBadge();
+  } catch(e){ console.warn('despachos pend', e); }
+}
+function renderDespachosPendientes(){
+  const el = document.getElementById('despachos-pendientes-wrap');
+  if(!el) return;
+  if(!despachosPend.length){ el.innerHTML=''; return; }
+  const icons={panaderia:'🍞',pasteleria:'🍰',cocina:'🍳',madrugada:'🌅',deposito:'🏭'};
+  el.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">📥 Despachos por confirmar ('+despachosPend.length+')</div>' +
+    despachosPend.map(function(r){
+      const hora = new Date(r.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      const foto = r.foto_url ? '<img src="'+r.foto_url+'" style="width:46px;height:46px;object-fit:cover;border-radius:8px;flex-shrink:0;" />' : '';
+      return '<div style="background:#fff;border:1px solid #d8b4fe;border-radius:10px;padding:11px;margin-bottom:8px;display:flex;gap:10px;align-items:center;">'
+        + foto
+        + '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;">'+(r.producto_nombre||r.producto_id)+'</div>'
+        + '<div style="font-size:11px;color:#888;margin-top:2px;">'+(icons[r.sector_origen]||'📦')+' '+(r.sector_origen||'')+' · '+r.cantidad+' u · '+hora+'</div></div>'
+        + '<button onclick="confirmarDespacho(\''+r.id+'\')" style="background:#6A1B9A;color:#fff;border:none;border-radius:8px;padding:9px 12px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">✓ Recibí</button>'
+        + '</div>';
+    }).join('');
+}
+async function confirmarDespacho(id){
+  const r = despachosPend.find(function(x){ return String(x.id)===String(id); });
+  if(!r) return;
+  const pid = r.producto_id || ('rec_'+Date.now());
+  const cant = Number(r.cantidad)||0;
+  const known = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL).some(function(p){ return p.id===pid; });
+  if(!known){
+    PRODUCTOS_EXTRA.push({ id:pid, nombre:(r.producto_nombre||pid), unidad:'u', sector:(r.sector_origen||'salon'), minLocal:0, paso:1 });
+    localStorage.setItem('salon_extra_productos', JSON.stringify(PRODUCTOS_EXTRA));
+  }
+  stockState[pid] = (stockState[pid]||0) + cant;
+  saveStock();
+  try { await sbFetch('PATCH','salon_recepciones',{ estado:'confirmado', confirmado_at:new Date().toISOString() }, '?id=eq.'+encodeURIComponent(id)); } catch(e){ console.warn(e); }
+  if (typeof addToLog==='function') addToLog('📥 Recepción confirmada: +'+cant+' '+(r.producto_nombre||pid)+' (de '+(r.sector_origen||'')+')');
+  await loadDespachosPendientes();
+  renderStock();
+  showToast('✓ Sumado al stock');
+}
+function updateRecepcionBadge(){
+  const tab = document.getElementById('tab-recepcion');
+  if(!tab) return;
+  const old = tab.querySelector('.rec-badge'); if(old) old.remove();
+  if(despachosPend.length>0){
+    const s=document.createElement('span'); s.className='rec-badge'; s.textContent=despachosPend.length;
+    s.style.cssText='position:absolute;top:2px;right:4px;background:#E24B4A;color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;';
+    tab.style.position='relative'; tab.appendChild(s);
+  }
+}
+
+// ── COMANDAS (Salón → sectores) ───────────────────────────
+let misComandas = [];
+async function enviarComanda(){
+  const hacia = document.getElementById('cmd-sector').value;
+  const producto = document.getElementById('cmd-producto').value.trim();
+  const cantidad = parseFloat(document.getElementById('cmd-cantidad').value);
+  const unidad = document.getElementById('cmd-unidad').value;
+  const nota = document.getElementById('cmd-nota').value.trim();
+  const urgente = document.getElementById('cmd-urgente').checked;
+  if(!producto || !cantidad || cantidad<=0){ alert('Poné qué necesitás y la cantidad.'); return; }
+  try {
+    await sbUpsert('pedidos_sector', [{ desde_sector:'salon', hacia_sector:hacia, producto:producto, cantidad:cantidad, unidad:unidad, urgente:urgente, nota:nota, estado:'pendiente' }]);
+    if (typeof addToLog==='function') addToLog('📤 Comanda a '+hacia+': '+cantidad+' '+unidad+' de '+producto+(urgente?' (URGENTE)':''));
+    document.getElementById('cmd-producto').value=''; document.getElementById('cmd-cantidad').value=''; document.getElementById('cmd-nota').value=''; document.getElementById('cmd-urgente').checked=false;
+    showToast('📤 Comanda enviada a '+hacia);
+    loadMisComandas();
+  } catch(e){ console.error(e); alert('No se pudo enviar la comanda, probá de nuevo.'); }
+}
+async function loadMisComandas(){
+  try {
+    const rows = await sbSelect('pedidos_sector', '?desde_sector=eq.salon&order=created_at.desc&limit=40');
+    misComandas = rows || [];
+    renderMisComandas();
+  } catch(e){ console.warn('mis comandas', e); }
+}
+function renderMisComandas(){
+  const el = document.getElementById('mis-comandas-list');
+  if(!el) return;
+  if(!misComandas.length){ el.innerHTML='<div style="text-align:center;color:#aaa;padding:24px;font-size:13px;">Todavía no enviaste comandas.</div>'; return; }
+  const icons={panaderia:'🍞',pasteleria:'🍰',cocina:'🍳'};
+  const estLabel={pendiente:'⏳ Pendiente',en_proceso:'👨‍🍳 En preparación',listo:'✅ Listo',entregado:'📦 Entregado'};
+  const estColor={pendiente:'#fef9c3|#92400e',en_proceso:'#dbeafe|#1e40af',listo:'#dcfce7|#166534',entregado:'#eeeeee|#666666'};
+  el.innerHTML = misComandas.map(function(p){
+    const hora = new Date(p.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    const c = (estColor[p.estado]||'#eeeeee|#666666').split('|');
+    return '<div style="background:#fff;border:1px solid '+(p.urgente?'#fca5a5':'#eee')+';border-radius:10px;padding:11px;margin-bottom:8px;">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;">'
+      + '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:14px;">'+(p.urgente?'🔴 ':'')+p.producto+'</div>'
+      + '<div style="font-size:11px;color:#888;margin-top:2px;">'+(icons[p.hacia_sector]||'')+' '+p.hacia_sector+' · '+p.cantidad+' '+p.unidad+' · '+hora+(p.nota?' · "'+p.nota+'"':'')+'</div></div>'
+      + '<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:12px;height:fit-content;white-space:nowrap;background:'+c[0]+';color:'+c[1]+';">'+(estLabel[p.estado]||p.estado)+'</span>'
+      + '</div></div>';
+  }).join('');
+}
+function showToast(msg){
+  let t=document.getElementById('salon-toast');
+  if(!t){ t=document.createElement('div'); t.id='salon-toast'; t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#4A148C;color:#fff;padding:11px 18px;border-radius:22px;font-size:14px;font-weight:600;z-index:3000;box-shadow:0 4px 16px rgba(0,0,0,.25);'; document.body.appendChild(t); }
+  t.textContent=msg; t.style.display='block'; clearTimeout(window._st); window._st=setTimeout(function(){ t.style.display='none'; },2500);
+}
+setInterval(function(){ const p=document.getElementById('panel-recepcion'); if(p&&p.classList.contains('active')) loadDespachosPendientes(); }, 45000);
 
 </script>
 </body>
