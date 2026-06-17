@@ -1005,13 +1005,13 @@ const RECIPE_TO_PROD = {
   'Pan de Hamburguesa': 'pan_hamburguesa',
   'Facturas Veganas': 'facturas_veganas',
   'Rosca de Pascua': 'rosca',
-  'Pebetes': 'pan_caserito',
+  'Pebetes': 'pebetes',
   'Pan Caserito / Francés': 'pan_caserito',
   'Facturas de Grasa': 'facturas_grasa',
-  'Pan Molde Blanco': 'pan_integral',
-  'Pan Boniato (Calabaza)': 'pan_integral',
+  'Pan Molde Blanco': 'pan_blanco',
+  'Pan Boniato (Calabaza)': 'pan_boniato',
   'Pan Molde Integral': 'pan_integral',
-  'Pan Molde Integral Sin Sal': 'pan_integral',
+  'Pan Molde Integral Sin Sal': 'pan_integral_sinsal',
   'Prepizza Integral': 'prepizza_integral',
   'Pan de Maíz': 'pan_maiz',
   'Pan de Centeno': 'pan_centeno',
@@ -1468,6 +1468,14 @@ const PROD_CATALOG = [
     dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
   { id:'pan_espelta', nombre:'Pan Molde de Espelta', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
     dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
+  { id:'pan_blanco', nombre:'Pan Molde Blanco', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
+  { id:'pan_boniato', nombre:'Pan Boniato', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:1,viernes:1,sabado:1,domingo:1} },
+  { id:'pan_integral_sinsal', nombre:'Pan Integral Sin Sal', unidad:'u', rendimiento:10, cuota:10, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:1,viernes:1,sabado:1,domingo:1} },
+  { id:'pebetes', nombre:'Pebetes', unidad:'u', rendimiento:20, cuota:20, tandas:1, pedidoOnly:false,
+    dias:{lunes:1,martes:1,miercoles:1,jueves:2,viernes:2,sabado:2,domingo:1} },
   { id:'libritos_veganos', nombre:'Libritos Veganos', unidad:'kg', rendimiento:8, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
   { id:'pastelitos', nombre:'Masa Pastelitos', unidad:'u', rendimiento:50, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
   { id:'facturas_veganas', nombre:'Facturas Veganas', unidad:'u', rendimiento:120, cuota:null, tandas:null, pedidoOnly:true, dias:{} },
@@ -1523,6 +1531,10 @@ const PROD_TO_RECIPE = {
   'pan_maiz': 'Pan de Maíz',
   'pan_centeno': 'Pan de Centeno',
   'pan_espelta': 'Pan Molde de Espelta',
+  'pan_blanco': 'Pan Molde Blanco',
+  'pan_boniato': 'Pan Boniato (Calabaza)',
+  'pan_integral_sinsal': 'Pan Molde Integral Sin Sal',
+  'pebetes': 'Pebetes',
   'libritos_veganos': 'Libritos Veganos',
   'pastelitos': 'Masa para Pastelitos',
   'facturas_veganas': 'Facturas Veganas',
@@ -2129,7 +2141,11 @@ function getCamaraTotal(id) { return Math.round((camaraPanState[id] || 0) * 10) 
 function loadProdDestino() {
   try { prodDestino = JSON.parse(localStorage.getItem(DESTINO_KEY) || '{}'); } catch(e){ prodDestino = {}; }
 }
-function getProdDestino(id) { return prodDestino[id] === 'camara' ? 'camara' : 'freezer'; }
+const DESTINO_DEFAULT_CAMARA = ['pan_blanco','pan_boniato','pan_integral_sinsal'];
+function getProdDestino(id) {
+  if (prodDestino[id]) return prodDestino[id] === 'camara' ? 'camara' : 'freezer';
+  return DESTINO_DEFAULT_CAMARA.includes(id) ? 'camara' : 'freezer';
+}
 function setProdDestino(id, dest) {
   prodDestino[id] = (dest === 'camara') ? 'camara' : 'freezer';
   localStorage.setItem(DESTINO_KEY, JSON.stringify(prodDestino));
