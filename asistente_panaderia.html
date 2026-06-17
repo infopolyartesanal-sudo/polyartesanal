@@ -1506,6 +1506,30 @@ function getProdItem(id) {
   return prodState[id];
 }
 
+const PROD_TO_RECIPE = {
+  'libritos_integrales': 'Libritos Integrales',
+  'libritos_clasicos': 'Libritos Clásicos',
+  'cremonas': 'Cremonas',
+  'bizcochitos': 'Bizcochitos de Manteca y Grasa',
+  'palitos_queso': 'Palitos de Queso de Hojaldre',
+  'palmeritas': 'Palmeritas',
+  'emp_clasicas': 'Masa Empanadas Clásicas',
+  'emp_integral': 'Masa Empanadas Integral',
+  'medialunas_manteca': 'Medialunas de Manteca',
+  'facturas_grasa': 'Facturas de Grasa',
+  'pan_caserito': 'Pan Caserito / Francés',
+  'pan_integral': 'Pan Molde Integral',
+  'prepizza_integral': 'Prepizza Integral',
+  'pan_maiz': 'Pan de Maíz',
+  'pan_centeno': 'Pan de Centeno',
+  'pan_espelta': 'Pan Molde de Espelta',
+  'libritos_veganos': 'Libritos Veganos',
+  'pastelitos': 'Masa para Pastelitos',
+  'facturas_veganas': 'Facturas Veganas',
+  'rosca': 'Rosca de Pascua',
+  'pan_hamburguesa': 'Pan de Hamburguesa',
+};
+
 async function addTanda(id) {
   const item = getProdItem(id);
   item.tandasHechas++;
@@ -1517,11 +1541,16 @@ async function addTanda(id) {
 
   // ── INTEGRACIÓN: descontar ingredientes de la receta del depósito ──
   try {
-    // Buscar la receta correspondiente en el catálogo de recetas
-    const receta = (typeof recipes !== 'undefined') ? recipes.find(r =>
-      r.name.toLowerCase().includes(cat.nombre.toLowerCase()) ||
-      cat.nombre.toLowerCase().includes(r.name.toLowerCase().split(' ')[0])
-    ) : null;
+    // Buscar la receta: primero por mapeo fijo, después por nombre parecido
+    let receta = null;
+    if (typeof recipes !== 'undefined') {
+      const recetaName = (typeof PROD_TO_RECIPE !== 'undefined') ? PROD_TO_RECIPE[id] : null;
+      if (recetaName) receta = recipes.find(r => r.name === recetaName);
+      if (!receta) receta = recipes.find(r =>
+        r.name.toLowerCase().includes(cat.nombre.toLowerCase()) ||
+        cat.nombre.toLowerCase().includes(r.name.toLowerCase().split(' ')[0])
+      );
+    }
     if (receta && receta.ingredients) {
       await descontarIngredientesDeposito(receta.ingredients, 'panaderia');
     }
