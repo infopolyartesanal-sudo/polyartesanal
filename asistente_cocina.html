@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="theme-color" content="#1B5E20"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Cocina"/>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Asistente de Cocina</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --primary: #E64A19; }
+  body {
+    font-family: Georgia, serif;
+    background: #FFF3E0;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 16px;
+  }
+  #app {
+    display: flex; flex-direction: column;
+    height: 700px; width: 100%; max-width: 480px;
+    background: #fff; border: 1px solid #FFCCBC;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(194,24,91,0.10);
+    position: relative;
+  }
+  #header {
+    background: #BF360C; color: #FBE9E7;
+    padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  #header .logo { font-size: 24px; }
+  #header h1 { font-size: 16px; font-weight: 500; color: #FBE9E7; letter-spacing: 0.5px; }
+  #header p { font-size: 11px; color: #FFAB91; font-family: system-ui, sans-serif; }
+  #header .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #FFAB91; font-family: system-ui, sans-serif; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #5DCAA5; flex-shrink: 0; }
+  #status-dot.listening { background: #E24B4A; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  #tabs { display: flex; border-bottom: 1px solid #FFCCBC; background: #FFF3E0; flex-shrink: 0; }
+  .tab {
+    flex: 1; padding: 10px 4px; font-size: 11px; font-family: system-ui, sans-serif;
+    color: #999; border: none; background: transparent; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+  }
+  .tab i { font-size: 18px; }
+  .tab.active { color: #E64A19; border-bottom-color: #E64A19; background: #fff; }
+  .tab:hover:not(.active) { color: #333; }
+
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  #chat-messages {
+    flex: 1; overflow-y: auto; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg {
+    max-width: 85%; padding: 10px 14px; border-radius: 14px;
+    font-size: 14px; line-height: 1.55; font-family: system-ui, sans-serif;
+  }
+  .msg.bot { background: #fbe9e7; color: #1a1a1a; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: #E64A19; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.thinking { opacity: 0.6; font-style: italic; }
+
+  #chat-input-area {
+    padding: 10px 12px; border-top: 1px solid #FFCCBC;
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  #chat-input {
+    flex: 1; border: 1px solid #FFCCBC; border-radius: 20px;
+    padding: 10px 14px; font-size: 14px; font-family: system-ui, sans-serif;
+    outline: none; background: #FFF3E0;
+  }
+  #chat-input:focus { border-color: #E64A19; }
+  #send-btn, #mic-btn {
+    width: 38px; height: 38px; border-radius: 50%; border: none;
+    background: #E64A19; color: white; cursor: pointer; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #mic-btn { background: #FFCCBC; color: #BF360C; }
+  #mic-btn.listening { background: #E24B4A; color: white; animation: pulse 1s infinite; }
+  #api-error { font-size: 13px; color: #E24B4A; font-family: system-ui, sans-serif; margin-top: 8px; display: none; }
+
+  /* Speech bar */
+  #speech-bar {
+    display: none; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #FBE9E7;
+    border-top: 1px solid #FFAB91; flex-shrink: 0;
+    font-family: system-ui, sans-serif;
+  }
+  #speech-bar.visible { display: flex; }
+  #speech-bar .speech-label { font-size: 12px; color: #BF360C; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .speech-ctrl-btn {
+    width: 34px; height: 34px; border-radius: 50%; border: none;
+    background: #E64A19; color: white; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; transition: all 0.15s;
+  }
+  .speech-ctrl-btn.stop { background: #E24B4A; }
+
+  /* Recipes panel */
+  #recipes-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .recipe-card {
+    padding: 12px 14px; background: #fff; border-radius: 10px;
+    border: 1px solid #FFCCBC; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .recipe-card:hover { border-color: #E64A19; background: #fbe9e7; }
+  .recipe-card h3 { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+  .recipe-card p { font-size: 12px; color: #666; font-family: system-ui, sans-serif; }
+  .recipe-tag {
+    display: inline-block; font-size: 11px; background: #FBE9E7;
+    color: #BF360C; padding: 2px 8px; border-radius: 10px;
+    margin-top: 4px; font-family: system-ui, sans-serif;
+  }
+  .recipe-action-btn {
+    width: 30px; height: 30px; border-radius: 7px; border: 1px solid #FFCCBC;
+    background: white; color: #888; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .recipe-action-btn:hover { background: #fbe9e7; color: #E64A19; border-color: #E64A19; }
+  .recipe-action-btn.danger:hover { background: #ffeaea; color: #E24B4A; border-color: #E24B4A; }
+  .empty-state { text-align: center; color: #aaa; font-size: 14px; padding: 40px 20px; font-family: system-ui, sans-serif; line-height: 1.6; }
+  .add-recipe-btn {
+    margin: 0 12px 12px; padding: 12px; background: #E64A19; color: white;
+    border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Stock panel */
+  #stock-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .stock-section-title {
+    font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 8px 4px 6px; font-family: system-ui, sans-serif;
+  }
+  .stock-card {
+    background: white; border-radius: 10px; border: 1px solid #FFCCBC;
+    margin-bottom: 8px; overflow: hidden;
+  }
+  .stock-card-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .stock-card-name { flex: 1; font-size: 14px; font-weight: 500; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .stock-card-rendimiento { font-size: 11px; color: #888; font-family: system-ui, sans-serif; }
+  .stock-depositos {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1px; background: #FFCCBC; border-top: 1px solid #FFCCBC;
+  }
+  .stock-dep-cell {
+    background: #fff; padding: 8px 12px;
+    font-family: system-ui, sans-serif;
+  }
+  .stock-dep-cell .dep-label { font-size: 11px; color: #888; margin-bottom: 2px; }
+  .stock-dep-cell .dep-val { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+  .stock-dep-cell .dep-val.has-stock { color: #E64A19; }
+  .stock-dep-btns { display: flex; gap: 4px; margin-top: 4px; }
+  .stock-dep-btn {
+    flex: 1; padding: 4px; border-radius: 6px; border: 1px solid #FFCCBC;
+    background: white; cursor: pointer; font-size: 13px; font-weight: 700;
+    font-family: system-ui, sans-serif; transition: all 0.15s;
+  }
+  .stock-dep-btn.plus { background: #E64A19; color: white; border-color: #E64A19; }
+  .stock-dep-btn.minus:hover { background: #ffeaea; }
+
+  /* Timers */
+  #timers-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .timer-card {
+    background: white; border: 1px solid #FFCCBC; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px; font-family: system-ui, sans-serif;
+  }
+  .timer-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .timer-display { font-size: 28px; font-weight: 700; color: #E64A19; font-family: monospace; }
+  .timer-display.urgent { color: #E24B4A; animation: pulse 1s infinite; }
+  .timer-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .timer-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: none;
+    background: #fbe9e7; color: #BF360C; cursor: pointer; font-size: 13px;
+    font-family: system-ui, sans-serif;
+  }
+  .timer-btn.start { background: #E64A19; color: white; }
+  .timer-btn.danger { background: #ffeaea; color: #E24B4A; }
+  .add-timer-btn {
+    margin: 0 0 12px; padding: 10px; background: #E64A19; color: white;
+    border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif;
+    cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Log */
+  #log-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .log-item { padding: 8px 10px; background: white; border-radius: 8px; border: 1px solid #FFCCBC; margin-bottom: 6px; font-family: system-ui, sans-serif; }
+  .log-item .log-time { font-size: 11px; color: #aaa; }
+  .log-item .log-text { font-size: 13px; color: #333; margin-top: 2px; }
+  .log-export-btn {
+    margin: 0 0 12px; padding: 10px; background: transparent; color: #E64A19;
+    border: 1px solid #E64A19; border-radius: 10px; font-size: 14px;
+    font-family: system-ui, sans-serif; cursor: pointer; width: 100%;
+  }
+
+  /* Recipe detail */
+  #recipe-detail {
+    position: absolute; inset: 0; background: white;
+    transform: translateX(100%); transition: transform 0.25s ease;
+    display: flex; flex-direction: column; z-index: 10;
+  }
+  #recipe-detail.open { transform: translateX(0); }
+  #recipe-detail-header {
+    background: #BF360C; color: white; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #recipe-detail-header button {
+    background: transparent; border: none; color: white; font-size: 22px; cursor: pointer; padding: 2px;
+  }
+  #recipe-detail-header h2 { flex: 1; font-size: 15px; font-weight: 500; }
+  #recipe-detail-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .ingredients-section { margin-bottom: 16px; }
+  .ingredients-section h4 { font-size: 13px; font-weight: 600; color: #BF360C; margin-bottom: 10px; font-family: system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
+  .ingredient-item { display: flex !important; align-items: center; gap: 10px; padding: 6px 4px !important; border-radius: 6px; transition: background 0.15s; cursor: pointer; user-select: none; }
+  .ingredient-item:hover { background: rgba(194,24,91,0.07); }
+  .ingredient-item::before { display: none !important; }
+  .ingredient-checkbox { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #E64A19; background: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; font-size: 13px; color: white; }
+  .ingredient-item.checked .ingredient-checkbox { background: #E64A19; border-color: #E64A19; }
+  .ingredient-item.checked .ingredient-text { text-decoration: line-through; color: #aaa; }
+  .ingredient-text { font-size: 14px; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .checklist-progress { font-size: 12px; font-family: system-ui, sans-serif; color: #E64A19; margin-top: 8px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .checklist-progress-bar { flex: 1; height: 4px; background: #e0ddd8; border-radius: 2px; overflow: hidden; }
+  .checklist-progress-fill { height: 100%; background: #E64A19; border-radius: 2px; transition: width 0.3s; }
+  .checklist-reset-btn { margin-top: 8px; background: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-family: system-ui, sans-serif; color: #666; cursor: pointer; }
+  .step-item { display: flex; gap: 10px; margin-bottom: 12px; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: #E64A19; color: white; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: system-ui, sans-serif; }
+  .step-text { font-size: 14px; font-family: system-ui, sans-serif; color: #333; line-height: 1.5; }
+  .recipe-meta-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: #fbe9e7; color: #BF360C; padding: 4px 10px; border-radius: 10px; font-family: system-ui, sans-serif; margin-bottom: 14px; margin-right: 6px; }
+
+  /* Deposit modal */
+  #deposito-modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 200;
+    align-items: flex-end; justify-content: center;
+  }
+  #deposito-modal-overlay.open { display: flex; }
+  #deposito-modal {
+    background: white; border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; font-family: system-ui, sans-serif;
+  }
+  #deposito-modal h3 { margin: 0 0 4px; font-size: 16px; color: #1a1a1a; }
+  .dep-rendimiento { font-size: 12px; color: #888; margin-bottom: 16px; }
+  .dep-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .dep-row label { flex: 1; font-size: 14px; color: #444; }
+  .dep-row input { width: 80px; padding: 8px; border: 1px solid #FFCCBC; border-radius: 8px; font-size: 15px; text-align: center; font-family: system-ui, sans-serif; }
+  .dep-total-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid #FFCCBC; margin-top: 4px; font-size: 13px; color: #666; }
+  #dep-total-val { font-weight: 700; color: #E64A19; }
+
+
+  /* Stock alerts */
+  .tab-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #E24B4A; color: white; font-size: 10px; font-weight: 700;
+    position: absolute; top: 4px; right: 4px; font-family: system-ui, sans-serif;
+    animation: pulse 2s infinite;
+  }
+  .tab { position: relative; }
+  .alert-banner {
+    margin: 8px 12px 0; padding: 10px 12px; background: #fee2e2;
+    border: 1px solid #fca5a5; border-radius: 8px;
+    font-family: system-ui, sans-serif; font-size: 13px; color: #dc2626;
+    display: none; line-height: 1.5;
+  }
+  .alert-banner.visible { display: block; }
+  .alert-banner strong { display: block; margin-bottom: 4px; }
+
+  
+  /* Leudado */
+  .leudado-alarm-bar {
+    margin: 0 0 10px; padding: 12px 14px; border-radius: 10px;
+    font-family: system-ui, sans-serif; font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .leudado-alarm-bar.pending { background: #FFF3E0; border: 1px solid #FFAB91; color: #E64A19; }
+  .leudado-alarm-bar.active { background: #fee2e2; border: 1px solid #fca5a5; color: #dc2626; animation: pulse 1.5s infinite; }
+  .leudado-alarm-bar.done { background: #dcfce7; border: 1px solid #86efac; color: #16a34a; }
+  .leudado-alarm-icon { font-size: 22px; flex-shrink: 0; }
+  .leudado-alarm-text { flex: 1; }
+  .leudado-alarm-text strong { display: block; font-size: 14px; margin-bottom: 2px; }
+  .leudado-item {
+    background: white; border: 1px solid #FFCCBC; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+    font-family: system-ui, sans-serif;
+  }
+  .leudado-item.sacado { opacity: 0.5; }
+  .leudado-item.sacado .leudado-nombre { text-decoration: line-through; color: #aaa; }
+  .leudado-check {
+    width: 26px; height: 26px; border-radius: 7px; border: 2px solid #E64A19;
+    background: white; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: pointer; font-size: 15px; color: white; transition: all 0.15s;
+  }
+  .leudado-item.sacado .leudado-check { background: #E64A19; border-color: #E64A19; }
+  .leudado-info { flex: 1; min-width: 0; }
+  .leudado-nombre { font-size: 14px; font-weight: 500; color: #1a1a1a; margin-bottom: 2px; }
+  .leudado-sugerido { font-size: 11px; color: #888; }
+  .leudado-qty-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .leudado-qty-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: 1px solid #FFCCBC;
+    background: white; cursor: pointer; font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .leudado-qty-btn.plus { background: #E64A19; color: white; border-color: #E64A19; }
+  .leudado-qty-val { font-size: 15px; font-weight: 700; color: #E64A19; min-width: 32px; text-align: center; }
+  .leudado-unit { font-size: 11px; color: #888; }
+  .leudado-progress {
+    margin-bottom: 10px; font-size: 12px; font-family: system-ui, sans-serif;
+    color: #E64A19; display: flex; align-items: center; gap: 6px;
+  }
+  .leudado-progress-bar { flex: 1; height: 6px; background: #e0ddd8; border-radius: 3px; overflow: hidden; }
+  .leudado-progress-fill { height: 100%; background: #E64A19; border-radius: 3px; transition: width 0.3s; }
+  .leudado-reset-btn { width: 100%; padding: 10px; background: transparent; border: 1px solid #ddd; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 13px; color: #666; cursor: pointer; margin-top: 4px; }
+  .leudado-notif-btn { padding: 8px 14px; background: #E64A19; color: white; border: none; border-radius: 8px; font-size: 12px; font-family: system-ui, sans-serif; cursor: pointer; flex-shrink: 0; }
+
+  /* Search bar */
+  .search-bar {
+    padding: 8px 12px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .search-input {
+    width: 100%; padding: 8px 12px 8px 34px;
+    border: 1px solid #e0ddd8; border-radius: 20px;
+    font-size: 14px; font-family: system-ui, sans-serif;
+    outline: none; background: #faf9f7;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+  }
+  .search-input:focus { border-color: var(--primary, #534AB7); }
+  .search-empty { text-align:center; color:#aaa; font-size:13px; padding:24px; font-family:system-ui,sans-serif; }
+
+    /* Tareas y limpieza */
+  .tarea-section-title { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 4px 6px; font-family: system-ui, sans-serif; }
+  .tarea-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: white; border-radius: 8px; border: 1px solid #FFCCBC; margin-bottom: 6px; cursor: pointer; user-select: none; transition: all 0.15s; }
+  .tarea-item:hover { background: #FBE9E7; }
+  .tarea-item.done { opacity: 0.55; }
+  .tarea-item.done .tarea-text { text-decoration: line-through; color: #aaa; }
+  .tarea-checkbox { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #E64A19; background: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; color: white; transition: all 0.15s; }
+  .tarea-item.done .tarea-checkbox { background: #E64A19; border-color: #E64A19; }
+  .tarea-text { font-size: 14px; font-family: system-ui, sans-serif; color: #333; line-height: 1.4; }
+  .tarea-progress { font-size: 12px; font-family: system-ui, sans-serif; color: #E64A19; margin: 8px 0; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .tarea-progress-bar { flex: 1; height: 6px; background: #e0ddd8; border-radius: 3px; overflow: hidden; }
+  .tarea-progress-fill { height: 100%; background: #E64A19; border-radius: 3px; transition: width 0.3s; }
+  .tarea-reset-btn { width: 100%; padding: 10px; background: transparent; border: 1px solid #ddd; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 13px; color: #666; cursor: pointer; margin-top: 4px; }
+  .insumo-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: white; border-radius: 8px; border: 1px solid #FFCCBC; margin-bottom: 6px; font-family: system-ui, sans-serif; }
+  .insumo-name { font-size: 13px; color: #333; }
+  .insumo-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .insumo-badge.ok { background: #dcfce7; color: #16a34a; }
+  .insumo-badge.low { background: #fee2e2; color: #dc2626; cursor: pointer; }
+
+  /* Recipe speech controls */
+  #recipe-speech-controls { margin: 0 12px 12px; display: flex; gap: 8px; align-items: center; }
+
+  /* Modal */
+  #modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  #modal-overlay.open { display: flex; }
+  #modal {
+    background: white; border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; max-height: 85%;
+    overflow-y: auto; font-family: system-ui, sans-serif;
+  }
+  #modal h2 { font-size: 18px; margin-bottom: 16px; color: #BF360C; }
+  #modal label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; margin-top: 10px; }
+  #modal input, #modal textarea {
+    width: 100%; border: 1px solid #FFCCBC; border-radius: 8px;
+    padding: 10px; font-size: 14px; font-family: system-ui, sans-serif; outline: none;
+  }
+  #modal input:focus, #modal textarea:focus { border-color: #E64A19; }
+  #modal textarea { min-height: 80px; resize: vertical; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+  .btn-primary { flex: 2; padding: 12px; background: #E64A19; color: white; border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+  .btn-secondary { flex: 1; padding: 12px; background: transparent; color: #666; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+  #api-key-section { padding: 12px 16px; background: #fbe9e7; border-bottom: 1px solid #FFCCBC; font-family: system-ui, sans-serif; display: flex; gap: 8px; align-items: center; }
+  #api-key-input { flex: 1; border: 1px solid #FFCCBC; border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: system-ui, sans-serif; background: white; outline: none; }
+  #api-key-save { padding: 8px 14px; background: #E64A19; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <div class="logo">🍳</div>
+    <div>
+      <h1>Cocina</h1>
+      <p>Asistente de producción</p>
+    </div>
+    <div class="status">
+      <div id="status-dot"></div>
+      <span id="status-text">Listo</span>
+    </div>
+  </div>
+
+  <div id="api-key-section" id="api-key-section">
+    <input type="password" id="api-key-input" placeholder="API Key de Anthropic..." />
+    <button id="api-key-save" onclick="saveApiKey()">Guardar</button>
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('chat')" id="tab-chat">
+      <i class="ti ti-message-circle"></i>Chat
+    </button>
+    <button class="tab" onclick="switchTab('recipes')" id="tab-recipes">
+      <i class="ti ti-book"></i>Recetas
+    </button>
+    <button class="tab" onclick="switchTab('stock')" id="tab-stock">
+      <i class="ti ti-building-warehouse"></i>Stock
+    </button>
+    <button class="tab" onclick="switchTab('timers')" id="tab-timers">
+      <i class="ti ti-clock"></i>Timers
+    </button>
+    <button class="tab" onclick="switchTab('log')" id="tab-log">
+      <i class="ti ti-clipboard-list"></i>Registro
+    </button>
+    <button class="tab" onclick="switchTab('pedidos-cocina')" id="tab-pedidos-cocina" style="position:relative;">
+      <i class="ti ti-bell"></i>Pedidos
+    </button>
+    <button class="tab" onclick="switchTab('tareas')" id="tab-tareas">
+      <i class="ti ti-checklist"></i>Tareas
+    </button>
+    <button class="tab" onclick="switchTab('leudado')" id="tab-leudado">
+      <i class="ti ti-snowflake"></i>Leudado
+    </button>
+  </div>
+
+  <!-- CHAT -->
+  <div class="panel active" id="panel-chat">
+    <div id="chat-messages">
+      <div class="msg bot">¡Buenas! 🍳✨ Bienvenido a otro día en cocina. Puedo ayudarte con las recetas, organizar el día, revisar el stock, o repasar las tareas y checklist de limpieza. ¿Por dónde arrancamos?</div>
+    </div>
+    <div id="speech-bar">
+      <span class="speech-label"><i class="ti ti-volume"></i> <span id="speech-bar-label">Leyendo...</span></span>
+      <button class="speech-ctrl-btn" id="speech-pause-btn" onclick="toggleSpeechPause()" title="Pausar"><i class="ti ti-player-pause" id="speech-pause-icon"></i></button>
+      <button class="speech-ctrl-btn stop" onclick="stopSpeech()" title="Detener"><i class="ti ti-player-stop"></i></button>
+    </div>
+    <div id="chat-input-area">
+      <input type="text" id="chat-input" placeholder="Escribí o usá el micrófono..." />
+      <button id="mic-btn" onclick="toggleMic()" title="Micrófono"><i class="ti ti-microphone"></i></button>
+      <button id="send-btn" onclick="sendMessage()" title="Enviar"><i class="ti ti-send"></i></button>
+    </div>
+  </div>
+
+  <!-- RECETAS -->
+  <div class="panel" id="panel-recipes">
+    <div class="search-bar">
+      <input class="search-input" id="search-recipes" placeholder="Buscar receta..." oninput="filterRecipes(this.value)" />
+    </div>
+    <div id="recipes-panel" style="flex:1;overflow-y:auto;"></div>
+    <button class="add-recipe-btn" onclick="openAddRecipe()">
+      <i class="ti ti-plus"></i> Nueva receta
+    </button>
+  </div>
+
+  <!-- STOCK -->
+  <div class="panel" id="panel-stock">
+    <div class="search-bar">
+      <input class="search-input" id="search-stock" placeholder="Buscar producto en stock..." oninput="filterStock(this.value)" />
+    </div>
+    <div id="stock-panel" style="flex:1;overflow-y:auto;"></div>
+  </div>
+
+  <!-- TIMERS -->
+  <div class="panel" id="panel-timers">
+    <div id="timers-panel"></div>
+    <button class="add-timer-btn" onclick="openAddTimer()">
+      <i class="ti ti-plus"></i> Nuevo timer
+    </button>
+  </div>
+
+  <!-- LOG -->
+  <div class="panel" id="panel-log">
+    <div class="search-bar">
+      <input class="search-input" id="search-log" placeholder="Buscar en el registro..." oninput="filterLog(this.value)" />
+    </div>
+    <div id="log-panel" style="flex:1;overflow-y:auto;"></div>
+    <button class="log-export-btn" onclick="exportLog()">
+      <i class="ti ti-download"></i> Exportar registro del día
+    </button>
+  </div>
+
+  <!-- RECIPE DETAIL -->
+  <div id="recipe-detail">
+    <div id="recipe-detail-header">
+      <button onclick="closeRecipeDetail()"><i class="ti ti-arrow-left"></i></button>
+      <h2 id="recipe-detail-title"></h2>
+      <button id="complete-recipe-btn" onclick="completeRecipe()" style="background:#E64A19;border:none;color:white;border-radius:8px;padding:6px 12px;font-family:system-ui,sans-serif;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap;">
+        <i class="ti ti-circle-check"></i> Completada
+      </button>
+    </div>
+    <div id="recipe-detail-body"></div>
+    <div id="recipe-mic-bar" style="margin:0 12px 8px;display:flex;gap:8px;align-items:center;">
+      <button id="recipe-mic-btn" onclick="toggleRecipeMic()" style="flex:1;padding:10px;background:#f0ede8;color:#333;border:1px solid #ddd;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="ti ti-microphone" id="recipe-mic-icon"></i> <span id="recipe-mic-label">Hablarle al asistente</span>
+      </button>
+    </div>
+    <div id="recipe-speech-controls">
+      <button id="speak-recipe-btn" onclick="speakRecipe()" style="flex:1;padding:10px;background:#E64A19;color:white;border:none;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <i class="ti ti-volume" id="speak-recipe-icon"></i> <span id="speak-recipe-label">Leer receta en voz alta</span>
+      </button>
+      <button id="recipe-pause-btn" onclick="toggleSpeechPause()" style="display:none;width:42px;height:42px;border-radius:50%;border:none;background:#E64A19;color:white;cursor:pointer;align-items:center;justify-content:center;font-size:18px;">
+        <i class="ti ti-player-pause" id="recipe-pause-icon"></i>
+      </button>
+      <button id="recipe-stop-btn" onclick="stopSpeech()" style="display:none;width:42px;height:42px;border-radius:50%;border:none;background:#E24B4A;color:white;cursor:pointer;align-items:center;justify-content:center;font-size:18px;">
+        <i class="ti ti-player-stop"></i>
+      </button>
+    </div>
+  </div>
+
+    <!-- PEDIDOS COCINA -->
+  <div class="panel" id="panel-pedidos-cocina">
+    <div style="padding:12px 12px 0;font-family:system-ui,sans-serif;">
+      <div style="font-size:13px;font-weight:700;color:#2E7D32;margin-bottom:6px;">📋 Pedidos para cocina</div>
+      <div style="font-size:12px;color:#aaa;margin-bottom:10px;">Pedidos recibidos de otros sectores. Tocá para cambiar el estado.</div>
+    </div>
+    <div id="pedidos-cocina-list" style="flex:1;overflow-y:auto;padding:0 12px 12px;"></div>
+  </div>
+
+  <!-- TAREAS Y LIMPIEZA -->
+  <div class="panel" id="panel-tareas">
+    <div id="tareas-panel" style="flex:1;overflow-y:auto;padding:12px;"></div>
+  </div>
+
+  <!-- FREEZER → LEUDADO -->
+  <div class="panel" id="panel-leudado">
+    <div id="leudado-panel" style="flex:1;overflow-y:auto;padding:12px;"></div>
+  </div>
+
+  <!-- MODAL DISTRIBUCIÓN DEPÓSITO -->
+  <div id="deposito-modal-overlay">
+    <div id="deposito-modal">
+      <h3>¿A dónde va esta tanda?</h3>
+      <p class="dep-rendimiento" id="dep-rendimiento-label"></p>
+      <div class="dep-row"><label>🏪 Local</label><input type="number" id="dep-local" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>❄️ Heladera</label><input type="number" id="dep-heladera" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>🧊 Freezer</label><input type="number" id="dep-freezer" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>📦 Estante</label><input type="number" id="dep-estante" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-total-row"><span>Total distribuido</span><span id="dep-total-val">0</span></div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button onclick="closeDepModal()" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;background:white;cursor:pointer;font-family:system-ui,sans-serif;">Cancelar</button>
+        <button onclick="confirmDeposito()" style="flex:2;padding:10px;background:#E64A19;color:white;border:none;border-radius:8px;cursor:pointer;font-family:system-ui,sans-serif;font-weight:600;">Confirmar tanda ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NUEVA/EDITAR RECETA -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <h2 id="modal-title">Nueva receta</h2>
+      <input type="hidden" id="rec-editing-id" value="" />
+      <label>Nombre</label>
+      <input type="text" id="rec-name" placeholder="Ej: Alfajor de Maicena" />
+      <label>Ingredientes (uno por línea)</label>
+      <textarea id="rec-ingredients" placeholder="250gm manteca&#10;100gm azúcar..."></textarea>
+      <label>Pasos (uno por línea)</label>
+      <textarea id="rec-steps" placeholder="Cremar manteca y azúcar&#10;Agregar huevos..."></textarea>
+      <label>Rendimiento por tanda</label>
+      <input type="text" id="rec-rendimiento" placeholder="Ej: 17 budines, 8 kg, 20 alfajores" />
+      <label>Destino sugerido</label>
+      <select id="rec-deposito" style="width:100%;padding:10px;border:1px solid #FFCCBC;border-radius:8px;font-size:14px;font-family:system-ui,sans-serif;">
+        <option value="local">🏪 Local directo</option>
+        <option value="heladera">❄️ Heladera</option>
+        <option value="freezer">🧊 Freezer</option>
+        <option value="estante">📦 Estante</option>
+        <option value="pedido">📋 Solo por pedido</option>
+      </select>
+      <label>Tiempo de cocción (min, opcional)</label>
+      <input type="number" id="rec-time" placeholder="Ej: 20" />
+      <div class="modal-btns">
+        <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+        <button class="btn-primary" id="modal-save-btn" onclick="saveRecipe()">Guardar receta</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+
+// ── SUPABASE CONFIG ───────────────────────────────
+const SUPABASE_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+
+async function sbFetch(method, table, body=null, params='') {
+  const url = SUPABASE_URL + '/rest/v1/' + table + params;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { const err = await res.text(); console.error('Supabase error:', err); return null; }
+  return method === 'DELETE' ? null : await res.json();
+}
+
+async function sbUpsert(table, data) {
+  return sbFetch('POST', table, Array.isArray(data) ? data : [data]);
+}
+
+async function sbSelect(table, params='') {
+  return sbFetch('GET', table, null, params);
+}
+
+async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
+  await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
+}
+// ── END SUPABASE ──────────────────────────────────
+
+// Polyfill
+if (!Array.prototype.findLastIndex) {
+  Array.prototype.findLastIndex = function(fn) {
+    for (let i = this.length - 1; i >= 0; i--) { if (fn(this[i], i, this)) return i; }
+    return -1;
+  };
+}
+
+const RECIPES_KEY = 'cocina_recipes';
+const LOG_KEY = 'cocina_log_';
+const API_KEY_KEY = 'cocina_api_key';
+const STOCK_KEY = 'cocina_stock';
+const RECIPES_VERSION = '1';
+
+// ── STATE ──────────────────────────────────────────
+let recipes = [];
+let log = [];
+let apiKey = '';
+let currentRecipe = null;
+let checklistState = {};
+let stockState = {}; // { recipeName: { local, heladera, freezer, estante } }
+
+// ── INIT ──────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  apiKey = localStorage.getItem(API_KEY_KEY) || '';
+  if (apiKey) { document.getElementById('api-key-input').value = '••••••••'; document.getElementById('api-key-section').style.display = 'none'; }
+
+  // Always clear stale data from other apps and load cocina defaults
+  const savedVersion = localStorage.getItem('cocina_version');
+  const savedData = localStorage.getItem(RECIPES_KEY);
+  const isCocinData = savedVersion === RECIPES_VERSION && savedData && savedData.includes('Relleno Picada');
+  if (isCocinData) {
+    try { const p = JSON.parse(savedData); recipes = (p && p.length > 0) ? p : DEFAULT_RECIPES; } catch(e){ recipes = DEFAULT_RECIPES; }
+  } else {
+    recipes = DEFAULT_RECIPES;
+    localStorage.setItem('cocina_version', RECIPES_VERSION);
+    saveRecipes();
+  }
+
+  try { const l = localStorage.getItem(LOG_KEY + today()); if (l) log = JSON.parse(l); } catch(e){}
+  try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e){ stockState = {}; }
+
+  loadTareas();
+  renderRecipes();
+  renderStock();
+  showLimpiezaIndicator();
+  checkStockAlerts();
+  renderTimers();
+  renderLog();
+  renderTareas();
+  initSpeech();
+  initMic();
+
+  document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+});
+
+function today() { return new Date().toISOString().split('T')[0]; }
+function saveRecipes() { try { localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)); } catch(e){} }
+function saveLog() { try { localStorage.setItem(LOG_KEY + today(), JSON.stringify(log)); } catch(e){} }
+function saveStock() { try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){} }
+function saveApiKey() {
+  const v = document.getElementById('api-key-input').value.trim();
+  if (!v || v === '••••••••') return;
+  apiKey = v; localStorage.setItem(API_KEY_KEY, apiKey);
+  document.getElementById('api-key-section').style.display = 'none';
+}
+function addToLog(text, type) {
+  const now = new Date();
+  log.unshift({ text, type, time: now.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' }) });
+  saveLog(); renderLog();
+}
+
+// ── TABS ──────────────────────────────────────────
+
+// ── TAREAS Y LIMPIEZA ─────────────────────────────
+const TAREAS_KEY = 'cocina_tareas_' + new Date().toISOString().split('T')[0];
+
+const TAREAS_DIARIAS = [
+  "Llegar y limpiar el sector antes de empezar — sanitizar mesas de trabajo",
+  "Chequear temperaturas de heladera y freezer",
+  "Sacar mercadería del freezer para que leude (para cocinar a la madrugada)",
+  "Revisar stock del local y reponer faltantes",
+  "Lavar latas y utensilios acumulados",
+  "Mantener baños, pasillos y cámara limpios",
+  "Limpiar bandejas de freezer y bolsas antiadherentes",
+];
+
+const TAREAS_SEMANALES = [
+  "Limpieza profunda de cada equipo (al menos 1 vez por semana)",
+  "Recepción de proveedores y control de pedidos",
+  "Verificar y reponer stock de productos de limpieza",
+  "Verificar y reponer stock de papelería",
+];
+
+const INSUMOS_LIMPIEZA = [
+  "Bidón detergente", "Bidón lavandina", "Desengrasante 1lt",
+  "Esponja metal", "Esponja blanda", "Bidones agua potable (x4)",
+  "Trapo rejilla", "Trapo piso", "Rollos papel grande (x2)",
+];
+
+const INSUMOS_PAPELERIA = [
+  "Papel higiénico (paquete x4)", "Bolsas 50x70 apto freezer (x2 rollos)",
+  "Fibron indeleble", "Cinta ancha de papel", "Folex",
+  "Bandejas viandas x50", "Potes bisagra altos x10", "Bandejas despacho cartón N°5",
+];
+
+let tareasState = {};
+let insumosBajos = new Set();
+
+function loadTareas() {
+  try { tareasState = JSON.parse(localStorage.getItem(TAREAS_KEY) || '{}'); } catch(e){ tareasState = {}; }
+  try { const s = localStorage.getItem('cocina_insumos_bajos'); if(s) insumosBajos = new Set(JSON.parse(s)); } catch(e){}
+}
+
+function saveTareas() {
+  localStorage.setItem(TAREAS_KEY, JSON.stringify(tareasState));
+  localStorage.setItem('cocina_insumos_bajos', JSON.stringify([...insumosBajos]));
+}
+
+function toggleTarea(key) {
+  tareasState[key] = !tareasState[key];
+  saveTareas(); renderTareas();
+  if (tareasState[key]) addToLog('✅ Tarea completada: ' + key, 'tarea');
+}
+
+function toggleInsumo(name) {
+  if (insumosBajos.has(name)) insumosBajos.delete(name);
+  else insumosBajos.add(name);
+  saveTareas(); renderTareas();
+}
+
+function renderTareas() {
+  const el = document.getElementById('tareas-panel');
+  if (!el) return;
+
+  const allTareas = [...TAREAS_DIARIAS, ...TAREAS_SEMANALES];
+  const done = allTareas.filter(t => tareasState[t]).length;
+  const pct = Math.round(done / allTareas.length * 100);
+
+  let html = `<div class="tarea-progress">
+    <div class="tarea-progress-bar"><div class="tarea-progress-fill" style="width:${pct}%"></div></div>
+    <span>${done}/${allTareas.length} tareas</span>
+  </div>`;
+
+  html += '<div class="tarea-section-title">📋 Tareas diarias</div>';
+  for (const t of TAREAS_DIARIAS) {
+    const done = !!tareasState[t];
+    html += `<div class="tarea-item ${done ? 'done' : ''}" onclick="toggleTarea('${t.replace(/'/g,"\'")}')">
+      <div class="tarea-checkbox">${done ? '✓' : ''}</div>
+      <span class="tarea-text">${t}</span>
+    </div>`;
+  }
+
+  html += '<div class="tarea-section-title" style="margin-top:8px">📅 Tareas semanales</div>';
+  for (const t of TAREAS_SEMANALES) {
+    const done = !!tareasState[t];
+    html += `<div class="tarea-item ${done ? 'done' : ''}" onclick="toggleTarea('${t.replace(/'/g,"\'")}')">
+      <div class="tarea-checkbox">${done ? '✓' : ''}</div>
+      <span class="tarea-text">${t}</span>
+    </div>`;
+  }
+
+  html += '<div class="tarea-section-title" style="margin-top:8px">🧴 Productos de limpieza — tocá los que están bajos</div>';
+  for (const ins of INSUMOS_LIMPIEZA) {
+    const low = insumosBajos.has(ins);
+    html += `<div class="insumo-item">
+      <span class="insumo-name">${ins}</span>
+      <span class="insumo-badge ${low ? 'low' : 'ok'}" onclick="toggleInsumo('${ins}')">${low ? '⚠️ Reponer' : '✓ OK'}</span>
+    </div>`;
+  }
+
+  html += '<div class="tarea-section-title" style="margin-top:8px">📦 Papelería — tocá los que están bajos</div>';
+  for (const ins of INSUMOS_PAPELERIA) {
+    const low = insumosBajos.has(ins);
+    html += `<div class="insumo-item">
+      <span class="insumo-name">${ins}</span>
+      <span class="insumo-badge ${low ? 'low' : 'ok'}" onclick="toggleInsumo('${ins}')">${low ? '⚠️ Reponer' : '✓ OK'}</span>
+    </div>`;
+  }
+
+  html += '<button class="tarea-reset-btn" onclick="resetTareas()">🔄 Reiniciar checklist del día</button>';
+  el.innerHTML = html;
+}
+
+function resetTareas() {
+  if (!confirm('¿Reiniciar todas las tareas del día?')) return;
+  tareasState = {}; saveTareas(); renderTareas();
+}
+
+
+function updateAlertUI(alerts, tabId, title) {
+  const tab = document.getElementById(tabId);
+  if (tab) {
+    const existing = tab.querySelector('.tab-badge');
+    if (existing) existing.remove();
+    if (alerts.length > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'tab-badge';
+      badge.textContent = alerts.length;
+      tab.appendChild(badge);
+    }
+  }
+  let banner = document.getElementById('alert-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'alert-banner';
+    banner.className = 'alert-banner';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  if (alerts.length > 0) {
+    banner.innerHTML = '<strong>' + title + '</strong>' + alerts.map(a => '• ' + a).join('<br>');
+    banner.classList.add('visible');
+  } else {
+    banner.classList.remove('visible');
+  }
+}
+
+const STOCK_MINIMOS = {
+  'Empanadas Picada Clásica': 15,
+  'Empanadas Cerdo a la Barbacoa': 15,
+  'Empanadas Carne Cortada a Cuchillo': 15,
+  'Empanadas de Pollo': 15,
+  'Canastita Humita Clásica': 6,
+  'Canastita Zapallitos': 6,
+  'Canastita Calabaza': 6,
+  'Canastita Hongos': 6,
+  'Canastita Hongos Integral': 6,
+  'Canastita Calabaza Integral': 6,
+  'Canastita Zapallitos Integral': 6,
+  'Milanesas para Viandas': 5,
+  'Tortilla de Papa Individual': 2,
+};
+
+function checkStockAlerts() {
+  const alerts = [];
+  for (const [name, minimo] of Object.entries(STOCK_MINIMOS)) {
+    const s = stockState[name];
+    const total = s ? (s.local + s.heladera + s.freezer + s.estante) : 0;
+    if (total < minimo) {
+      alerts.push(name + ': hay ' + total + ' (mínimo ' + minimo + ')');
+    }
+  }
+  if (typeof insumosBajos !== 'undefined' && insumosBajos.size > 0) {
+    alerts.push('Insumos para reponer: ' + [...insumosBajos].slice(0,3).join(', ') + (insumosBajos.size > 3 ? ' y más...' : ''));
+  }
+  updateAlertUI(alerts, 'tab-stock', '⚠️ Stock crítico — reponer urgente:');
+}
+
+
+function filterRecipes(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('recipes-panel');
+  if (!el) return;
+  const cards = el.querySelectorAll('.recipe-card');
+  let visible = 0;
+  cards.forEach((card, i) => {
+    const r = recipes[i];
+    if (!r) return;
+    const match = !q || r.name.toLowerCase().includes(q) || r.ingredients.join(' ').toLowerCase().includes(q);
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  let empty = el.querySelector('.search-empty');
+  if (visible === 0 && q) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'search-empty'; el.appendChild(empty); }
+    empty.textContent = 'No se encontraron resultados para "' + q + '"';
+    empty.style.display = '';
+  } else if (empty) { empty.style.display = 'none'; }
+}
+
+function filterStock(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('stock-panel');
+  if (!el) return;
+  const cards = el.querySelectorAll('.stock-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const name = card.querySelector('.stock-card-name');
+    const match = !q || (name && name.textContent.toLowerCase().includes(q));
+    card.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  // Also hide section titles if all items under them are hidden
+  el.querySelectorAll('.stock-section-title').forEach(title => {
+    let next = title.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains('stock-section-title')) {
+      if (next.style.display !== 'none') hasVisible = true;
+      next = next.nextElementSibling;
+    }
+    title.style.display = hasVisible ? '' : 'none';
+  });
+}
+
+function filterLog(q) {
+  q = (q || '').toLowerCase().trim();
+  const el = document.getElementById('log-panel');
+  if (!el) return;
+  const items = el.querySelectorAll('.log-item');
+  let visible = 0;
+  items.forEach(item => {
+    const text = item.querySelector('.log-text');
+    const match = !q || (text && text.textContent.toLowerCase().includes(q));
+    item.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  let empty = el.querySelector('.search-empty');
+  if (visible === 0 && q) {
+    if (!empty) { empty = document.createElement('div'); empty.className = 'search-empty'; el.appendChild(empty); }
+    empty.textContent = 'No se encontraron entradas para "' + q + '"';
+    empty.style.display = '';
+  } else if (empty) { empty.style.display = 'none'; }
+}
+
+
+// ── FREEZER → LEUDADO ────────────────────────────────
+const LEUDADO_KEY = 'cocina_leudado_' + new Date().toISOString().split('T')[0];
+const ALARMA_HORA = 14; // 14:00hs
+
+const LEUDADO_SEMANAL = {
+  lunes: [
+    { id:'l1', nombre:'Medialunas de manteca', sugerido:'36 u (1 lata)', cantidad:36 },
+    { id:'l2', nombre:'Lenguita invertida', sugerido:'30 u (1 lata)', cantidad:30 },
+    { id:'l3', nombre:'Popurrí + Roll', sugerido:'8 popurrí + 9 roll', cantidad:17 },
+    { id:'l4', nombre:'Vigilantes (12) + Medialuna grasa (12)', sugerido:'24 u (1 lata)', cantidad:24 },
+    { id:'l5', nombre:'Santiagueñas + Sacramentos', sugerido:'16 santiagueñas + 5 sac. c/sabor', cantidad:26 },
+    { id:'l6', nombre:'Cremonas (jyq, membrillo, comunes)', sugerido:'3+3+3 = 9 u', cantidad:9 },
+    { id:'l7', nombre:'Libritos', sugerido:'1 lata', cantidad:1 },
+    { id:'l8', nombre:'Tortitas negras', sugerido:'1 lata (3 filas)', cantidad:1 },
+    { id:'l9', nombre:'Palitos de queso', sugerido:'1 lata', cantidad:1 },
+    { id:'l10', nombre:'Palmeritas', sugerido:'1 lata', cantidad:1 },
+    { id:'l11', nombre:'Bizcochitos', sugerido:'1 lata', cantidad:1 },
+    { id:'l12', nombre:'Pan caserito', sugerido:'2 latas', cantidad:2 },
+    { id:'l13', nombre:'Libritos integrales', sugerido:'6 u', cantidad:6 },
+  ],
+  martes: [
+    { id:'m1', nombre:'Medialunas de manteca', sugerido:'36 u (1 lata)', cantidad:36 },
+    { id:'m2', nombre:'Lenguita invertida', sugerido:'30 u (1 lata)', cantidad:30 },
+    { id:'m3', nombre:'Popurrí + Roll', sugerido:'8 popurrí + 9 roll', cantidad:17 },
+    { id:'m4', nombre:'Vigilantes (12) + Medialuna grasa (12)', sugerido:'24 u (1 lata)', cantidad:24 },
+    { id:'m5', nombre:'Santiagueñas + Sacramentos', sugerido:'16 santiagueñas + 5 sac. c/sabor', cantidad:26 },
+    { id:'m6', nombre:'Cremonas (jyq, membrillo, comunes)', sugerido:'3+3+3 = 9 u', cantidad:9 },
+    { id:'m7', nombre:'Libritos', sugerido:'1 lata', cantidad:1 },
+    { id:'m8', nombre:'Tortitas negras', sugerido:'1 lata (3 filas)', cantidad:1 },
+    { id:'m9', nombre:'Pan caserito', sugerido:'2 latas', cantidad:2 },
+  ],
+  miercoles: [
+    { id:'mi1', nombre:'Medialunas de manteca', sugerido:'36 u (1 lata)', cantidad:36 },
+    { id:'mi2', nombre:'Lenguita invertida', sugerido:'30 u (1 lata)', cantidad:30 },
+    { id:'mi3', nombre:'Popurrí + Roll', sugerido:'8 popurrí + 9 roll', cantidad:17 },
+    { id:'mi4', nombre:'Vigilantes (12) + Medialuna grasa (12)', sugerido:'24 u (1 lata)', cantidad:24 },
+    { id:'mi5', nombre:'Santiagueñas + Sacramentos', sugerido:'16 santiagueñas + 5 sac. c/sabor', cantidad:26 },
+    { id:'mi6', nombre:'Cremonas (jyq, membrillo, comunes)', sugerido:'3+3+3 = 9 u', cantidad:9 },
+    { id:'mi7', nombre:'Libritos', sugerido:'1 lata', cantidad:1 },
+    { id:'mi8', nombre:'Tortitas negras', sugerido:'1 lata (3 filas)', cantidad:1 },
+    { id:'mi9', nombre:'Palitos de queso', sugerido:'1 lata', cantidad:1 },
+    { id:'mi10', nombre:'Palmeritas', sugerido:'1 lata', cantidad:1 },
+    { id:'mi11', nombre:'Bizcochitos', sugerido:'1 lata', cantidad:1 },
+    { id:'mi12', nombre:'Pan caserito', sugerido:'2 latas', cantidad:2 },
+    { id:'mi13', nombre:'Libritos integrales', sugerido:'6 u', cantidad:6 },
+  ],
+  jueves: [
+    { id:'j1', nombre:'Medialunas de manteca', sugerido:'36 u x2 (2 latas)', cantidad:72 },
+    { id:'j2', nombre:'Lenguita invertida', sugerido:'30 u (1 lata)', cantidad:30 },
+    { id:'j3', nombre:'Rolls', sugerido:'12 u', cantidad:12 },
+    { id:'j4', nombre:'Santiagueñas', sugerido:'24 u', cantidad:24 },
+    { id:'j5', nombre:'Medialunas grasa', sugerido:'20 u', cantidad:20 },
+    { id:'j6', nombre:'Cremonas jyq', sugerido:'4 u', cantidad:4 },
+    { id:'j7', nombre:'Libritos', sugerido:'1 y media lata', cantidad:2 },
+    { id:'j8', nombre:'Tortitas negras', sugerido:'1 lata (5 filas)', cantidad:1 },
+    { id:'j9', nombre:'Cremonas membrillo + simples', sugerido:'4 membrillo + 3 simples', cantidad:7 },
+    { id:'j10', nombre:'Vigilantes + Sacramentos jyq + membrillo', sugerido:'24 vig + 10 sac jyq + 5 sac membrillo', cantidad:39 },
+    { id:'j11', nombre:'Pan caserito', sugerido:'4 latas', cantidad:4 },
+  ],
+  viernes: [
+    { id:'v1', nombre:'Medialunas de manteca', sugerido:'36 u x3 (3 latas)', cantidad:108 },
+    { id:'v2', nombre:'Lenguita invertida', sugerido:'30 u x2 (2 latas)', cantidad:60 },
+    { id:'v3', nombre:'Rolls', sugerido:'15 u', cantidad:15 },
+    { id:'v4', nombre:'Santiagueñas', sugerido:'24 + 12 = 36 u', cantidad:36 },
+    { id:'v5', nombre:'Medialunas grasa', sugerido:'20 + 8 = 28 u', cantidad:28 },
+    { id:'v6', nombre:'Cremonas jyq', sugerido:'4 u', cantidad:4 },
+    { id:'v7', nombre:'Libritos', sugerido:'1 y media lata', cantidad:2 },
+    { id:'v8', nombre:'Tortitas negras', sugerido:'1 lata (6 filas)', cantidad:1 },
+    { id:'v9', nombre:'Palitos de queso', sugerido:'1 lata', cantidad:1 },
+    { id:'v10', nombre:'Palmeritas', sugerido:'1 lata', cantidad:1 },
+    { id:'v11', nombre:'Bizcochitos', sugerido:'1 lata', cantidad:1 },
+    { id:'v12', nombre:'Pan caserito', sugerido:'5 latas', cantidad:5 },
+    { id:'v13', nombre:'Vigilantes + Sacramentos', sugerido:'20 vig + 10 sac jyq + 5 sac membrillo', cantidad:35 },
+    { id:'v14', nombre:'Cremonas membrillo + simples', sugerido:'4 membrillo + 3 simples', cantidad:7 },
+    { id:'v15', nombre:'Popurrí', sugerido:'20 u', cantidad:20 },
+    { id:'v16', nombre:'Libritos integrales + Biscochitos integrales', sugerido:'4 libritos + 1 lata biscochitos', cantidad:5 },
+  ],
+  sabado: [
+    { id:'s1', nombre:'Medialunas de manteca', sugerido:'36 u x3 (3 latas)', cantidad:108 },
+    { id:'s2', nombre:'Lenguita invertida', sugerido:'30 u x2 (2 latas)', cantidad:60 },
+    { id:'s3', nombre:'Rolls', sugerido:'15 u', cantidad:15 },
+    { id:'s4', nombre:'Santiagueñas', sugerido:'24 + 12 = 36 u', cantidad:36 },
+    { id:'s5', nombre:'Medialunas grasa', sugerido:'20 + 8 = 28 u', cantidad:28 },
+    { id:'s6', nombre:'Cremonas jyq', sugerido:'4 u', cantidad:4 },
+    { id:'s7', nombre:'Libritos', sugerido:'1 lata', cantidad:1 },
+    { id:'s8', nombre:'Tortitas negras', sugerido:'1 lata (6 filas)', cantidad:1 },
+    { id:'s9', nombre:'Palitos de queso', sugerido:'1 lata', cantidad:1 },
+    { id:'s10', nombre:'Palmeritas', sugerido:'1 lata', cantidad:1 },
+    { id:'s11', nombre:'Bizcochitos', sugerido:'1 lata', cantidad:1 },
+    { id:'s12', nombre:'Pan caserito', sugerido:'5 latas', cantidad:5 },
+    { id:'s13', nombre:'Cremonas membrillo + simples', sugerido:'4 membrillo + 3 simples', cantidad:7 },
+    { id:'s14', nombre:'Santiagueñas extra + Medialunas grasa extra', sugerido:'12 santiagueñas + 8 mediaslunas grasa', cantidad:20 },
+    { id:'s15', nombre:'Popurrí', sugerido:'20 u', cantidad:20 },
+  ],
+  domingo: [
+    { id:'do1', nombre:'Medialunas de manteca', sugerido:'36 u (1 lata)', cantidad:36 },
+    { id:'do2', nombre:'Lenguita invertida', sugerido:'30 u (1 lata)', cantidad:30 },
+    { id:'do3', nombre:'Popurrí + Roll', sugerido:'8 popurrí + 9 roll', cantidad:17 },
+    { id:'do4', nombre:'Vigilantes (12) + Medialuna grasa (12)', sugerido:'24 u', cantidad:24 },
+    { id:'do5', nombre:'Santiagueñas + Sacramentos', sugerido:'16 santiagueñas + 5 sac. c/sabor', cantidad:26 },
+    { id:'do6', nombre:'Cremonas (jyq, membrillo, comunes)', sugerido:'3+3+3 = 9 u', cantidad:9 },
+    { id:'do7', nombre:'Libritos', sugerido:'1 lata', cantidad:1 },
+    { id:'do8', nombre:'Tortitas negras', sugerido:'1 lata (3 filas)', cantidad:1 },
+    { id:'do9', nombre:'Pan caserito', sugerido:'2 latas', cantidad:2 },
+  ],
+};
+
+let leudadoState = {}; // { id: { sacado: bool, cantidad: number } }
+let alarmaActivada = false;
+let alarmaInterval = null;
+let alarmaSound = null;
+
+function getDayKeyLeudado() {
+  const dias = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
+  return dias[new Date().getDay()];
+}
+
+function loadLeudado() {
+  try { leudadoState = JSON.parse(localStorage.getItem(LEUDADO_KEY) || '{}'); } catch(e){ leudadoState = {}; }
+}
+
+function saveLeudado() { localStorage.setItem(LEUDADO_KEY, JSON.stringify(leudadoState)); }
+
+function getLeudadoItem(id, defaultCantidad) {
+  if (!leudadoState[id]) leudadoState[id] = { sacado: false, cantidad: defaultCantidad };
+  return leudadoState[id];
+}
+
+async function toggleSacado(id) {
+  const items = LEUDADO_SEMANAL[getDayKeyLeudado()] || [];
+  const def = items.find(x => x.id === id);
+  if (!def) return;
+  const item = getLeudadoItem(id, def.cantidad);
+  const eraSacado = item.sacado;
+  item.sacado = !item.sacado;
+  saveLeudado(); renderLeudado();
+
+  if (item.sacado) {
+    addToLog('🧊 Sacado para leudar: ' + def.nombre + ' (' + item.cantidad + ')', 'leudado');
+    // ── INTEGRACIÓN: descontar del freezer de panadería ──
+    try {
+      await descontarDelFreezer(def.nombre, item.cantidad);
+    } catch(e) { console.warn('toggleSacado freezer error:', e); }
+  } else if (eraSacado) {
+    addToLog('↩️ Devuelto al freezer: ' + def.nombre + ' (' + item.cantidad + ')', 'leudado');
+  }
+}
+
+function adjustLeudadoCantidad(id, delta) {
+  const items = LEUDADO_SEMANAL[getDayKeyLeudado()] || [];
+  const def = items.find(x => x.id === id);
+  if (!def) return;
+  const item = getLeudadoItem(id, def.cantidad);
+  item.cantidad = Math.max(0, item.cantidad + delta);
+  saveLeudado(); renderLeudado();
+}
+
+function requestNotifPermission() {
+  if (!('Notification' in window)) { alert('Tu navegador no soporta notificaciones.'); return; }
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      localStorage.setItem('cocina_notif', '1');
+      renderLeudado();
+      alert('✅ Notificaciones activadas. Te avisaremos a las 14:00hs.');
+    } else {
+      alert('Sin permiso no podemos enviarte la alarma. Activalo desde la configuración del navegador.');
+    }
+  });
+}
+
+function checkAlarma() {
+  const now = new Date();
+  const hora = now.getHours();
+  const min = now.getMinutes();
+  const dayItems = LEUDADO_SEMANAL[getDayKeyLeudado()] || [];
+  const todosSacados = dayItems.every(it => (leudadoState[it.id] || {}).sacado);
+  if (todosSacados) return; // ya está todo sacado
+  if (hora === ALARMA_HORA && min === 0) {
+    dispararAlarma();
+  }
+}
+
+function dispararAlarma() {
+  alarmaActivada = true;
+  renderLeudado();
+  // Browser notification
+  if (Notification.permission === 'granted') {
+    new Notification('🧊 ¡Hora de sacar el leudado!', {
+      body: 'Son las 14:00hs — sacá la mercadería del freezer para que leude.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧊</text></svg>',
+      requireInteraction: true,
+    });
+  }
+  // Audio alert using Web Audio API
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(freq, start, dur) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + start);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur + 0.1);
+    }
+    beep(880, 0, 0.3); beep(1100, 0.4, 0.3); beep(880, 0.8, 0.3); beep(1100, 1.2, 0.5);
+  } catch(e) {}
+  addToLog('⏰ ALARMA: hora de sacar el leudado (14:00hs)', 'leudado');
+}
+
+function renderLeudado() {
+  const el = document.getElementById('leudado-panel');
+  if (!el) return;
+  const dayKey = getDayKeyLeudado();
+  const dayItems = LEUDADO_SEMANAL[dayKey] || [];
+  const now = new Date();
+  const hora = now.getHours();
+  const min = now.getMinutes();
+  const notifOk = localStorage.getItem('cocina_notif') === '1' && Notification.permission === 'granted';
+  const todosSacados = dayItems.length > 0 && dayItems.every(it => (leudadoState[it.id] || {}).sacado);
+  const sacadosCount = dayItems.filter(it => (leudadoState[it.id] || {}).sacado).length;
+  const pct = dayItems.length ? Math.round(sacadosCount / dayItems.length * 100) : 0;
+
+  // Alarm bar
+  let alarmHtml = '';
+  if (todosSacados) {
+    alarmHtml = `<div class="leudado-alarm-bar done"><span class="leudado-alarm-icon">✅</span><div class="leudado-alarm-text"><strong>¡Todo el leudado sacado!</strong>El nochero puede arrancar a la madrugada.</div></div>`;
+  } else if (alarmaActivada || (hora >= ALARMA_HORA)) {
+    alarmHtml = `<div class="leudado-alarm-bar active"><span class="leudado-alarm-icon">🚨</span><div class="leudado-alarm-text"><strong>¡HORA DE SACAR EL LEUDADO!</strong>Son las ${hora}:${String(min).padStart(2,'0')}hs — sacá la mercadería del freezer ahora.</div></div>`;
+  } else {
+    const minRestantes = (ALARMA_HORA * 60) - (hora * 60 + min);
+    const hR = Math.floor(minRestantes / 60);
+    const mR = minRestantes % 60;
+    alarmHtml = `<div class="leudado-alarm-bar pending">
+      <span class="leudado-alarm-icon">🧊</span>
+      <div class="leudado-alarm-text">
+        <strong>Alarma de leudado a las 14:00hs</strong>
+        Faltan ${hR > 0 ? hR + 'h ' : ''}${mR}min
+      </div>
+      ${!notifOk ? `<button class="leudado-notif-btn" onclick="requestNotifPermission()">🔔 Activar</button>` : '<span style="font-size:11px;color:#16a34a;">🔔 ON</span>'}
+    </div>`;
+  }
+
+  // Progress
+  let html = alarmHtml;
+  html += `<div class="leudado-progress">
+    <div class="leudado-progress-bar"><div class="leudado-progress-fill" style="width:${pct}%"></div></div>
+    <span>${sacadosCount}/${dayItems.length} sacados</span>
+  </div>`;
+
+  const diasLabel = {lunes:'Lunes',martes:'Martes',miercoles:'Miércoles',jueves:'Jueves',viernes:'Viernes',sabado:'Sábado',domingo:'Domingo'};
+  html += `<div style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;padding:4px 0 8px;font-family:system-ui,sans-serif;">${diasLabel[dayKey] || dayKey} — Mercadería a sacar</div>`;
+
+  for (const def of dayItems) {
+    const item = getLeudadoItem(def.id, def.cantidad);
+    html += `<div class="leudado-item ${item.sacado ? 'sacado' : ''}">
+      <div class="leudado-check" onclick="toggleSacado('${def.id}')">${item.sacado ? '✓' : ''}</div>
+      <div class="leudado-info">
+        <div class="leudado-nombre">${def.nombre}</div>
+        <div class="leudado-sugerido">Sugerido: ${def.sugerido}</div>
+        <div class="leudado-qty-row">
+          <button class="leudado-qty-btn" onclick="adjustLeudadoCantidad('${def.id}',-1)">−</button>
+          <span class="leudado-qty-val">${item.cantidad}</span>
+          <button class="leudado-qty-btn plus" onclick="adjustLeudadoCantidad('${def.id}',1)">+</button>
+          <span class="leudado-unit">cantidad a sacar</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html += `<button class="leudado-reset-btn" onclick="resetLeudado()">🔄 Reiniciar lista del día</button>`;
+  el.innerHTML = html;
+}
+
+function resetLeudado() {
+  if (!confirm('¿Reiniciar la lista de leudado de hoy?')) return;
+  leudadoState = {}; saveLeudado(); alarmaActivada = false; renderLeudado();
+}
+
+// Start alarm checker every minute
+setInterval(checkAlarma, 60000);
+
+
+
+// ── ALARMA LIMPIEZA GENERAL ──────────────────────────
+const DIAS_LIMPIEZA = [1, 3, 5]; // lunes=1, miercoles=3, viernes=5
+const ALARMA_LIMPIEZA_HORA = 15;
+let alarmaLimpiezaActivada = false;
+
+let alarmaHieloActivada = false;
+
+function checkAlarmaLimpieza() {
+  const now = new Date();
+  const dia = now.getDay();
+  const hora = now.getHours();
+  const min = now.getMinutes();
+
+  // Alarma hielo — todos los días a las 15hs
+  if (hora === 15 && min === 0 && !alarmaHieloActivada) {
+    alarmaHieloActivada = true;
+    dispararAlarmaHielo();
+  }
+
+  // Alarma limpieza — lunes/miércoles/viernes a las 15hs
+  if (!DIAS_LIMPIEZA.includes(dia)) return;
+  if (hora === ALARMA_LIMPIEZA_HORA && min === 0 && !alarmaLimpiezaActivada) {
+    dispararAlarmaLimpieza();
+  }
+}
+
+function dispararAlarmaHielo() {
+  // Banner
+  let banner = document.getElementById('hielo-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'hielo-banner';
+    banner.style.cssText = 'margin:8px 12px 0;padding:12px 14px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:8px;font-family:system-ui,sans-serif;font-size:13px;color:#0369a1;display:none;line-height:1.5;animation:pulse 1.5s infinite;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  banner.innerHTML = '<strong style="display:block;margin-bottom:4px;">🧊 ¡GUARDAR HIELO EN EL FREEZER! 15:00hs</strong>Acordate de poner el hielo ahora.';
+  banner.style.display = 'block';
+
+  // Notificación del sistema
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('🧊 ¡Guardar hielo en el freezer!', {
+      body: 'Son las 15:00hs — guardá el hielo en el freezer ahora.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧊</text></svg>',
+      requireInteraction: true,
+    });
+  }
+
+  // Sonido distintivo (tono más grave)
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f, s, d) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.3, ctx.currentTime + s);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + s + d);
+      o.start(ctx.currentTime + s); o.stop(ctx.currentTime + s + d + 0.1);
+    }
+    beep(440, 0, 0.3); beep(440, 0.4, 0.3); beep(550, 0.8, 0.6);
+  } catch(e) {}
+
+  if (typeof addToLog === 'function') addToLog('🧊 ALARMA: Guardar hielo en el freezer (15:00hs)', 'alarma');
+}
+
+function dispararAlarmaLimpieza() {
+  alarmaLimpiezaActivada = true;
+
+  // Banner en el chat
+  let banner = document.getElementById('limpieza-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'limpieza-banner';
+    banner.style.cssText = 'margin:8px 12px 0;padding:12px 14px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;font-family:system-ui,sans-serif;font-size:13px;color:#854d0e;display:none;line-height:1.5;animation:pulse 1.5s infinite;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(banner, msgs);
+  }
+  banner.innerHTML = '<strong style="display:block;margin-bottom:4px;">🧹 ¡HORA DE LIMPIEZA GENERAL! 15:00hs</strong>Todos los sectores se ponen a limpiar ahora.';
+  banner.style.display = 'block';
+
+  // Notificación del sistema
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    new Notification('🧹 ¡Limpieza general!', {
+      body: 'Son las 15:00hs — todos los sectores a limpiar.',
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🧹</text></svg>',
+      requireInteraction: true,
+    });
+  }
+
+  // Sonido
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function beep(f, s, d) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = f;
+      g.gain.setValueAtTime(0.3, ctx.currentTime + s);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + s + d);
+      o.start(ctx.currentTime + s); o.stop(ctx.currentTime + s + d + 0.1);
+    }
+    beep(660, 0, 0.2); beep(770, 0.25, 0.2); beep(880, 0.5, 0.4);
+  } catch(e) {}
+
+  if (typeof addToLog === 'function') addToLog('🧹 ALARMA: Limpieza general 15:00hs', 'limpieza');
+}
+
+// Mostrar indicador de próxima limpieza en el chat
+function showLimpiezaIndicator() {
+  const now = new Date();
+  const dia = now.getDay();
+  const hora = now.getHours();
+  if (!DIAS_LIMPIEZA.includes(dia)) return;
+  if (hora >= ALARMA_LIMPIEZA_HORA) return; // ya pasó
+  const min = now.getMinutes();
+  const minRestantes = (ALARMA_LIMPIEZA_HORA * 60) - (hora * 60 + min);
+  const hR = Math.floor(minRestantes / 60);
+  const mR = minRestantes % 60;
+  let ind = document.getElementById('limpieza-indicator');
+  if (!ind) {
+    ind = document.createElement('div');
+    ind.id = 'limpieza-indicator';
+    ind.style.cssText = 'margin:8px 12px 0;padding:8px 12px;background:#fef9c3;border:1px solid #fde047;border-radius:8px;font-family:system-ui,sans-serif;font-size:12px;color:#854d0e;';
+    const msgs = document.getElementById('chat-messages');
+    if (msgs) msgs.parentNode.insertBefore(ind, msgs);
+  }
+  ind.innerHTML = '🧹 Hoy toca limpieza general — alarma en ' + (hR > 0 ? hR + 'h ' : '') + mR + 'min (15:00hs)';
+}
+
+setInterval(checkAlarmaLimpieza, 60000);
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'stock') { renderStock(); checkStockAlerts(); }
+  if (name === 'tareas') renderTareas();
+  if (name === 'leudado') renderLeudado();
+  if (name === 'log') renderLog();
+}
+
+// ── RECIPES ──────────────────────────────────────
+
+function renderRecipeCards(arr, el) {
+  if (!el) el = document.getElementById('recipes-panel');
+  if (arr.length === 0) { el.innerHTML = '<div class="empty-state">No hay recetas cargadas todavía.<br>Agregá la primera con el botón de abajo.</div>'; return; }
+  el.innerHTML = arr.map(r => `
+    <div class="recipe-card" onclick="openRecipeDetail(${r.id})">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <h3>${r.name}</h3>
+          <p>${r.ingredients.length} ingredientes · ${r.steps.length} pasos${r.rendimiento ? ' · ' + r.rendimiento : ''}</p>
+          ${r.deposito ? `<span class="recipe-tag">${depIcon ? depIcon(r.deposito) : ''} ${depLabel ? depLabel(r.deposito) : r.deposito}</span>` : ''}
+          ${r.cookTime ? `<span class="recipe-tag">⏱ ${r.cookTime} min</span>` : ''}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+          <button class="recipe-action-btn" onclick="openEditRecipe(${r.id})" title="Editar"><i class="ti ti-pencil"></i></button>
+          <button class="recipe-action-btn danger" onclick="deleteRecipe(${r.id})" title="Eliminar"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function renderRecipes() {
+  const el = document.getElementById('recipes-panel');
+  if (recipes.length === 0) { el.innerHTML = '<div class="empty-state">No hay recetas cargadas todavía.<br>Agregá la primera con el botón de abajo.</div>'; return; }
+  renderRecipeCards(recipes, el);
+}
+
+function depIcon(d) { return {local:'🏪',heladera:'❄️',freezer:'🧊',estante:'📦',pedido:'📋'}[d] || ''; }
+function depLabel(d) { return {local:'Local',heladera:'Heladera',freezer:'Freezer',estante:'Estante',pedido:'A pedido'}[d] || d; }
+
+function openAddRecipe() {
+  document.getElementById('modal-title').textContent = 'Nueva receta';
+  document.getElementById('modal-save-btn').textContent = 'Guardar receta';
+  document.getElementById('rec-editing-id').value = '';
+  ['rec-name','rec-ingredients','rec-steps','rec-rendimiento','rec-time'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('rec-deposito').value = 'local';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function openEditRecipe(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('modal-title').textContent = 'Editar receta';
+  document.getElementById('modal-save-btn').textContent = 'Guardar cambios';
+  document.getElementById('rec-editing-id').value = id;
+  document.getElementById('rec-name').value = r.name;
+  document.getElementById('rec-ingredients').value = r.ingredients.join('\n');
+  document.getElementById('rec-steps').value = r.steps.join('\n');
+  document.getElementById('rec-rendimiento').value = r.rendimiento || '';
+  document.getElementById('rec-deposito').value = r.deposito || 'local';
+  document.getElementById('rec-time').value = r.cookTime || '';
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+function deleteRecipe(id) {
+  const r = recipes.find(x => x.id === id);
+  if (!r || !confirm('¿Eliminar "' + r.name + '"?')) return;
+  recipes = recipes.filter(x => x.id !== id);
+  saveRecipes(); renderRecipes();
+  addToLog('🗑 Receta eliminada: ' + r.name, 'receta');
+}
+
+function saveRecipe() {
+  const name = document.getElementById('rec-name').value.trim();
+  const ingRaw = document.getElementById('rec-ingredients').value.trim();
+  const stepsRaw = document.getElementById('rec-steps').value.trim();
+  const rendimiento = document.getElementById('rec-rendimiento').value.trim();
+  const deposito = document.getElementById('rec-deposito').value;
+  const cookTime = parseInt(document.getElementById('rec-time').value) || null;
+  if (!name || !ingRaw || !stepsRaw) { alert('Completá nombre, ingredientes y pasos.'); return; }
+  const ingredients = ingRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const steps = stepsRaw.split('\n').map(s=>s.trim()).filter(Boolean);
+  const editingId = document.getElementById('rec-editing-id').value;
+  if (editingId) {
+    const idx = recipes.findIndex(x => x.id === parseInt(editingId));
+    if (idx !== -1) { recipes[idx] = { ...recipes[idx], name, ingredients, steps, rendimiento, deposito, cookTime }; addToLog('✏️ Receta editada: ' + name, 'receta'); }
+  } else {
+    recipes.push({ id: Date.now(), name, ingredients, steps, rendimiento, deposito, cookTime });
+    addToLog('➕ Receta agregada: ' + name, 'receta');
+  }
+  saveRecipes(); renderRecipes(); closeModal();
+}
+
+// ── RECIPE DETAIL ─────────────────────────────────
+function toggleIngredient(recipeId, idx) {
+  if (!checklistState[recipeId]) checklistState[recipeId] = new Set();
+  const s = checklistState[recipeId];
+  if (s.has(idx)) s.delete(idx); else s.add(idx);
+  renderChecklist(recipeId);
+}
+
+function renderChecklist(recipeId) {
+  const recipe = recipes.find(r => r.id === recipeId);
+  if (!recipe) return;
+  const checked = checklistState[recipeId] || new Set();
+  const total = recipe.ingredients.length;
+  const done = checked.size;
+  const container = document.getElementById('ingredient-checklist-' + recipeId);
+  if (!container) return;
+  container.innerHTML = recipe.ingredients.map((ing, idx) => {
+    const isChecked = checked.has(idx);
+    return `<div class="ingredient-item ${isChecked ? 'checked' : ''}" onclick="toggleIngredient(${recipeId}, ${idx})">
+      <div class="ingredient-checkbox">${isChecked ? '✓' : ''}</div>
+      <span class="ingredient-text">${ing}</span>
+    </div>`;
+  }).join('') + `
+  <div class="checklist-progress">
+    <div class="checklist-progress-bar"><div class="checklist-progress-fill" style="width:${total ? (done/total*100) : 0}%"></div></div>
+    <span>${done}/${total}</span>
+    ${done > 0 ? `<button class="checklist-reset-btn" onclick="event.stopPropagation();resetChecklist(${recipeId})">Reiniciar</button>` : ''}
+  </div>`;
+}
+
+function resetChecklist(recipeId) { checklistState[recipeId] = new Set(); renderChecklist(recipeId); }
+
+function openRecipeDetail(id) {
+  currentRecipe = recipes.find(r => r.id === id);
+  if (!currentRecipe) return;
+  document.getElementById('recipe-detail-title').textContent = currentRecipe.name;
+  const body = document.getElementById('recipe-detail-body');
+  body.innerHTML = `
+    <div class="ingredients-section">
+      <h4 style="display:flex;align-items:center;justify-content:space-between;">
+        <span>Mise en place</span>
+        <span style="font-size:11px;color:#aaa;font-weight:400;">Tildá lo que ya tenés listo</span>
+      </h4>
+      <div id="ingredient-checklist-${currentRecipe.id}"></div>
+    </div>
+    ${currentRecipe.rendimiento ? `<span class="recipe-meta-tag">📦 Rinde: ${currentRecipe.rendimiento}</span>` : ''}
+    ${currentRecipe.deposito ? `<span class="recipe-meta-tag">${depIcon(currentRecipe.deposito)} ${depLabel(currentRecipe.deposito)}</span>` : ''}
+    <div style="font-size:13px;color:#666;font-family:system-ui,sans-serif;margin:12px 0 8px;">Pasos:</div>
+    ${currentRecipe.steps.map((s,i) => `
+      <div class="step-item">
+        <div class="step-num">${i+1}</div>
+        <div class="step-text">${s}</div>
+      </div>`).join('')}
+    ${currentRecipe.cookTime ? `
+      <div style="margin-top:8px">
+        <button style="width:100%;padding:10px;background:#E64A19;color:white;border:none;border-radius:8px;font-family:system-ui,sans-serif;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;" onclick="addTimerFromRecipe()">
+          ⏱ Iniciar timer de cocción (${currentRecipe.cookTime} min)
+        </button>
+      </div>` : ''}
+  `;
+  renderChecklist(currentRecipe.id);
+  updateSpeechUI('', false);
+  const cb = document.getElementById('complete-recipe-btn');
+  if (cb) { cb.dataset.count = '0'; cb.style.background = '#E64A19'; cb.innerHTML = '<i class="ti ti-circle-check"></i> Completada'; }
+  document.getElementById('recipe-detail').classList.add('open');
+  addToLog('👀 Consultó receta: ' + currentRecipe.name, 'receta');
+}
+
+function closeRecipeDetail() {
+  document.getElementById('recipe-detail').classList.remove('open');
+  stopSpeech();
+}
+
+function toggleRecipeMic() {
+  if (!currentRecipe) return;
+  // Pre-fill chat input with recipe context, go to chat tab and activate mic
+  const recipeName = currentRecipe.name;
+  closeRecipeDetail();
+  switchTab('chat');
+  // Small delay to let the tab switch render, then activate mic
+  setTimeout(() => {
+    toggleMic(recipeName);
+  }, 150);
+}
+
+function addTimerFromRecipe() {
+  if (!currentRecipe) return;
+  addTimerWithData(currentRecipe.name + ' (horno)', currentRecipe.cookTime);
+  switchTab('timers'); closeRecipeDetail();
+}
+
+// ── COMPLETE RECIPE → DEPOSIT MODAL ───────────────
+function completeRecipe() {
+  if (!currentRecipe) return;
+  document.getElementById('dep-rendimiento-label').textContent = 'Rendimiento: ' + (currentRecipe.rendimiento || '—') + ' · Destino sugerido: ' + depLabel(currentRecipe.deposito || 'local');
+  ['dep-local','dep-heladera','dep-freezer','dep-estante'].forEach(id => document.getElementById(id).value = 0);
+  updateDepTotal();
+  document.getElementById('deposito-modal-overlay').classList.add('open');
+}
+
+function updateDepTotal() {
+  const t = ['dep-local','dep-heladera','dep-freezer','dep-estante'].reduce((sum,id) => sum + (parseInt(document.getElementById(id).value)||0), 0);
+  document.getElementById('dep-total-val').textContent = t;
+}
+
+function closeDepModal() { document.getElementById('deposito-modal-overlay').classList.remove('open'); }
+
+function confirmDeposito() {
+  if (!currentRecipe) return;
+  const local = parseInt(document.getElementById('dep-local').value) || 0;
+  const heladera = parseInt(document.getElementById('dep-heladera').value) || 0;
+  const freezer = parseInt(document.getElementById('dep-freezer').value) || 0;
+  const estante = parseInt(document.getElementById('dep-estante').value) || 0;
+
+  if (!stockState[currentRecipe.name]) stockState[currentRecipe.name] = { local:0, heladera:0, freezer:0, estante:0 };
+  const s = stockState[currentRecipe.name];
+  s.local += local; s.heladera += heladera; s.freezer += freezer; s.estante += estante;
+  saveStock();
+
+  const btn = document.getElementById('complete-recipe-btn');
+  const count = parseInt(btn.dataset.count || '0') + 1;
+  btn.dataset.count = count;
+  btn.style.background = '#16a34a';
+  btn.innerHTML = '<i class="ti ti-circle-check-filled"></i> ¡Completada! ×' + count;
+  btn.style.transform = 'scale(1.08)';
+  setTimeout(() => btn.style.transform = '', 200);
+
+  addToLog(`✅ Tanda ${count}: ${currentRecipe.name} → 🏪${local} ❄️${heladera} 🧊${freezer} 📦${estante}`, 'receta');
+  closeDepModal();
+  renderStock();
+}
+
+// ── STOCK ─────────────────────────────────────────
+function getStock(name) {
+  if (!stockState[name]) stockState[name] = { local:0, heladera:0, freezer:0, estante:0 };
+  return stockState[name];
+}
+
+function adjustStock(name, dep, delta) {
+  const s = getStock(name);
+  s[dep] = Math.max(0, (s[dep] || 0) + delta);
+  saveStock(); renderStock();
+  if (delta < 0) addToLog(`📤 Retirado del ${depLabel(dep)}: ${Math.abs(delta)} de ${name}`, 'stock');
+}
+
+function renderStock(filterQ) {
+  filterQ = (filterQ || '').toLowerCase().trim();
+  const el = document.getElementById('stock-panel');
+  if (!el) return;
+
+  // Group by deposito type
+  const groups = { local: [], heladera: [], freezer: [], estante: [], pedido: [] };
+  for (const r of recipes) {
+    const dep = r.deposito || 'local';
+    if (groups[dep]) groups[dep].push(r);
+  }
+
+  let html = '';
+  const sections = [
+    { key: 'heladera', label: '❄️ Heladera' },
+    { key: 'freezer',  label: '🧊 Freezer' },
+    { key: 'estante',  label: '📦 Estante' },
+    { key: 'local',    label: '🏪 Local directo' },
+    { key: 'pedido',   label: '📋 Solo por pedido' },
+  ];
+
+  for (const sec of sections) {
+    const items = groups[sec.key];
+    if (!items.length) continue;
+    html += `<div class="stock-section-title">${sec.label}</div>`;
+    for (const r of items) {
+      const s = getStock(r.name);
+      const totalStock = s.local + s.heladera + s.freezer + s.estante;
+      html += `<div class="stock-card">
+        <div class="stock-card-header">
+          <div>
+            <div class="stock-card-name">${r.name}</div>
+            <div class="stock-card-rendimiento">${r.rendimiento || ''}</div>
+          </div>
+        </div>
+        <div class="stock-depositos">
+          ${['local','heladera','freezer','estante'].map(dep => `
+            <div class="stock-dep-cell">
+              <div class="dep-label">${depIcon(dep)} ${depLabel(dep)}</div>
+              <div class="dep-val ${s[dep] > 0 ? 'has-stock' : ''}">${s[dep] || 0}</div>
+              <div class="stock-dep-btns">
+                <button class="stock-dep-btn minus" onclick="adjustStock('${r.name}','${dep}',-1)">−</button>
+                <button class="stock-dep-btn plus" onclick="adjustStock('${r.name}','${dep}',1)">+</button>
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
+  if (!html) html = '<div class="empty-state">Completá tandas desde las recetas<br>para ver el stock acá.</div>';
+  el.innerHTML = html;
+}
+
+// ── TIMERS ────────────────────────────────────────
+let timers = [];
+function renderTimers() {
+  const el = document.getElementById('timers-panel');
+  if (timers.length === 0) { el.innerHTML = '<div class="empty-state">No hay timers activos.<br>Agregá uno o inicialo desde una receta.</div>'; return; }
+  el.innerHTML = timers.map(t => {
+    const mins = Math.floor(t.remaining / 60);
+    const secs = t.remaining % 60;
+    const display = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    const urgent = t.remaining <= 60 && t.running;
+    return `<div class="timer-card">
+      <div class="timer-name">${t.name}</div>
+      <div class="timer-display ${urgent ? 'urgent' : ''}">${display}</div>
+      <div class="timer-btns">
+        <button class="timer-btn start" onclick="toggleTimer(${t.id})">${t.running ? '⏸ Pausar' : '▶ Iniciar'}</button>
+        <button class="timer-btn" onclick="resetTimer(${t.id})">↺ Reiniciar</button>
+        <button class="timer-btn danger" onclick="deleteTimer(${t.id})">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openAddTimer() {
+  const name = prompt('Nombre del timer:');
+  if (!name) return;
+  const mins = parseInt(prompt('Minutos:'));
+  if (!mins || isNaN(mins)) return;
+  addTimerWithData(name, mins);
+}
+
+function addTimerWithData(name, mins) {
+  const t = { id: Date.now(), name, total: mins * 60, remaining: mins * 60, running: false, interval: null };
+  timers.push(t); renderTimers();
+}
+
+function toggleTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (!t) return;
+  if (t.running) { clearInterval(t.interval); t.running = false; }
+  else {
+    t.running = true;
+    t.interval = setInterval(() => {
+      t.remaining--;
+      if (t.remaining <= 0) {
+        t.remaining = 0; t.running = false; clearInterval(t.interval);
+        speak('¡Atención! El timer ' + t.name + ' terminó.', '¡Timer terminado!');
+        addToLog('⏰ Timer terminado: ' + t.name, 'timer');
+      }
+      renderTimers();
+    }, 1000);
+  }
+  renderTimers();
+}
+
+function resetTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (!t) return;
+  clearInterval(t.interval); t.running = false; t.remaining = t.total; renderTimers();
+}
+
+function deleteTimer(id) {
+  const t = timers.find(x => x.id === id);
+  if (t) clearInterval(t.interval);
+  timers = timers.filter(x => x.id !== id); renderTimers();
+}
+
+// ── LOG ───────────────────────────────────────────
+function renderLog() {
+  const el = document.getElementById('log-panel');
+  if (log.length === 0) { el.innerHTML = '<div class="empty-state">El registro del día está vacío.<br>Aparecerá acá cada acción que hagas.</div>'; return; }
+  el.innerHTML = log.map(e => `<div class="log-item"><div class="log-time">${e.time}</div><div class="log-text">${e.text}</div></div>`).join('');
+}
+
+function exportLog() {
+  const text = log.map(e => `[${e.time}] ${e.text}`).join('\n');
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'registro-pasteleria-' + today() + '.txt';
+  a.click();
+}
+
+// ── SPEECH ────────────────────────────────────────
+let synth = null;
+let isSpeaking = false, isPaused = false, currentUtterance = null;
+
+function initSpeech() { if ('speechSynthesis' in window) { synth = window.speechSynthesis; } }
+
+function speak(text, label) {
+  if (!synth) return;
+  synth.cancel();
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  currentUtterance.lang = 'es-AR'; currentUtterance.rate = 0.95;
+  currentUtterance.onstart = () => { isSpeaking = true; isPaused = false; updateSpeechUI(label || 'Hablando...', true); };
+  currentUtterance.onend = currentUtterance.onerror = () => { isSpeaking = false; isPaused = false; updateSpeechUI('', false); };
+  synth.speak(currentUtterance);
+}
+
+function toggleSpeechPause() {
+  if (!synth || !isSpeaking) return;
+  if (isPaused) { synth.resume(); isPaused = false; updateSpeechUI(null, true, false); }
+  else { synth.pause(); isPaused = true; updateSpeechUI(null, true, true); }
+}
+
+function stopSpeech() {
+  if (!synth) return;
+  synth.cancel(); isSpeaking = false; isPaused = false; updateSpeechUI('', false);
+}
+
+function updateSpeechUI(label, speaking, paused) {
+  const bar = document.getElementById('speech-bar');
+  if (bar) {
+    if (speaking) { bar.classList.add('visible'); if (label !== null && label !== undefined) document.getElementById('speech-bar-label').textContent = label; }
+    else { bar.classList.remove('visible'); }
+    const pi = document.getElementById('speech-pause-icon');
+    if (pi) pi.className = (paused === true) ? 'ti ti-player-play' : 'ti ti-player-pause';
+  }
+  const speakBtn = document.getElementById('speak-recipe-btn');
+  const pauseBtn = document.getElementById('recipe-pause-btn');
+  const stopBtn = document.getElementById('recipe-stop-btn');
+  const speakLabel = document.getElementById('speak-recipe-label');
+  const speakIcon = document.getElementById('speak-recipe-icon');
+  if (speakBtn && pauseBtn && stopBtn) {
+    if (speaking) {
+      speakBtn.style.flex = '0 0 auto'; speakBtn.style.padding = '10px 14px';
+      if (speakLabel) speakLabel.textContent = '';
+      pauseBtn.style.display = 'flex'; stopBtn.style.display = 'flex';
+      const rpi = document.getElementById('recipe-pause-icon');
+      if (rpi) rpi.className = (paused === true) ? 'ti ti-player-play' : 'ti ti-player-pause';
+    } else {
+      speakBtn.style.flex = '1'; speakBtn.style.padding = '10px';
+      if (speakLabel) speakLabel.textContent = 'Leer receta en voz alta';
+      pauseBtn.style.display = 'none'; stopBtn.style.display = 'none';
+    }
+  }
+}
+
+function speakRecipe() {
+  if (!currentRecipe) return;
+  if (isSpeaking) { stopSpeech(); return; }
+  const text = currentRecipe.name + '. Ingredientes: ' + currentRecipe.ingredients.join(', ') + '. Pasos: ' + currentRecipe.steps.map((s,i) => 'Paso '+(i+1)+': '+s).join('. ');
+  speak(text, 'Leyendo: ' + currentRecipe.name);
+  addToLog('🔊 Leyó en voz alta: ' + currentRecipe.name, 'receta');
+}
+
+// ── MIC ───────────────────────────────────────────
+let recognition = null;
+function initMic() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'es-AR'; recognition.interimResults = false; recognition.maxAlternatives = 1;
+  recognition.onresult = e => {
+    const text = e.results[0][0].transcript;
+    const ctx = recognition._recipeContext;
+    document.getElementById('chat-input').value = ctx ? `[Receta: ${ctx}] ${text}` : text;
+    recognition._recipeContext = null;
+    sendMessage();
+  };
+  recognition.onend = () => { setStatus('Listo', false); };
+  recognition.onerror = () => { setStatus('Listo', false); };
+}
+
+function toggleMic(recipeContext) {
+  if (!recognition) { alert('Tu navegador no soporta reconocimiento de voz.'); return; }
+  const btn = document.getElementById('mic-btn');
+  if (btn.classList.contains('listening')) { recognition.stop(); return; }
+  recognition._recipeContext = recipeContext || null;
+  recognition.start();
+  setStatus('Escuchando...', true);
+}
+
+function setStatus(text, listening) {
+  document.getElementById('status-text').textContent = text;
+  document.getElementById('status-dot').classList.toggle('listening', listening);
+  document.getElementById('mic-btn').classList.toggle('listening', listening);
+}
+
+// ── CHAT ──────────────────────────────────────────
+function buildSystemPrompt(recipeCtx) {
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const hoy = dias[new Date().getDay()];
+  const hora = new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+
+  // Build stock context
+  let stockCtx = '';
+  const stockItems = Object.entries(stockState).filter(([,s]) => s.local+s.heladera+s.freezer+s.estante > 0);
+  if (stockItems.length > 0) {
+    stockCtx = '\nSTOCK ACTUAL DE DEPÓSITOS:\n' + stockItems.map(([name, s]) =>
+      `- ${name}: 🏪${s.local} ❄️${s.heladera} 🧊${s.freezer} 📦${s.estante}`
+    ).join('\n');
+  }
+
+  return `Sos el asistente interno del sector PASTELERÍA. Tu único rol es:
+
+1. RECETAS: Guiás y explicás solo las recetas cargadas en el sistema. Nunca inventés recetas.
+2. ORGANIZACIÓN DEL DÍA: Usás el stock real de depósitos para indicar qué producir y reponer.
+3. STOCK: Sabés el estado actual de cada depósito (local, heladera, freezer, estante) y ayudás a decidir qué necesita reposición.
+
+DEPÓSITOS:
+- 🏪 LOCAL: venta inmediata
+- ❄️ HELADERA: reserva refrigerada (budines, tortas, bizcochuelos)
+- 🧊 FREEZER: reserva congelada (cookies keto, tapas alfajor, bases sin gluten)
+- 📦 ESTANTE: reserva temperatura ambiente (alfajores secos, galletas)
+
+REGLAS:
+- Solo recetas y organización. Fuera de eso: "Solo puedo ayudarte con las recetas y la organización del día."
+- Español rioplatense, tono cálido y alegre 🍳. Reconocé el esfuerzo del equipo.
+- Cuando organices el día, priorizá lo que tiene stock bajo o cero.
+- Para recetas de ciclo largo (cada 30 días), recordalo cuando el stock esté bajo.
+
+--- CONTEXTO ACTUAL ---
+Hoy: ${hoy}, ${hora}hs
+${recipeCtx ? 'Recetas en el sistema:\n' + recipeCtx : 'Sin recetas cargadas.'}
+${stockCtx || '\nAún no hay stock registrado.'}
+--- FIN CONTEXTO ---`;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!apiKey) { alert('Ingresá tu API Key de Anthropic para usar el chat.'); return; }
+
+  input.value = '';
+  appendMsg(text, 'user');
+  const thinking = appendMsg('...', 'bot thinking');
+
+  const recipeCtx = recipes.map(r => `- ${r.name} (${r.rendimiento || 'sin rendimiento definido'}, depósito: ${depLabel(r.deposito || 'local')})`).join('\n');
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: buildSystemPrompt(recipeCtx),
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || 'No pude procesar la respuesta.';
+    thinking.remove();
+    appendMsg(reply, 'bot');
+    speak(reply, 'Asistente respondiendo...');
+    addToLog('💬 ' + text, 'chat');
+  } catch(e) {
+    thinking.remove();
+    appendMsg('Hubo un error al conectar con el asistente. Revisá la API key.', 'bot');
+  }
+}
+
+function appendMsg(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + cls;
+  el.textContent = text;
+  const msgs = document.getElementById('chat-messages');
+  msgs.appendChild(el);
+  msgs.scrollTop = msgs.scrollHeight;
+  return el;
+}
+
+// ── DEFAULT RECIPES ───────────────────────────────
+
+const DEFAULT_RECIPES = [{"id": 1, "name": "Masa Empanadas Clásica", "ingredients": ["1200gm margarina", "100gm sal", "1250ml agua", "6000gm harina 0000"], "steps": ["Mezclar todo junto", "Bajar a 2mm de espesor", "Cortar con discos", "Folex y a la cámara rotulado en bolsas de a 20 unidades"], "cookTime": null, "rendimiento": "20 unidades por tanda", "deposito": "freezer"}, {"id": 2, "name": "Masa Empanadas Integral", "ingredients": ["400gm margarina", "100gm sal", "1250gm agua", "1000gm harina 0000", "1000gm harina integral", "200gm algarroba"], "steps": ["Mezclar todo junto", "Bajar a 2mm de espesor", "Cortar con discos", "Folex y a la cámara rotulado en bolsas de a 20 unidades"], "cookTime": null, "rendimiento": "20 unidades por tanda", "deposito": "freezer"}, {"id": 3, "name": "Relleno Picada Clásica", "ingredients": ["7kg carne picada común", "7kg cebolla picada blanca cruda", "500gm morrón rojo picado", "40gm sal", "30gm adobo para pizza", "20gm pimentón", "50gm demiglás", "200cc aceite para freír la cebolla", "200cc aceite para cocinar la carne"], "steps": ["Pelar, lavar y picar las cebollas con la procesadora (poco, sino se hace agua)", "Lavar y picar a mano el morrón bien chiquito", "Sofritar la cebolla y el morrón juntos y reservar", "En una olla grande, cocinar la carne hasta que el centro supere los 100° por 10 minutos (tarda 35-45 min aprox)", "Una vez listo, agregar los vegetales reservados, condimentar", "Llevar a heladera hasta que esté completamente frío"], "cookTime": 45, "rendimiento": "10kg — 60 empanadas. Se repite cada 8 días", "deposito": "heladera"}, {"id": 4, "name": "Relleno de Pollo", "ingredients": ["10kg pollos crudos", "7kg cebolla picada blanca cruda", "1kg morrón rojo picado", "40gm sal", "30gm adobo para pizza", "20gm pimentón", "50gm demiglás", "200cc aceite para freír la cebolla", "200cc aceite para cocinar", "Jugo de 2 limones chicos"], "steps": ["Hervir el pollo, enfriar y desmenuzar (ideal hervirlo el día anterior) y picar", "Pelar, lavar y picar las cebollas con la procesadora (poco, sino se hace agua)", "Lavar y picar a mano el morrón bien chiquito", "Sofritar la cebolla y el morrón juntos y reservar", "En una olla grande, cocinar hasta que el centro supere los 100° por 10 minutos", "Agregar los vegetales reservados, condimentar", "Llevar a heladera hasta que esté completamente frío"], "cookTime": 45, "rendimiento": "10kg — 60 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 5, "name": "Relleno Cerdo a la Barbacoa", "ingredients": ["10kg carne de cerdo cruda", "7kg cebolla picada blanca cruda", "1kg morrón rojo picado", "40gm sal", "30gm adobo para pizza", "20gm pimentón", "1 sobre de salsa barbacoa", "50gm demiglás", "200cc aceite para freír la cebolla", "200cc aceite para cocinar", "Jugo de 2 limones chicos"], "steps": ["Hervir el cerdo, enfriar y sacar el exceso de grasa y cuero (ideal el día anterior)", "Procesar en la procesadora — no mucho para que no quede pastoso", "Pelar, lavar y picar las cebollas con la procesadora (poco, sino se hace agua)", "Lavar y picar a mano el morrón bien chiquito", "Sofritar la cebolla y el morrón juntos y reservar", "Cocinar la carne hasta que el centro supere los 100° por 10 minutos", "Agregar los vegetales reservados, la barbacoa y condimentar", "Llevar a heladera hasta que esté completamente frío"], "cookTime": 45, "rendimiento": "10kg — 60 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 6, "name": "Relleno Humita", "ingredients": ["1kg granos de choclo limpios cocidos", "1kg cebolla", "100gm morrón", "1 pizca pimienta", "1 cucharada al ras demiglás", "40cc aceite para el sofrito", "2 huevos batidos"], "steps": ["Lavar la verdura, picar la cebolla con la procesadora", "Lavar el morrón y picarlo a mano", "Sofritar todo junto y guardar en heladera hasta que esté bien frío", "Finalmente batir y agregar el huevo"], "cookTime": 20, "rendimiento": "1800gm — 18 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 7, "name": "Relleno Hongos Portobelo", "ingredients": ["1kg portobelos fileteados", "1kg cebolla", "100gm morrón", "1 pizca pimienta", "1 cucharada al ras demiglás", "40cc aceite para el sofrito", "2 huevos batidos"], "steps": ["Lavar la verdura, picar la cebolla con la procesadora", "Lavar el morrón y picarlo a mano", "Sofritar todo junto y guardar en heladera hasta que esté bien frío", "Finalmente batir y agregar el huevo"], "cookTime": 20, "rendimiento": "1800gm — 18 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 8, "name": "Relleno Zapallito Verde", "ingredients": ["1kg zapallitos lavados y fileteados", "1kg cebolla", "100gm morrón", "1 pizca pimienta", "1 cucharada al ras demiglás", "40cc aceite para el sofrito", "2 huevos batidos"], "steps": ["Lavar la verdura, picar la cebolla con la procesadora", "Lavar el morrón y picarlo a mano", "Sofritar todo junto y guardar en heladera hasta que esté bien frío", "Finalmente batir y agregar el huevo"], "cookTime": 20, "rendimiento": "1800gm — 18 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 9, "name": "Relleno Calabaza", "ingredients": ["2kg calabaza al horno hecha puré", "3 huevos batidos"], "steps": ["Cocinar la calabaza en mitades en el horno", "Hacer puré y enfriar bien", "Finalmente batir y agregar el huevo"], "cookTime": 40, "rendimiento": "2kg — 16 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 10, "name": "Relleno Jamón y Queso", "ingredients": ["1kg jamón picado", "500gm queso de máquina picado", "500gm muzzarella", "2 huevos batidos"], "steps": ["Mezclar todo y reservar en heladera para el armado de las empanadas"], "cookTime": null, "rendimiento": "2kg — 15 empanadas. Se repite semanalmente", "deposito": "heladera"}, {"id": 11, "name": "Empanadas Picada Clásica", "ingredients": ["1 tapa empanada", "160gm relleno picada clásica"], "steps": ["Armar y pesar cada empanada a 160gm", "Freezar en placa con antiadherente en freezer vertical 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 15 unidades permanentes", "deposito": "freezer"}, {"id": 12, "name": "Empanadas Cerdo a la Barbacoa", "ingredients": ["1 tapa empanada", "160gm relleno cerdo barbacoa"], "steps": ["Armar y pesar cada empanada a 160gm", "Freezar en placa con antiadherente en freezer vertical 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 15 unidades permanentes", "deposito": "freezer"}, {"id": 13, "name": "Empanadas Carne Cortada a Cuchillo", "ingredients": ["1 tapa empanada", "160gm relleno carne a cuchillo"], "steps": ["Armar y pesar cada empanada a 160gm", "Freezar en placa con antiadherente en freezer vertical 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 15 unidades permanentes", "deposito": "freezer"}, {"id": 14, "name": "Empanadas de Pollo", "ingredients": ["1 tapa empanada", "160gm relleno de pollo"], "steps": ["Armar y pesar cada empanada a 160gm", "Freezar en placa con antiadherente en freezer vertical 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 15 unidades permanentes", "deposito": "freezer"}, {"id": 15, "name": "Canastita Humita Clásica", "ingredients": ["1 tapa empanada", "100gm relleno humita", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 16, "name": "Canastita Zapallitos", "ingredients": ["1 tapa empanada", "100gm relleno zapallito verde", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 17, "name": "Canastita Calabaza", "ingredients": ["1 tapa empanada", "100gm relleno calabaza", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 18, "name": "Canastita Hongos", "ingredients": ["1 tapa empanada", "100gm relleno hongos portobelo", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 19, "name": "Canastita Hongos Integral", "ingredients": ["1 tapa empanada integral", "100gm relleno hongos portobelo", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 20, "name": "Canastita Calabaza Integral", "ingredients": ["1 tapa empanada integral", "100gm relleno calabaza", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 21, "name": "Canastita Zapallitos Integral", "ingredients": ["1 tapa empanada integral", "100gm relleno zapallito verde", "50gm queso cremoso"], "steps": ["Armar y pesar cada canastita", "Freezar en placa con antiadherente en freezer 'Cocina 1'", "Rotular con fecha y nombre del producto"], "cookTime": null, "rendimiento": "Stock mínimo: 6 unidades permanentes", "deposito": "freezer"}, {"id": 22, "name": "Sandwich de Miga Jamón y Queso (blanco)", "ingredients": ["1 paquete 48 migas", "500gm mayonesa", "500cc leche", "40 fetas jamón cocido", "56 fetas queso de máquina"], "steps": ["Cortar el fiambre y usar folex para que las fetas no se peguen", "Mojar la miga para asegurar que esté fresca", "Mezclar la leche y la mayonesa para que quede más fluida", "Pincelar la primera miga, poner el jamón cubriendo toda la superficie", "Pincelar el jamón, poner otra miga, pincelar y colocar el queso", "Pincelar el queso y tapar con la última miga (3 migas en total)", "Repetir el proceso 8 veces", "Cortar los bordes y porcionar"], "cookTime": 20, "rendimiento": "Paquete completo (48 sandwich). 1 vez por semana", "deposito": "heladera"}, {"id": 23, "name": "Sandwich de Miga Huevo Duro", "ingredients": ["6 migas", "200cc mezcla mayonesa y leche", "10 fetas jamón cocido", "8 huevos duros rallados", "14 fetas queso de máquina"], "steps": ["Cortar el fiambre y usar folex para que no se peguen", "Mojar la miga para asegurar que esté fresca", "Mezclar leche y mayonesa", "Pincelar primera miga, poner jamón y queso cubriendo la superficie", "Poner segunda miga, pincelar y colocar el huevo rallado cubriendo toda la superficie", "Pincelar y cerrar con la última miga", "Repetir 2 veces. Cortar bordes y porcionar"], "cookTime": 5, "rendimiento": "12 sandwich. 1 vez por semana", "deposito": "heladera"}, {"id": 24, "name": "Sandwich de Miga Berenjenas", "ingredients": ["6 migas", "200cc mezcla mayonesa y leche", "12 berenjenas al escabeche picadas", "14 fetas queso de máquina"], "steps": ["Mojar la miga, mezclar leche y mayonesa", "Pincelar primera miga, cubrir con queso", "Poner segunda miga, pincelar y colocar la berenjena picada en capa delgada", "Pincelar y cerrar. Repetir 2 veces", "Cortar bordes y porcionar"], "cookTime": 5, "rendimiento": "12 sandwich. 1 vez por semana", "deposito": "heladera"}, {"id": 25, "name": "Sandwich de Miga Aceitunas", "ingredients": ["6 migas", "200cc mezcla mayonesa y leche", "300gm aceitunas fileteadas", "14 fetas queso de máquina"], "steps": ["Mojar la miga, mezclar leche y mayonesa", "Pincelar primera miga, cubrir con queso", "Poner segunda miga, pincelar y colocar aceitunas picadas en capa delgada", "Pincelar y cerrar. Repetir 2 veces", "Cortar bordes y porcionar"], "cookTime": 5, "rendimiento": "12 sandwich. 1 vez por semana", "deposito": "heladera"}, {"id": 26, "name": "Sandwich de Miga Lechuga y Tomate", "ingredients": ["6 migas", "200cc mezcla mayonesa y leche", "12 hojas lechuga limpia seca y cortada", "14 fetas tomate bien finas"], "steps": ["Mojar la miga, mezclar leche y mayonesa", "Pincelar primera miga, cubrir con tomate", "Poner segunda miga, pincelar y colocar la lechuga picada", "Pincelar y cerrar. Repetir 2 veces", "Cortar bordes y porcionar"], "cookTime": 5, "rendimiento": "12 sandwich. 1 vez por semana", "deposito": "heladera"}, {"id": 27, "name": "Sandwich de Miga Jamón Crudo y Rúcula", "ingredients": ["6 migas", "200cc mezcla queso crema y leche", "20 fetas finas jamón crudo", "12 hojas rúcula", "14 fetas queso de máquina"], "steps": ["IMPORTANTE: sacar el jamón crudo del freezer 1 hora antes de hacer el mise en place", "Cortar el fiambre y usar folex", "Mojar la miga, mezclar queso crema y leche", "Pincelar primera miga, poner jamón y rúcula", "Pincelar la cara que va a tapar y colocar segunda miga", "Pincelar y colocar el queso, cerrar con la última miga", "Cortar bordes y porcionar en 6 como asterisco"], "cookTime": 5, "rendimiento": "12 sandwich. 1 vez por semana", "deposito": "heladera"}, {"id": 28, "name": "Sandwich de Miga Ricota y Nuez", "ingredients": ["6 migas", "200cc mezcla queso crema y leche", "10 fetas jamón cocido", "300gm ricota", "14 nueces tostadas molidas", "Pimienta, nuez moscada y sal a gusto"], "steps": ["Mezclar la ricota, la nuez, pimienta, sal y nuez moscada", "Mojar la miga, mezclar queso crema y leche", "Pincelar primera miga, poner jamón, pincelar y tapar con otra miga", "Rellenar toda la superficie con una capa delicada de ricota", "Pincelar la miga que va a tapar la ricota y cerrar", "Cortar bordes y porcionar en 6 como asterisco"], "cookTime": 5, "rendimiento": "12 sandwich. 1 vez por semana", "deposito": "heladera"}, {"id": 29, "name": "Milanesas para Viandas", "ingredients": ["4kg nalga", "150gm perejil fresco", "4 dientes ajo picados", "12 huevos enteros batidos", "5gm sal fina", "5gm adobo"], "steps": ["Desgrasar la carne", "Golpearla con el picacarne para ablandarla", "Dejar en reposo con agua, bicarbonato y harina por 2 horas", "Enjuagar bien", "Batir el resto de los ingredientes y meter la carne enjuagada", "Rebozar y guardar en freezer entre folex para que no se peguen"], "cookTime": null, "rendimiento": "12 unidades. Stock mínimo: 5 unidades. Se repite semanalmente", "deposito": "freezer"}, {"id": 30, "name": "Tortilla de Papa Individual", "ingredients": ["1kg papas limpias", "200gm cebollas crudas", "5 huevos", "Sal y orégano a gusto"], "steps": ["Cortar las papas en cubos finos para freír (freír y reservar)", "Cortar la cebolla en juliana y blanquear", "Unir los ingredientes con el huevo batido, sal y orégano", "Meter en bandejas p15 altas previamente aceitadas", "Cocinar a 200° hasta cocinar el huevo", "Llevar directo al local"], "cookTime": 20, "rendimiento": "4 unidades. Stock mínimo local: 2 unidades. Se hace 2-3 veces por semana", "deposito": "local"}];
+
+
+// ══════════════════════════════════════════════════════
+// INTEGRACIÓN CENTRAL — COCINA
+// ══════════════════════════════════════════════════════
+
+let pedidos_cocina = [];
+
+async function publishStockToCentral_cocina() {
+
+  try {
+    if (typeof stockState !== 'undefined') {
+      const rows = Object.entries(stockState).map(([recipe_name, s]) => ({
+        recipe_name, sector: 'cocina',
+        local: s.local||0, heladera: s.heladera||0, freezer: s.freezer||0, estante: s.estante||0,
+      }));
+      if (rows.length > 0) await sbUpsert('cocina_stock', rows);
+    }
+    await checkAndPublishAlerts_cocina();
+  } catch(e) { console.warn('publishStock error:', e); }
+
+}
+
+async function checkAndPublishAlerts_cocina() {
+
+  try {
+    const alertas = [];
+    if (typeof recipes !== 'undefined' && typeof stockState !== 'undefined') {
+      for (const r of recipes) {
+        const s = stockState[r.name];
+        const total = s ? (s.local + s.heladera + s.freezer + s.estante) : 0;
+        if (total === 0) {
+          alertas.push({ sector: 'cocina', tipo: 'sin_stock', mensaje: `Sin stock: ${r.name}`, producto_id: String(r.id) });
+        } else if (total <= 3) {
+          alertas.push({ sector: 'cocina', tipo: 'stock_bajo', mensaje: `Stock bajo (${total}): ${r.name}`, producto_id: String(r.id) });
+        }
+      }
+    }
+    if (alertas.length > 0) {
+      await sbFetch('DELETE', 'alertas_sistema', null, '?sector=eq.cocina&leida=eq.false');
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) { console.warn('checkAlerts error:', e); }
+
+}
+
+async function loadPedidos_cocina() {
+  try {
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.cocina&estado=neq.entregado&order=created_at.desc');
+    if (rows) {
+      pedidos_cocina = rows;
+      renderPedidos_cocina();
+      updatePedidosBadge_cocina();
+    }
+  } catch(e) { console.warn('loadPedidos error:', e); }
+}
+
+function renderPedidos_cocina() {
+  const el = document.getElementById('pedidos-cocina-list');
+  if (!el) return;
+  if (pedidos_cocina.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:32px 16px;color:#aaa;font-family:system-ui,sans-serif;font-size:13px;">Sin pedidos pendientes ✓</div>';
+    return;
+  }
+  const icons = {salon:'🏪',central:'🏭',cocina:'🍳',panaderia:'🍞',pasteleria:'🍰',deposito:'🏭'};
+  el.innerHTML = pedidos_cocina.map(p => {
+    const hora = new Date(p.created_at).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
+    let btns = '';
+    if (p.estado === 'pendiente') {
+      btns = `<button onclick="cambiarEstadoPedido_cocina(${p.id},'en_proceso')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">▶ Tomar</button>
+              <button onclick="cambiarEstadoPedido_cocina(${p.id},'entregado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
+    } else if (p.estado === 'en_proceso') {
+      btns = `<button onclick="cambiarEstadoPedido_cocina(${p.id},'listo')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#2E7D32;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">✓ Listo para entregar</button>`;
+    } else if (p.estado === 'listo') {
+      btns = `<button onclick="cambiarEstadoPedido_cocina(${p.id},'entregado')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#22c55e;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">📦 Marcar entregado</button>`;
+    }
+    const estadoColors = {pendiente:'#fef9c3;color:#92400e',en_proceso:'#dbeafe;color:#1e40af',listo:'#dcfce7;color:#166534'};
+    return `<div style="background:#fff;border:1px solid ${p.urgente?'#fca5a5':'#eee'};border-radius:10px;padding:12px;margin-bottom:8px;${p.urgente?'background:#fff8f8;':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <div style="flex:1;">
+          <div style="font-size:14px;font-weight:600;color:#1a1a1a;font-family:system-ui,sans-serif;">${p.urgente?'🔴 ':''}${p.producto}</div>
+          <div style="font-size:11px;color:#aaa;margin-top:3px;font-family:system-ui,sans-serif;">${icons[p.desde_sector]||'📋'} ${p.desde_sector} · ${hora}${p.nota?' · &ldquo;'+p.nota+'&rdquo;':''}</div>
+          <span style="display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;margin-top:4px;background:${(estadoColors[p.estado]||'').split(';')[0]};${(estadoColors[p.estado]||'').split(';')[1]?'color:'+((estadoColors[p.estado]||'').split(';')[1]).replace('color:',''):''};font-family:system-ui,sans-serif;">${p.estado.replace('_',' ')}</span>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:#2E7D32;font-family:system-ui,sans-serif;">${p.cantidad}<span style="font-size:11px;font-weight:400;color:#aaa;"> ${p.unidad}</span></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:10px;">${btns}</div>
+    </div>`;
+  }).join('');
+}
+
+async function cambiarEstadoPedido_cocina(id, nuevoEstado) {
+  try {
+    await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
+    if (nuevoEstado === 'entregado') {
+      pedidos_cocina = pedidos_cocina.filter(p => p.id !== id);
+    } else {
+      const p = pedidos_cocina.find(p => p.id === id);
+      if (p) p.estado = nuevoEstado;
+    }
+    renderPedidos_cocina();
+    updatePedidosBadge_cocina();
+    if (typeof addToLog === 'function') addToLog('📋 Pedido ' + nuevoEstado.replace('_',' ') + ': ' + (pedidos_cocina.find(p=>p.id===id)?.producto||''), 'pedido');
+  } catch(e) { console.warn('cambiarEstado error:', e); }
+}
+
+function updatePedidosBadge_cocina() {
+  const tab = document.getElementById('tab-pedidos-cocina');
+  if (!tab) return;
+  const existing = tab.querySelector('.int-badge');
+  if (existing) existing.remove();
+  const pendientes = pedidos_cocina.filter(p => p.estado === 'pendiente').length;
+  if (pendientes > 0) {
+    const b = document.createElement('span');
+    b.className = 'int-badge';
+    b.style.cssText = 'position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;background:#E24B4A;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;animation:pulse 2s infinite;';
+    b.textContent = pendientes;
+    tab.appendChild(b);
+  }
+}
+
+setInterval(loadPedidos_cocina, 60000);
+
+
+// Hook: al guardar stock publicar alertas al central
+const _orig_cocina_save = saveStock;
+saveStock = function(...args) {
+  _orig_cocina_save(...args);
+  setTimeout(publishStockToCentral_cocina, 400);
+};
+
+const _orig_cocina_adj = adjustStock;
+adjustStock = function(...args) {
+  _orig_cocina_adj(...args);
+  setTimeout(publishStockToCentral_cocina, 400);
+};
+
+
+// ══════════════════════════════════════════════════════════════════
+// MÓDULO DE INTEGRACIÓN DE FLUJOS — Conecta todos los sectores
+// ══════════════════════════════════════════════════════════════════
+
+// ── MAPA: nombre de leudado → ID del freezer de panadería ─────────
+const LEUDADO_TO_FREEZER = {
+  'medialunas de manteca':    'medialunas_manteca',
+  'lenguita invertida':       'medialunas_manteca',
+  'popurrí + roll':           'medialunas_manteca',
+  'vigilantes':               'facturas_grasa',
+  'medialuna grasa':          'facturas_grasa',
+  'vigilantes (12) + medialuna grasa (12)': 'facturas_grasa',
+  'santiagueñas + sacramentos': 'facturas_grasa',
+  'santiagueñas':             'facturas_grasa',
+  'sacramentos':              'facturas_grasa',
+  'medialunas grasa':         'facturas_grasa',
+  'cremonas':                 'cremonas',
+  'cremonas (jyq, membrillo, comunes)': 'cremonas',
+  'cremonas jyq':             'cremonas',
+  'cremonas membrillo + simples': 'cremonas',
+  'libritos':                 'libritos_clasicos',
+  'libritos integrales':      'libritos_integrales',
+  'tortitas negras':          'facturas_grasa',
+  'palitos de queso':         'palitos_queso',
+  'palmeritas':               'palmeritas',
+  'bizcochitos':              'bizcochitos',
+  'pan caserito':             'pan_caserito',
+  'rolls':                    'medialunas_manteca',
+  'roll de manzana':          'medialunas_manteca',
+  'popurrí':                  'medialunas_manteca',
+  'empanadas clásicas':       'emp_clasicas',
+  'empanadas integrales':     'emp_integral',
+};
+
+// ── MAPA: ingrediente texto libre → ID materia prima depósito ──────
+const ING_TO_MP = {
+  'harina 0000':        { id: 'harina_0000', factor: 0.001 },  // g → kg
+  'harina 000':         { id: 'harina_000',  factor: 0.001 },
+  'harina trigo 000':   { id: 'harina_000',  factor: 0.001 },
+  'harina trigo 0000':  { id: 'harina_0000', factor: 0.001 },
+  'trigo 000':          { id: 'harina_000',  factor: 0.001 },
+  'trigo 0000':         { id: 'harina_0000', factor: 0.001 },
+  'harina integral':    { id: 'harina_integral', factor: 0.001 },
+  'harina trigo integral': { id: 'harina_integral', factor: 0.001 },
+  'harina de espelta':  { id: 'harina_espelta', factor: 0.001 },
+  'harina integral de espelta': { id: 'harina_espelta', factor: 0.001 },
+  'harina integral de centeno': { id: 'harina_centeno', factor: 0.001 },
+  'harina de centeno':  { id: 'harina_centeno', factor: 0.001 },
+  'harina de almendras': { id: 'harina_almendras', factor: 0.001 },
+  'harina de coco':     { id: 'harina_coco', factor: 0.001 },
+  'manteca':            { id: 'manteca',   factor: 0.001 },
+  'margarina':          { id: 'margarina', factor: 0.001 },
+  'sal':                { id: 'sal',       factor: 0.001 },
+  'levadura':           { id: 'levadura',  factor: 0.001 },
+  'levadura fresca':    { id: 'levadura',  factor: 0.001 },
+  'azucar':             { id: 'azucar',    factor: 0.001 },
+  'azúcar':             { id: 'azucar',    factor: 0.001 },
+  'aceite':             { id: 'aceite',    factor: 0.001 },
+  'aceite girasol':     { id: 'aceite',    factor: 0.001 },
+  'leche':              { id: 'leche',     factor: 0.001 },
+  'huevos':             { id: 'huevos',    factor: 1 },
+  'huevo':              { id: 'huevos',    factor: 1 },
+  'grasa':              { id: 'grasa',     factor: 0.001 },
+  'miel':               { id: 'miel',      factor: 0.001 },
+  'membrillo':          { id: 'membrillo', factor: 0.001 },
+  'almidón':            { id: 'almidon',   factor: 0.001 },
+  'almidón de maíz':    { id: 'almidon',   factor: 0.001 },
+  'polenta':            { id: 'polenta',   factor: 0.001 },
+};
+
+// ── PARSEAR ingrediente texto → { mpId, cantidad, unidad } ────────
+function parsearIngrediente(ingText) {
+  const txt = ingText.toLowerCase().trim();
+  // Extraer número y unidad del inicio: "2800g harina 0000" → [2800, 'g', 'harina 0000']
+  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|cc|ml|lt?|u|cucharad[ai]ta?s?|cucharas?|litros?)?\s+(.+)/);
+  if (!match) return null;
+
+  let cantidad = parseFloat(match[1].replace(',', '.'));
+  const unidad = match[2] || 'u';
+  const nombreIng = match[3].trim();
+
+  // Convertir a kg si está en gramos o cc/ml
+  let cantKg = cantidad;
+  if (unidad === 'g') cantKg = cantidad / 1000;
+  else if (unidad === 'cc' || unidad === 'ml') cantKg = cantidad / 1000;
+  else if (unidad === 'kg' || unidad === 'lt' || unidad === 'l' || unidad === 'litros') cantKg = cantidad;
+
+  // Buscar match en ING_TO_MP
+  let mpId = null;
+  for (const [key, val] of Object.entries(ING_TO_MP)) {
+    if (nombreIng.includes(key)) {
+      mpId = val.id;
+      break;
+    }
+  }
+  if (!mpId) return null;
+  return { mpId, cantKg };
+}
+
+// ── DESCONTAR INGREDIENTES DEL DEPÓSITO ──────────────────────────
+async function descontarIngredientesDeposito(ingredients, sector) {
+  if (!ingredients || ingredients.length === 0) return;
+  try {
+    // Leer stock actual del depósito
+    const rows = await sbSelect('deposito_stock', '');
+    if (!rows) return;
+    const stockMap = {};
+    rows.forEach(r => stockMap[r.id] = r.cantidad || 0);
+
+    const updates = [];
+    const alertas = [];
+
+    for (const ing of ingredients) {
+      const parsed = parsearIngrediente(ing);
+      if (!parsed) continue;
+      const { mpId, cantKg } = parsed;
+      if (stockMap[mpId] === undefined) continue;
+
+      const nuevo = Math.max(0, Math.round((stockMap[mpId] - cantKg) * 100) / 100);
+      stockMap[mpId] = nuevo;
+      updates.push({ id: mpId, cantidad: nuevo });
+
+      // Verificar si quedó bajo mínimo
+      if (nuevo <= 0) {
+        alertas.push({ sector: 'deposito', tipo: 'sin_stock', mensaje: `Sin stock: ${mpId} (usado por ${sector})`, producto_id: mpId });
+      } else if (nuevo <= 5) {
+        alertas.push({ sector: 'deposito', tipo: 'stock_bajo', mensaje: `Stock bajo (${nuevo}kg): ${mpId}`, producto_id: mpId });
+      }
+    }
+
+    // Actualizar depósito en Supabase
+    if (updates.length > 0) {
+      await sbUpsert('deposito_stock', updates);
+    }
+
+    // Publicar alertas
+    if (alertas.length > 0) {
+      await sbUpsert('alertas_sistema', alertas);
+    }
+  } catch(e) {
+    console.warn('descontarIngredientes error:', e);
+  }
+}
+
+// ── SUMAR PRODUCTO AL SALÓN ───────────────────────────────────────
+async function sumarProductoAlSalon(productoNombre, productoId, cantidad, sectorOrigen, destino='salon') {
+  if (!cantidad || cantidad <= 0) return;
+  try {
+    // Producción solo DESPACHA: crea el registro pendiente con estado 'despachado'.
+    // El Salón lo confirma y recién ahí se suma a salon_stock.
+    // (Producción ya no escribe salon_stock para no pisar el conteo del Salón.)
+    await sbUpsert('salon_recepciones', [{
+      producto_id: productoId,
+      producto_nombre: productoNombre,
+      cantidad: cantidad,
+      sector_origen: sectorOrigen,
+      destino: destino,
+      estado: 'despachado',
+    }]);
+  } catch(e) {
+    console.warn('despacharAlSalon error:', e);
+  }
+}
+
+// ── DESCONTAR DEL FREEZER DE PANADERÍA ───────────────────────────
+async function descontarDelFreezer(nombreProducto, cantidad) {
+  try {
+    // Encontrar el ID del freezer usando el nombre
+    const nombreLower = nombreProducto.toLowerCase();
+    let freezerId = null;
+    for (const [key, val] of Object.entries(LEUDADO_TO_FREEZER)) {
+      if (nombreLower.includes(key)) { freezerId = val; break; }
+    }
+    if (!freezerId) return;
+
+    const rows = await sbSelect('freezer_panaderia', '?id=eq.' + freezerId);
+    if (!rows || rows.length === 0) return;
+
+    const actual = rows[0].total || 0;
+    const nuevo = Math.max(0, actual - cantidad);
+
+    await sbUpsert('freezer_panaderia', [{ id: freezerId, total: nuevo }]);
+
+    // Alerta si quedó bajo
+    if (nuevo <= 0) {
+      await sbUpsert('alertas_sistema', [{
+        sector: 'panaderia',
+        tipo: 'sin_stock',
+        mensaje: `Freezer vacío: ${nombreProducto}`,
+        producto_id: freezerId,
+      }]);
+    } else if (nuevo <= 20) {
+      await sbUpsert('alertas_sistema', [{
+        sector: 'panaderia',
+        tipo: 'stock_bajo',
+        mensaje: `Freezer bajo (${nuevo}u): ${nombreProducto}`,
+        producto_id: freezerId,
+      }]);
+    }
+  } catch(e) {
+    console.warn('descontarDelFreezer error:', e);
+  }
+}
+
+
+// ── HOOK COCINA: al ajustar stock, sumar al salón si va a "local" ──
+const _orig_cocina_adjust = adjustStock;
+adjustStock = async function(name, dep, delta) {
+  _orig_cocina_adjust(name, dep, delta);
+  // Si se suma stock al depósito "local", notificar al salón
+  if (delta > 0 && dep === 'local') {
+    try {
+      const prodId = 'cocina_' + name.toLowerCase().replace(/\s+/g, '_');
+      await sumarProductoAlSalon(name, prodId, delta, 'cocina');
+    } catch(e) { console.warn('cocina→salon error:', e); }
+  }
+};
+
+</script>
+</body>
+</html>
