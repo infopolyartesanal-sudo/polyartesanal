@@ -1152,6 +1152,15 @@ function confirmDeposito() {
   s.local += local; s.heladera += heladera; s.freezer += freezer; s.estante += estante;
   saveStock();
 
+  // Descontar la materia prima de esta tanda del depósito
+  if (currentRecipe.ingredients) descontarIngredientesDeposito(currentRecipe.ingredients, 'pasteleria');
+
+  // Lo que va a "🏪 Local directo" se despacha al Salón como pendiente de confirmar
+  if (local > 0) {
+    const prodIdSalon = 'pasteleria_' + currentRecipe.name.toLowerCase().replace(/\s+/g, '_');
+    sumarProductoAlSalon(currentRecipe.name, prodIdSalon, local, 'pasteleria').catch(()=>{});
+  }
+
   const btn = document.getElementById('complete-recipe-btn');
   const count = parseInt(btn.dataset.count || '0') + 1;
   btn.dataset.count = count;
@@ -1685,64 +1694,138 @@ const LEUDADO_TO_FREEZER = {
 
 // ── MAPA: ingrediente texto libre → ID materia prima depósito ──────
 const ING_TO_MP = {
-  'harina 0000':        { id: 'harina_0000', factor: 0.001 },  // g → kg
-  'harina 000':         { id: 'harina_000',  factor: 0.001 },
-  'harina trigo 000':   { id: 'harina_000',  factor: 0.001 },
-  'harina trigo 0000':  { id: 'harina_0000', factor: 0.001 },
-  'trigo 000':          { id: 'harina_000',  factor: 0.001 },
-  'trigo 0000':         { id: 'harina_0000', factor: 0.001 },
-  'harina integral':    { id: 'harina_integral', factor: 0.001 },
-  'harina trigo integral': { id: 'harina_integral', factor: 0.001 },
-  'harina de espelta':  { id: 'harina_espelta', factor: 0.001 },
-  'harina integral de espelta': { id: 'harina_espelta', factor: 0.001 },
-  'harina integral de centeno': { id: 'harina_centeno', factor: 0.001 },
-  'harina de centeno':  { id: 'harina_centeno', factor: 0.001 },
-  'harina de almendras': { id: 'harina_almendras', factor: 0.001 },
-  'harina de coco':     { id: 'harina_coco', factor: 0.001 },
-  'manteca':            { id: 'manteca',   factor: 0.001 },
-  'margarina':          { id: 'margarina', factor: 0.001 },
-  'sal':                { id: 'sal',       factor: 0.001 },
-  'levadura':           { id: 'levadura',  factor: 0.001 },
-  'levadura fresca':    { id: 'levadura',  factor: 0.001 },
-  'azucar':             { id: 'azucar',    factor: 0.001 },
-  'azúcar':             { id: 'azucar',    factor: 0.001 },
-  'aceite':             { id: 'aceite',    factor: 0.001 },
-  'aceite girasol':     { id: 'aceite',    factor: 0.001 },
-  'leche':              { id: 'leche',     factor: 0.001 },
-  'huevos':             { id: 'huevos',    factor: 1 },
-  'huevo':              { id: 'huevos',    factor: 1 },
-  'grasa':              { id: 'grasa',     factor: 0.001 },
-  'miel':               { id: 'miel',      factor: 0.001 },
-  'membrillo':          { id: 'membrillo', factor: 0.001 },
-  'almidón':            { id: 'almidon',   factor: 0.001 },
-  'almidón de maíz':    { id: 'almidon',   factor: 0.001 },
-  'polenta':            { id: 'polenta',   factor: 0.001 },
+  'harina integral de centeno': { id: 'harina_centeno' },
+  'integral de centeno': { id: 'harina_centeno' },
+  'harina de centeno': { id: 'harina_centeno' },
+  'centeno': { id: 'harina_centeno' },
+  'harina integral de espelta': { id: 'harina_espelta' },
+  'harina de espelta': { id: 'harina_espelta' },
+  'molde espelta': { id: 'harina_espelta' },
+  'espelta': { id: 'harina_espelta' },
+  'harina de almendra': { id: 'harina_almendras' },
+  'harina almendra': { id: 'harina_almendras' },
+  'harina de coco': { id: 'harina_coco' },
+  'harina integral': { id: 'harina_integral' },
+  'trigo integral': { id: 'harina_integral' },
+  'harina blanca 0000': { id: 'harina_0000' },
+  'harina 0000': { id: 'harina_0000' },
+  'trigo 0000': { id: 'harina_0000' },
+  '0000': { id: 'harina_0000' },
+  'harina 000': { id: 'harina_000' },
+  'trigo 000': { id: 'harina_000' },
+  '000': { id: 'harina_000' },
+  'harina blanca': { id: 'harina_0000' },
+  'manteca': { id: 'manteca' },
+  'margarina': { id: 'margarina' },
+  'almidon': { id: 'almidon' },
+  'azucar impalpable': { id: 'azucar_impalpable' },
+  'impalpable': { id: 'azucar_impalpable' },
+  'azucar': { id: 'azucar' },
+  'bicarbonato': { id: 'bicarbonato' },
+  'polvo de hornear': { id: 'polvo_hornear' },
+  'polvo hornear': { id: 'polvo_hornear' },
+  'levadura': { id: 'levadura' },
+  'frescura': { id: 'frescura' },
+  'mejorador': { id: 'mejorador' },
+  'aditivo': { id: 'aditivo' },
+  'curcuma': { id: 'curcuma' },
+  'canela': { id: 'canela' },
+  'semillas': { id: 'semillas_mix' },
+  'algarroba': { id: 'algarroba' },
+  'cacao': { id: 'cacao' },
+  'chocolate blanco': { id: 'chocolate_blanco' },
+  'chocolate semiamargo': { id: 'chocolate_semiamargo' },
+  'chocolate': { id: 'chocolate_semiamargo' },
+  'coco rallado': { id: 'coco_rallado' },
+  'eritritol': { id: 'eritritol' },
+  'esencia de naranja': { id: 'esencia_naranja' },
+  'esencia naranja': { id: 'esencia_naranja' },
+  'vainilla': { id: 'vainilla' },
+  'miel': { id: 'miel' },
+  'polenta': { id: 'polenta' },
+  'queso rallado': { id: 'queso_rallado' },
+  'pure de tomate': { id: 'pure_tomate' },
+  'pure tomate': { id: 'pure_tomate' },
+  'salsa barbacoa': { id: 'salsa_barbacoa' },
+  'sal fina': { id: 'sal' },
+  'sal': { id: 'sal' },
+  'pimenton': { id: 'pimenton' },
+  'nuez moscada': { id: 'nuez_moscada' },
+  'pimienta': { id: 'pimienta' },
+  'oregano': { id: 'oregano' },
+  'adobo': { id: 'adobo' },
+  'demiglas': { id: 'demiglas' },
+  'pasas': { id: 'pasas_uva' },
+  'mani': { id: 'mani' },
+  'avena': { id: 'avena' },
+  'nuez tostada': { id: 'nueces' },
+  'nueces': { id: 'nueces' },
+  'nuez': { id: 'nueces' },
+  'cafe': { id: 'cafe' },
+  'aceite': { id: 'aceite' },
+  'queso de maquina': { id: 'queso_maquina' },
+  'queso maquina': { id: 'queso_maquina' },
+  'queso crema': { id: 'queso_crema' },
+  'queso cremoso': { id: 'queso_cremoso' },
+  'crema': { id: 'crema' },
+  'leche': { id: 'leche' },
+  'yema': { id: 'huevos' },
+  'clara': { id: 'huevos' },
+  'huevos': { id: 'huevos' },
+  'huevo': { id: 'huevos' },
+  'grasa': { id: 'grasa' },
+  'carne picada': { id: 'carne_picada' },
+  'carne de cerdo': { id: 'cerdo' },
+  'cerdo': { id: 'cerdo' },
+  'carne cortada a cuchillo': { id: 'carne_picada' },
+  'carne a cuchillo': { id: 'carne_picada' },
+  'carne': { id: 'carne_picada' },
+  'pollo': { id: 'pollo' },
+  'nalga': { id: 'nalga' },
+  'jamon cocido': { id: 'jamon_cocido' },
+  'jamon crudo': { id: 'jamon_crudo' },
+  'jamon picado': { id: 'jamon_cocido' },
+  'jamon': { id: 'jamon_cocido' },
+  'muzzarella': { id: 'muzzarella' },
+  'mozzarella': { id: 'muzzarella' },
+  'ricota': { id: 'ricota' },
+  'mayonesa': { id: 'mayonesa' },
+  'pan de miga': { id: 'pan_miga' },
+  'migas': { id: 'pan_miga' },
+  'miga': { id: 'pan_miga' },
+  'cebolla': { id: 'cebolla' },
+  'morron': { id: 'morron' },
+  'choclo': { id: 'choclo' },
+  'portobelo': { id: 'portobelo' },
+  'zapallito': { id: 'zapallito' },
+  'calabaza': { id: 'calabaza' },
+  'zanahoria': { id: 'zanahoria' },
+  'manzana': { id: 'manzana' },
+  'berenjena': { id: 'berenjena' },
+  'aceituna': { id: 'aceitunas' },
+  'lechuga': { id: 'lechuga' },
+  'tomate': { id: 'tomate' },
+  'rucula': { id: 'rucula' },
+  'perejil': { id: 'perejil' },
+  'papa': { id: 'papa' },
+  'ajo': { id: 'ajo' },
+  'membrillo': { id: 'membrillo' },
 };
 
 // ── PARSEAR ingrediente texto → { mpId, cantidad, unidad } ────────
 function parsearIngrediente(ingText) {
-  const txt = ingText.toLowerCase().trim();
-  // Extraer número y unidad del inicio: "2800g harina 0000" → [2800, 'g', 'harina 0000']
-  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|cc|ml|lt?|u|cucharad[ai]ta?s?|cucharas?|litros?)?\s+(.+)/);
+  const txt = ingText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(kgs?|grs?|gm|gr|g|cc|ml|lts?|litros?|lt|l|u|uni(?:dad(?:es)?)?)?\.?\s*(.+)$/);
   if (!match) return null;
-
   let cantidad = parseFloat(match[1].replace(',', '.'));
-  const unidad = match[2] || 'u';
+  const unidad = (match[2] || 'u').toLowerCase();
   const nombreIng = match[3].trim();
-
-  // Convertir a kg si está en gramos o cc/ml
   let cantKg = cantidad;
-  if (unidad === 'g') cantKg = cantidad / 1000;
-  else if (unidad === 'cc' || unidad === 'ml') cantKg = cantidad / 1000;
-  else if (unidad === 'kg' || unidad === 'lt' || unidad === 'l' || unidad === 'litros') cantKg = cantidad;
-
-  // Buscar match en ING_TO_MP
+  if (['g','gm','gr','grs'].includes(unidad)) cantKg = cantidad / 1000;
+  else if (['cc','ml'].includes(unidad)) cantKg = cantidad / 1000;
   let mpId = null;
   for (const [key, val] of Object.entries(ING_TO_MP)) {
-    if (nombreIng.includes(key)) {
-      mpId = val.id;
-      break;
-    }
+    if (nombreIng.includes(key)) { mpId = val.id; break; }
   }
   if (!mpId) return null;
   return { mpId, cantKg };
@@ -1862,11 +1945,6 @@ adjustStock = async function(name, dep, delta) {
     try {
       const prodId = 'pasteleria_' + name.toLowerCase().replace(/\s+/g, '_');
       await sumarProductoAlSalon(name, prodId, delta, 'pasteleria');
-      // Descontar ingredientes del depósito
-      const receta = (typeof recipes !== 'undefined') ? recipes.find(r => r.name === name) : null;
-      if (receta && receta.ingredients) {
-        await descontarIngredientesDeposito(receta.ingredients, 'pasteleria');
-      }
     } catch(e) { console.warn('pasteleria→salon error:', e); }
   }
 };
