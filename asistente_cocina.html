@@ -1564,6 +1564,12 @@ function confirmDeposito() {
   s.local += local; s.heladera += heladera; s.freezer += freezer; s.estante += estante;
   saveStock();
 
+  // Lo que va a "🏪 Local directo" se despacha al Salón como pendiente de confirmar
+  if (local > 0) {
+    const prodIdSalon = 'cocina_' + currentRecipe.name.toLowerCase().replace(/\s+/g, '_');
+    sumarProductoAlSalon(currentRecipe.name, prodIdSalon, local, 'cocina').catch(()=>{});
+  }
+
   const btn = document.getElementById('complete-recipe-btn');
   const count = parseInt(btn.dataset.count || '0') + 1;
   btn.dataset.count = count;
