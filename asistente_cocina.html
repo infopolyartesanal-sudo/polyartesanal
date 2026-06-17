@@ -531,7 +531,10 @@
 
   <!-- FREEZER → LEUDADO -->
   <div class="panel" id="panel-leudado">
-    <div id="leudado-panel" style="flex:1;overflow-y:auto;padding:12px;"></div>
+    <div style="flex:1;overflow-y:auto;">
+      <div id="conector-panaderia" style="padding:12px 12px 0;"></div>
+      <div id="leudado-panel" style="padding:12px;"></div>
+    </div>
   </div>
 
   <!-- MODAL DISTRIBUCIÓN DEPÓSITO -->
@@ -660,6 +663,7 @@ window.addEventListener('DOMContentLoaded', () => {
   try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e){ stockState = {}; }
 
   loadTareas();
+  loadConectorPanaderia();
   renderRecipes();
   renderStock();
   showLimpiezaIndicator();
@@ -1355,7 +1359,7 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'stock') { renderStock(); checkStockAlerts(); }
   if (name === 'tareas') renderTareas();
-  if (name === 'leudado') renderLeudado();
+  if (name === 'leudado') { renderLeudado(); loadConectorPanaderia(); }
   if (name === 'log') renderLog();
 }
 
@@ -2057,6 +2061,106 @@ adjustStock = function(...args) {
 // ══════════════════════════════════════════════════════════════════
 // MÓDULO DE INTEGRACIÓN DE FLUJOS — Conecta todos los sectores
 // ══════════════════════════════════════════════════════════════════
+
+// ── CONECTOR PANADERÍA → LEUDADO → DESPACHO ───────────────────────
+let conectorCamara = [];
+let conectorFreezer = [];
+let conectorLeudando = [];
+
+async function loadConectorPanaderia() {
+  try { conectorCamara = await sbSelect('camara_panaderia', '?order=nombre.asc') || []; } catch(e){ conectorCamara = []; }
+  try { conectorFreezer = await sbSelect('freezer_panaderia', '') || []; } catch(e){ conectorFreezer = []; }
+  try { conectorLeudando = await sbSelect('cocina_leudado', '?estado=eq.leudando&order=created_at.asc') || []; } catch(e){ conectorLeudando = []; }
+  renderConectorPanaderia();
+}
+
+function renderConectorPanaderia() {
+  const el = document.getElementById('conector-panaderia');
+  if (!el) return;
+  let html = '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">📥 Sacar a leudar (stock de Panadería)</div>';
+
+  const disp = [];
+  (conectorCamara || []).forEach(r => { if ((r.cantidad || 0) > 0) disp.push({ origen:'camara', id:r.id, nombre:r.nombre || r.id, cant: r.cantidad }); });
+  (conectorFreezer || []).forEach(r => { const t = r.total || 0; if (t > 0) disp.push({ origen:'freezer', id:r.id, nombre:r.nombre || r.id, cant: t }); });
+
+  if (!disp.length) {
+    html += '<div style="color:#aaa;font-size:13px;padding:6px 0 10px;">No hay stock disponible en la cámara ni el freezer de Panadería.</div>';
+  } else {
+    disp.forEach(d => {
+      const icon = d.origen === 'camara' ? '❄️' : '🧊';
+      const inputId = 'saca-' + d.origen + '-' + d.id;
+      html += `<div class="leudado-item" style="opacity:1;">
+        <div class="leudado-info">
+          <div class="leudado-nombre">${icon} ${d.nombre}</div>
+          <div class="leudado-sugerido">Disponible: ${d.cant} · ${d.origen}</div>
+          <div class="leudado-qty-row">
+            <input type="number" id="${inputId}" min="1" max="${d.cant}" value="${d.cant}" style="width:64px;padding:4px;border:1px solid #ddd;border-radius:6px;font-family:system-ui,sans-serif;">
+            <button class="leudado-notif-btn" onclick="sacarALeudar('${d.origen}','${d.id}')">Sacar a leudar</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+
+  html += '<div style="font-size:14px;font-weight:700;color:#E64A19;margin:14px 0 8px;">🥖 Leudando ahora</div>';
+  if (!(conectorLeudando || []).length) {
+    html += '<div style="color:#aaa;font-size:13px;padding:6px 0;">Nada en proceso de leudado.</div>';
+  } else {
+    conectorLeudando.forEach(l => {
+      const hora = l.created_at ? new Date(l.created_at).toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'}) : '';
+      html += `<div class="leudado-item" style="opacity:1;">
+        <div class="leudado-info">
+          <div class="leudado-nombre">${l.producto_nombre || l.producto_id}</div>
+          <div class="leudado-sugerido">${l.cantidad} u · ${l.origen}${hora ? ' · desde ' + hora : ''}</div>
+          <div class="leudado-qty-row">
+            <button class="leudado-notif-btn" onclick="hornearYDespachar('${l.id}')">🔥 Hornear y despachar al Salón</button>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+async function sacarALeudar(origen, prodId) {
+  const inp = document.getElementById('saca-' + origen + '-' + prodId);
+  let qty = inp ? parseFloat(inp.value) : 0;
+  if (!qty || qty <= 0) return;
+  const src = (origen === 'camara') ? conectorCamara : conectorFreezer;
+  const row = (src || []).find(r => r.id === prodId);
+  if (!row) return;
+  const disponible = (origen === 'camara') ? (row.cantidad || 0) : (row.total || 0);
+  if (qty > disponible) qty = disponible;
+  const nombre = row.nombre || prodId;
+  const nuevo = Math.max(0, Math.round((disponible - qty) * 10) / 10);
+  try {
+    if (origen === 'camara') {
+      await sbFetch('PATCH', 'camara_panaderia', { cantidad: nuevo, updated_at: new Date().toISOString() }, '?id=eq.' + encodeURIComponent(prodId));
+    } else {
+      await sbFetch('PATCH', 'freezer_panaderia', { total: nuevo }, '?id=eq.' + encodeURIComponent(prodId));
+    }
+  } catch(e) { console.warn('descuento sacarALeudar:', e); }
+  try {
+    await sbUpsert('cocina_leudado', [{ producto_id: prodId, producto_nombre: nombre, cantidad: qty, origen: origen, estado: 'leudando' }]);
+  } catch(e) { console.warn('insert leudado:', e); }
+  if (typeof addToLog === 'function') addToLog('🥖 Sacado a leudar: ' + qty + ' ' + nombre + ' (' + origen + ')', 'leudado');
+  loadConectorPanaderia();
+}
+
+async function hornearYDespachar(leudadoId) {
+  const l = (conectorLeudando || []).find(x => String(x.id) === String(leudadoId));
+  if (!l) return;
+  try {
+    await sbFetch('PATCH', 'cocina_leudado', { estado: 'despachado', horneado_at: new Date().toISOString() }, '?id=eq.' + encodeURIComponent(leudadoId));
+  } catch(e) { console.warn('patch leudado:', e); }
+  try {
+    await sumarProductoAlSalon(l.producto_nombre || l.producto_id, l.producto_id, l.cantidad, 'cocina');
+  } catch(e) { console.warn('despacho salon:', e); }
+  if (typeof addToLog === 'function') addToLog('🔥 Horneado y despachado al Salón: ' + l.cantidad + ' ' + (l.producto_nombre || l.producto_id), 'leudado');
+  loadConectorPanaderia();
+}
+
+setInterval(() => { if (document.getElementById('panel-leudado') && document.getElementById('panel-leudado').classList.contains('active')) loadConectorPanaderia(); }, 60000);
 
 // ── MAPA: nombre de leudado → ID del freezer de panadería ─────────
 const LEUDADO_TO_FREEZER = {
