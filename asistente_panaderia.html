@@ -831,6 +831,8 @@ function init() {
   renderTimers();
   loadProdState();
   loadFreezerPan();
+  loadCamaraPan();
+  loadProdDestino();
   renderProduccion();
   renderFreezer();
   checkStockAlerts();
@@ -1508,7 +1510,7 @@ async function addTanda(id) {
   const item = getProdItem(id);
   item.tandasHechas++;
   const cat = PROD_CATALOG.find(c => c.id === id);
-  updateFreezerFromTanda(id, 1);
+  if (getProdDestino(id) === 'camara') { addToCamara(id, 1); } else { updateFreezerFromTanda(id, 1); }
   saveProdState();
   renderProduccion();
   addToLog('🏭 Tanda completada: ' + cat.nombre + ' (' + item.tandasHechas + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
@@ -1530,7 +1532,7 @@ function removeTanda(id) {
   const item = getProdItem(id);
   if (item.tandasHechas <= 0) return;
   item.tandasHechas--;
-  updateFreezerFromTanda(id, -1);
+  if (getProdDestino(id) === 'camara') { addToCamara(id, -1); } else { updateFreezerFromTanda(id, -1); }
   saveProdState();
   renderProduccion();
 }
@@ -1570,6 +1572,13 @@ function renderProduccion() {
           <span class="prod-progress-count">${unidadesHechas}/${cat.cuota}</span>
         </div>
         <div class="prod-tandas-row">
+          <span class="prod-tandas-label">Destino</span>
+          <div class="prod-tanda-btns">
+            <button onclick="setProdDestino('${cat.id}','freezer')" style="${getProdDestino(cat.id)==='freezer'?'background:#534AB7;color:#fff;border-color:#534AB7;':'background:#fff;color:#333;'}padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;">🧊 Freezer</button>
+            <button onclick="setProdDestino('${cat.id}','camara')" style="${getProdDestino(cat.id)==='camara'?'background:#534AB7;color:#fff;border-color:#534AB7;':'background:#fff;color:#333;'}padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;">❄️ Cámara</button>
+          </div>
+        </div>
+        <div class="prod-tandas-row">
           <span class="prod-tandas-label">Tandas completadas</span>
           <div class="prod-tanda-btns">
             <button class="prod-tanda-btn minus" onclick="removeTanda('${cat.id}')">−</button>
@@ -1583,6 +1592,10 @@ function renderProduccion() {
             <div class="prod-freezer-value">${freezer} ${cat.unidad}</div>
             ${hoyTarget ? `<div class="prod-freezer-sub">Meta hoy: ${hoyTarget} ${cat.unidad}</div>` : ''}
           </div>
+        </div>
+        <div class="prod-freezer-row">
+          <span class="prod-freezer-label">❄️ Stock cámara</span>
+          <span class="prod-freezer-value">${getCamaraTotal(cat.id)} ${cat.unidad}</span>
         </div>
         ${hoyTarget ? `<div class="prod-day-detail">📅 Hoy necesitás: <strong>${hoyTarget} ${cat.unidad}</strong> — ${freezer >= hoyTarget ? '✅ cubierto' : '⚠️ faltan ' + (Math.round((hoyTarget - freezer)*10)/10) + ' ' + cat.unidad}</div>` : ''}
       </div>
@@ -1599,6 +1612,13 @@ function renderProduccion() {
       </div>
       <div class="prod-card-body">
         <div class="prod-tandas-row">
+          <span class="prod-tandas-label">Destino</span>
+          <div class="prod-tanda-btns">
+            <button onclick="setProdDestino('${cat.id}','freezer')" style="${getProdDestino(cat.id)==='freezer'?'background:#534AB7;color:#fff;border-color:#534AB7;':'background:#fff;color:#333;'}padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;">🧊 Freezer</button>
+            <button onclick="setProdDestino('${cat.id}','camara')" style="${getProdDestino(cat.id)==='camara'?'background:#534AB7;color:#fff;border-color:#534AB7;':'background:#fff;color:#333;'}padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;">❄️ Cámara</button>
+          </div>
+        </div>
+        <div class="prod-tandas-row">
           <span class="prod-tandas-label">Tandas realizadas</span>
           <div class="prod-tanda-btns">
             <button class="prod-tanda-btn minus" onclick="removeTanda('${cat.id}')">−</button>
@@ -1609,6 +1629,10 @@ function renderProduccion() {
         <div class="prod-freezer-row">
           <span class="prod-freezer-label">🧊 Stock freezer</span>
           <span class="prod-freezer-value">${freezer} ${cat.unidad}</span>
+        </div>
+        <div class="prod-freezer-row">
+          <span class="prod-freezer-label">❄️ Stock cámara</span>
+          <span class="prod-freezer-value">${getCamaraTotal(cat.id)} ${cat.unidad}</span>
         </div>
       </div>
     </div>`;
@@ -2050,6 +2074,46 @@ function adjustFreezerManual(productId, subtipId, delta) {
   saveFreezerPan();
   renderFreezer();
   if (delta < 0) addToLog('📤 Cocina retiró del freezer: ' + productId + ' (' + Math.abs(delta) + ')', 'freezer');
+}
+
+// ── CÁMARA DE PANADERÍA (segundo destino de producción) ──────────
+const CAMARA_KEY = 'panaderia_camara_v1';
+const DESTINO_KEY = 'panaderia_prod_destino_v1';
+let camaraPanState = {};   // { productId: cantidad }
+let prodDestino = {};      // { productId: 'freezer' | 'camara' }
+
+function loadCamaraPan() {
+  try { camaraPanState = JSON.parse(localStorage.getItem(CAMARA_KEY) || '{}'); } catch(e){ camaraPanState = {}; }
+}
+function saveCamaraPan() {
+  localStorage.setItem(CAMARA_KEY, JSON.stringify(camaraPanState));
+  const rows = Object.entries(camaraPanState).map(([id, cantidad]) => ({
+    id,
+    nombre: (typeof PROD_CATALOG !== 'undefined' ? (PROD_CATALOG.find(c=>c.id===id)||{}).nombre : null) || id,
+    cantidad: cantidad || 0,
+    updated_at: new Date().toISOString(),
+  }));
+  if (rows.length > 0) sbUpsert('camara_panaderia', rows).catch(()=>{});
+}
+function getCamaraTotal(id) { return Math.round((camaraPanState[id] || 0) * 10) / 10; }
+
+function loadProdDestino() {
+  try { prodDestino = JSON.parse(localStorage.getItem(DESTINO_KEY) || '{}'); } catch(e){ prodDestino = {}; }
+}
+function getProdDestino(id) { return prodDestino[id] === 'camara' ? 'camara' : 'freezer'; }
+function setProdDestino(id, dest) {
+  prodDestino[id] = (dest === 'camara') ? 'camara' : 'freezer';
+  localStorage.setItem(DESTINO_KEY, JSON.stringify(prodDestino));
+  renderProduccion();
+}
+
+function addToCamara(id, tandas) {
+  const cat = (typeof PROD_CATALOG !== 'undefined') ? PROD_CATALOG.find(c => c.id === id) : null;
+  const rinde = (cat && cat.rendimiento) ? cat.rendimiento : 1;
+  const actual = camaraPanState[id] || 0;
+  camaraPanState[id] = Math.max(0, Math.round((actual + rinde * tandas) * 10) / 10);
+  saveCamaraPan();
+  renderProduccion();
 }
 
 function renderFreezer() {
