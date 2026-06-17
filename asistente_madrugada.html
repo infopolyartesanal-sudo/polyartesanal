@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="theme-color" content="#1B5E20"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Madrugada"/>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Asistente de Madrugada</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --primary: #E64A19; }
+  body {
+    font-family: Georgia, serif;
+    background: #FFF3E0;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 16px;
+  }
+  #app {
+    display: flex; flex-direction: column;
+    height: 700px; width: 100%; max-width: 480px;
+    background: #fff; border: 1px solid #FFCCBC;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(194,24,91,0.10);
+    position: relative;
+  }
+  #header {
+    background: #BF360C; color: #FBE9E7;
+    padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  }
+  #header .logo { font-size: 24px; }
+  #header h1 { font-size: 16px; font-weight: 500; color: #FBE9E7; letter-spacing: 0.5px; }
+  #header p { font-size: 11px; color: #FFAB91; font-family: system-ui, sans-serif; }
+  #header .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: #FFAB91; font-family: system-ui, sans-serif; }
+  #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #5DCAA5; flex-shrink: 0; }
+  #status-dot.listening { background: #E24B4A; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  #tabs { display: flex; border-bottom: 1px solid #FFCCBC; background: #FFF3E0; flex-shrink: 0; }
+  .tab {
+    flex: 1; padding: 10px 4px; font-size: 11px; font-family: system-ui, sans-serif;
+    color: #999; border: none; background: transparent; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    border-bottom: 2px solid transparent; transition: all 0.15s;
+  }
+  .tab i { font-size: 18px; }
+  .tab.active { color: #E64A19; border-bottom-color: #E64A19; background: #fff; }
+  .tab:hover:not(.active) { color: #333; }
+
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+
+  #chat-messages {
+    flex: 1; overflow-y: auto; padding: 14px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg {
+    max-width: 85%; padding: 10px 14px; border-radius: 14px;
+    font-size: 14px; line-height: 1.55; font-family: system-ui, sans-serif;
+  }
+  .msg.bot { background: #fbe9e7; color: #1a1a1a; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: #E64A19; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.thinking { opacity: 0.6; font-style: italic; }
+
+  #chat-input-area {
+    padding: 10px 12px; border-top: 1px solid #FFCCBC;
+    display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+  }
+  #chat-input {
+    flex: 1; border: 1px solid #FFCCBC; border-radius: 20px;
+    padding: 10px 14px; font-size: 14px; font-family: system-ui, sans-serif;
+    outline: none; background: #FFF3E0;
+  }
+  #chat-input:focus { border-color: #E64A19; }
+  #send-btn, #mic-btn {
+    width: 38px; height: 38px; border-radius: 50%; border: none;
+    background: #E64A19; color: white; cursor: pointer; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #mic-btn { background: #FFCCBC; color: #BF360C; }
+  #mic-btn.listening { background: #E24B4A; color: white; animation: pulse 1s infinite; }
+  #api-error { font-size: 13px; color: #E24B4A; font-family: system-ui, sans-serif; margin-top: 8px; display: none; }
+
+  /* Speech bar */
+  #speech-bar {
+    display: none; align-items: center; gap: 8px;
+    padding: 8px 12px; background: #FBE9E7;
+    border-top: 1px solid #FFAB91; flex-shrink: 0;
+    font-family: system-ui, sans-serif;
+  }
+  #speech-bar.visible { display: flex; }
+  #speech-bar .speech-label { font-size: 12px; color: #BF360C; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .speech-ctrl-btn {
+    width: 34px; height: 34px; border-radius: 50%; border: none;
+    background: #E64A19; color: white; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; transition: all 0.15s;
+  }
+  .speech-ctrl-btn.stop { background: #E24B4A; }
+
+  /* Recipes panel */
+  #recipes-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .recipe-card {
+    padding: 12px 14px; background: #fff; border-radius: 10px;
+    border: 1px solid #FFCCBC; margin-bottom: 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .recipe-card:hover { border-color: #E64A19; background: #fbe9e7; }
+  .recipe-card h3 { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+  .recipe-card p { font-size: 12px; color: #666; font-family: system-ui, sans-serif; }
+  .recipe-tag {
+    display: inline-block; font-size: 11px; background: #FBE9E7;
+    color: #BF360C; padding: 2px 8px; border-radius: 10px;
+    margin-top: 4px; font-family: system-ui, sans-serif;
+  }
+  .recipe-action-btn {
+    width: 30px; height: 30px; border-radius: 7px; border: 1px solid #FFCCBC;
+    background: white; color: #888; cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .recipe-action-btn:hover { background: #fbe9e7; color: #E64A19; border-color: #E64A19; }
+  .recipe-action-btn.danger:hover { background: #ffeaea; color: #E24B4A; border-color: #E24B4A; }
+  .empty-state { text-align: center; color: #aaa; font-size: 14px; padding: 40px 20px; font-family: system-ui, sans-serif; line-height: 1.6; }
+  .add-recipe-btn {
+    margin: 0 12px 12px; padding: 12px; background: #E64A19; color: white;
+    border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Stock panel */
+  #stock-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .stock-section-title {
+    font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 8px 4px 6px; font-family: system-ui, sans-serif;
+  }
+  .stock-card {
+    background: white; border-radius: 10px; border: 1px solid #FFCCBC;
+    margin-bottom: 8px; overflow: hidden;
+  }
+  .stock-card-header {
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .stock-card-name { flex: 1; font-size: 14px; font-weight: 500; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .stock-card-rendimiento { font-size: 11px; color: #888; font-family: system-ui, sans-serif; }
+  .stock-depositos {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1px; background: #FFCCBC; border-top: 1px solid #FFCCBC;
+  }
+  .stock-dep-cell {
+    background: #fff; padding: 8px 12px;
+    font-family: system-ui, sans-serif;
+  }
+  .stock-dep-cell .dep-label { font-size: 11px; color: #888; margin-bottom: 2px; }
+  .stock-dep-cell .dep-val { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+  .stock-dep-cell .dep-val.has-stock { color: #E64A19; }
+  .stock-dep-btns { display: flex; gap: 4px; margin-top: 4px; }
+  .stock-dep-btn {
+    flex: 1; padding: 4px; border-radius: 6px; border: 1px solid #FFCCBC;
+    background: white; cursor: pointer; font-size: 13px; font-weight: 700;
+    font-family: system-ui, sans-serif; transition: all 0.15s;
+  }
+  .stock-dep-btn.plus { background: #E64A19; color: white; border-color: #E64A19; }
+  .stock-dep-btn.minus:hover { background: #ffeaea; }
+
+  /* Timers */
+  #timers-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .timer-card {
+    background: white; border: 1px solid #FFCCBC; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px; font-family: system-ui, sans-serif;
+  }
+  .timer-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+  .timer-display { font-size: 28px; font-weight: 700; color: #E64A19; font-family: monospace; }
+  .timer-display.urgent { color: #E24B4A; animation: pulse 1s infinite; }
+  .timer-btns { display: flex; gap: 6px; margin-top: 8px; }
+  .timer-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: none;
+    background: #fbe9e7; color: #BF360C; cursor: pointer; font-size: 13px;
+    font-family: system-ui, sans-serif;
+  }
+  .timer-btn.start { background: #E64A19; color: white; }
+  .timer-btn.danger { background: #ffeaea; color: #E24B4A; }
+  .add-timer-btn {
+    margin: 0 0 12px; padding: 10px; background: #E64A19; color: white;
+    border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif;
+    cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  /* Log */
+  #log-panel { flex: 1; overflow-y: auto; padding: 12px; }
+  .log-item { padding: 8px 10px; background: white; border-radius: 8px; border: 1px solid #FFCCBC; margin-bottom: 6px; font-family: system-ui, sans-serif; }
+  .log-item .log-time { font-size: 11px; color: #aaa; }
+  .log-item .log-text { font-size: 13px; color: #333; margin-top: 2px; }
+  .log-export-btn {
+    margin: 0 0 12px; padding: 10px; background: transparent; color: #E64A19;
+    border: 1px solid #E64A19; border-radius: 10px; font-size: 14px;
+    font-family: system-ui, sans-serif; cursor: pointer; width: 100%;
+  }
+
+  /* Recipe detail */
+  #recipe-detail {
+    position: absolute; inset: 0; background: white;
+    transform: translateX(100%); transition: transform 0.25s ease;
+    display: flex; flex-direction: column; z-index: 10;
+  }
+  #recipe-detail.open { transform: translateX(0); }
+  #recipe-detail-header {
+    background: #BF360C; color: white; padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #recipe-detail-header button {
+    background: transparent; border: none; color: white; font-size: 22px; cursor: pointer; padding: 2px;
+  }
+  #recipe-detail-header h2 { flex: 1; font-size: 15px; font-weight: 500; }
+  #recipe-detail-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .ingredients-section { margin-bottom: 16px; }
+  .ingredients-section h4 { font-size: 13px; font-weight: 600; color: #BF360C; margin-bottom: 10px; font-family: system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
+  .ingredient-item { display: flex !important; align-items: center; gap: 10px; padding: 6px 4px !important; border-radius: 6px; transition: background 0.15s; cursor: pointer; user-select: none; }
+  .ingredient-item:hover { background: rgba(194,24,91,0.07); }
+  .ingredient-item::before { display: none !important; }
+  .ingredient-checkbox { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #E64A19; background: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; font-size: 13px; color: white; }
+  .ingredient-item.checked .ingredient-checkbox { background: #E64A19; border-color: #E64A19; }
+  .ingredient-item.checked .ingredient-text { text-decoration: line-through; color: #aaa; }
+  .ingredient-text { font-size: 14px; font-family: system-ui, sans-serif; color: #1a1a1a; }
+  .checklist-progress { font-size: 12px; font-family: system-ui, sans-serif; color: #E64A19; margin-top: 8px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .checklist-progress-bar { flex: 1; height: 4px; background: #e0ddd8; border-radius: 2px; overflow: hidden; }
+  .checklist-progress-fill { height: 100%; background: #E64A19; border-radius: 2px; transition: width 0.3s; }
+  .checklist-reset-btn { margin-top: 8px; background: transparent; border: 1px solid #ccc; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-family: system-ui, sans-serif; color: #666; cursor: pointer; }
+  .step-item { display: flex; gap: 10px; margin-bottom: 12px; }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: #E64A19; color: white; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-family: system-ui, sans-serif; }
+  .step-text { font-size: 14px; font-family: system-ui, sans-serif; color: #333; line-height: 1.5; }
+  .recipe-meta-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: #fbe9e7; color: #BF360C; padding: 4px 10px; border-radius: 10px; font-family: system-ui, sans-serif; margin-bottom: 14px; margin-right: 6px; }
+
+  /* Deposit modal */
+  #deposito-modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.5); z-index: 200;
+    align-items: flex-end; justify-content: center;
+  }
+  #deposito-modal-overlay.open { display: flex; }
+  #deposito-modal {
+    background: white; border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; font-family: system-ui, sans-serif;
+  }
+  #deposito-modal h3 { margin: 0 0 4px; font-size: 16px; color: #1a1a1a; }
+  .dep-rendimiento { font-size: 12px; color: #888; margin-bottom: 16px; }
+  .dep-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .dep-row label { flex: 1; font-size: 14px; color: #444; }
+  .dep-row input { width: 80px; padding: 8px; border: 1px solid #FFCCBC; border-radius: 8px; font-size: 15px; text-align: center; font-family: system-ui, sans-serif; }
+  .dep-total-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid #FFCCBC; margin-top: 4px; font-size: 13px; color: #666; }
+  #dep-total-val { font-weight: 700; color: #E64A19; }
+
+
+  /* Stock alerts */
+  .tab-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #E24B4A; color: white; font-size: 10px; font-weight: 700;
+    position: absolute; top: 4px; right: 4px; font-family: system-ui, sans-serif;
+    animation: pulse 2s infinite;
+  }
+  .tab { position: relative; }
+  .alert-banner {
+    margin: 8px 12px 0; padding: 10px 12px; background: #fee2e2;
+    border: 1px solid #fca5a5; border-radius: 8px;
+    font-family: system-ui, sans-serif; font-size: 13px; color: #dc2626;
+    display: none; line-height: 1.5;
+  }
+  .alert-banner.visible { display: block; }
+  .alert-banner strong { display: block; margin-bottom: 4px; }
+
+  
+  /* Leudado */
+  .leudado-alarm-bar {
+    margin: 0 0 10px; padding: 12px 14px; border-radius: 10px;
+    font-family: system-ui, sans-serif; font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .leudado-alarm-bar.pending { background: #FFF3E0; border: 1px solid #FFAB91; color: #E64A19; }
+  .leudado-alarm-bar.active { background: #fee2e2; border: 1px solid #fca5a5; color: #dc2626; animation: pulse 1.5s infinite; }
+  .leudado-alarm-bar.done { background: #dcfce7; border: 1px solid #86efac; color: #16a34a; }
+  .leudado-alarm-icon { font-size: 22px; flex-shrink: 0; }
+  .leudado-alarm-text { flex: 1; }
+  .leudado-alarm-text strong { display: block; font-size: 14px; margin-bottom: 2px; }
+  .leudado-item {
+    background: white; border: 1px solid #FFCCBC; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+    font-family: system-ui, sans-serif;
+  }
+  .leudado-item.sacado { opacity: 0.5; }
+  .leudado-item.sacado .leudado-nombre { text-decoration: line-through; color: #aaa; }
+  .leudado-check {
+    width: 26px; height: 26px; border-radius: 7px; border: 2px solid #E64A19;
+    background: white; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; cursor: pointer; font-size: 15px; color: white; transition: all 0.15s;
+  }
+  .leudado-item.sacado .leudado-check { background: #E64A19; border-color: #E64A19; }
+  .leudado-info { flex: 1; min-width: 0; }
+  .leudado-nombre { font-size: 14px; font-weight: 500; color: #1a1a1a; margin-bottom: 2px; }
+  .leudado-sugerido { font-size: 11px; color: #888; }
+  .leudado-qty-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+  .leudado-qty-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: 1px solid #FFCCBC;
+    background: white; cursor: pointer; font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+  }
+  .leudado-qty-btn.plus { background: #E64A19; color: white; border-color: #E64A19; }
+  .leudado-qty-val { font-size: 15px; font-weight: 700; color: #E64A19; min-width: 32px; text-align: center; }
+  .leudado-unit { font-size: 11px; color: #888; }
+  .leudado-progress {
+    margin-bottom: 10px; font-size: 12px; font-family: system-ui, sans-serif;
+    color: #E64A19; display: flex; align-items: center; gap: 6px;
+  }
+  .leudado-progress-bar { flex: 1; height: 6px; background: #e0ddd8; border-radius: 3px; overflow: hidden; }
+  .leudado-progress-fill { height: 100%; background: #E64A19; border-radius: 3px; transition: width 0.3s; }
+  .leudado-reset-btn { width: 100%; padding: 10px; background: transparent; border: 1px solid #ddd; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 13px; color: #666; cursor: pointer; margin-top: 4px; }
+  .leudado-notif-btn { padding: 8px 14px; background: #E64A19; color: white; border: none; border-radius: 8px; font-size: 12px; font-family: system-ui, sans-serif; cursor: pointer; flex-shrink: 0; }
+
+  /* Search bar */
+  .search-bar {
+    padding: 8px 12px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .search-input {
+    width: 100%; padding: 8px 12px 8px 34px;
+    border: 1px solid #e0ddd8; border-radius: 20px;
+    font-size: 14px; font-family: system-ui, sans-serif;
+    outline: none; background: #faf9f7;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 10px center;
+  }
+  .search-input:focus { border-color: var(--primary, #534AB7); }
+  .search-empty { text-align:center; color:#aaa; font-size:13px; padding:24px; font-family:system-ui,sans-serif; }
+
+    /* Tareas y limpieza */
+  .tarea-section-title { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 4px 6px; font-family: system-ui, sans-serif; }
+  .tarea-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; background: white; border-radius: 8px; border: 1px solid #FFCCBC; margin-bottom: 6px; cursor: pointer; user-select: none; transition: all 0.15s; }
+  .tarea-item:hover { background: #FBE9E7; }
+  .tarea-item.done { opacity: 0.55; }
+  .tarea-item.done .tarea-text { text-decoration: line-through; color: #aaa; }
+  .tarea-checkbox { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #E64A19; background: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; color: white; transition: all 0.15s; }
+  .tarea-item.done .tarea-checkbox { background: #E64A19; border-color: #E64A19; }
+  .tarea-text { font-size: 14px; font-family: system-ui, sans-serif; color: #333; line-height: 1.4; }
+  .tarea-progress { font-size: 12px; font-family: system-ui, sans-serif; color: #E64A19; margin: 8px 0; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .tarea-progress-bar { flex: 1; height: 6px; background: #e0ddd8; border-radius: 3px; overflow: hidden; }
+  .tarea-progress-fill { height: 100%; background: #E64A19; border-radius: 3px; transition: width 0.3s; }
+  .tarea-reset-btn { width: 100%; padding: 10px; background: transparent; border: 1px solid #ddd; border-radius: 8px; font-family: system-ui, sans-serif; font-size: 13px; color: #666; cursor: pointer; margin-top: 4px; }
+  .insumo-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: white; border-radius: 8px; border: 1px solid #FFCCBC; margin-bottom: 6px; font-family: system-ui, sans-serif; }
+  .insumo-name { font-size: 13px; color: #333; }
+  .insumo-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .insumo-badge.ok { background: #dcfce7; color: #16a34a; }
+  .insumo-badge.low { background: #fee2e2; color: #dc2626; cursor: pointer; }
+
+  /* Recipe speech controls */
+  #recipe-speech-controls { margin: 0 12px 12px; display: flex; gap: 8px; align-items: center; }
+
+  /* Modal */
+  #modal-overlay {
+    display: none; position: absolute; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 100;
+    align-items: flex-end; justify-content: center;
+  }
+  #modal-overlay.open { display: flex; }
+  #modal {
+    background: white; border-radius: 16px 16px 0 0;
+    padding: 20px; width: 100%; max-height: 85%;
+    overflow-y: auto; font-family: system-ui, sans-serif;
+  }
+  #modal h2 { font-size: 18px; margin-bottom: 16px; color: #BF360C; }
+  #modal label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; margin-top: 10px; }
+  #modal input, #modal textarea {
+    width: 100%; border: 1px solid #FFCCBC; border-radius: 8px;
+    padding: 10px; font-size: 14px; font-family: system-ui, sans-serif; outline: none;
+  }
+  #modal input:focus, #modal textarea:focus { border-color: #E64A19; }
+  #modal textarea { min-height: 80px; resize: vertical; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+  .btn-primary { flex: 2; padding: 12px; background: #E64A19; color: white; border: none; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+  .btn-secondary { flex: 1; padding: 12px; background: transparent; color: #666; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+  #api-key-section { padding: 12px 16px; background: #fbe9e7; border-bottom: 1px solid #FFCCBC; font-family: system-ui, sans-serif; display: flex; gap: 8px; align-items: center; }
+  #api-key-input { flex: 1; border: 1px solid #FFCCBC; border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: system-ui, sans-serif; background: white; outline: none; }
+  #api-key-save { padding: 8px 14px; background: #E64A19; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <div class="logo">🌅</div>
+    <div>
+      <h1>Madrugada</h1>
+      <p>Horneado y despacho al Salón</p>
+    </div>
+    <div class="status">
+      <div id="status-dot"></div>
+      <span id="status-text">Listo</span>
+    </div>
+  </div>
+
+  <div id="tabs">
+    <button class="tab active" onclick="switchTab('hornear')" id="tab-hornear"><i class="ti ti-flame"></i>A hornear</button>
+    <button class="tab" onclick="switchTab('despachados')" id="tab-despachados"><i class="ti ti-send"></i>Despachados</button>
+    <button class="tab" onclick="switchTab('mermas')" id="tab-mermas"><i class="ti ti-trash"></i>Mermas</button>
+    <button class="tab" onclick="switchTab('registro')" id="tab-registro"><i class="ti ti-clipboard-list"></i>Registro</button>
+  </div>
+
+  <!-- A HORNEAR -->
+  <div class="panel active" id="panel-hornear">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 4px;">
+      <strong id="hornear-count" style="font-size:14px;color:#1B5E20;">Cargando…</strong>
+      <button onclick="loadLeudando()" style="background:#E8F5E9;color:#1B5E20;border:none;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;"><i class="ti ti-refresh"></i> Actualizar</button>
+    </div>
+    <div id="hornear-list" style="flex:1;overflow-y:auto;padding:8px 14px 16px;"></div>
+  </div>
+
+  <!-- DESPACHADOS -->
+  <div class="panel" id="panel-despachados">
+    <div id="despachados-list" style="flex:1;overflow-y:auto;padding:14px;"></div>
+  </div>
+
+  <!-- MERMAS -->
+  <div class="panel" id="panel-mermas">
+    <div id="mermas-total" style="padding:12px 14px;font-weight:700;color:#B71C1C;"></div>
+    <div id="mermas-list" style="flex:1;overflow-y:auto;padding:0 14px 16px;"></div>
+  </div>
+
+  <!-- REGISTRO -->
+  <div class="panel" id="panel-registro">
+    <div id="registro-list" style="flex:1;overflow-y:auto;padding:14px;"></div>
+    <button onclick="cerrarDia()" style="margin:10px 14px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;"><i class="ti ti-lock"></i> Cerrar día</button>
+  </div>
+
+</div>
+
+<!-- MODAL HORNEAR -->
+<div id="hornear-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-end;justify-content:center;">
+  <div style="background:#fff;width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:18px 18px 24px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:19px;color:#1B5E20;">🔥 Horneado</h2>
+      <button onclick="closeModal()" style="background:none;border:none;font-size:24px;color:#999;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <p style="margin:2px 0 14px;font-size:16px;font-weight:700;" id="hm-nombre"></p>
+
+    <div style="background:#F1F8E9;border-radius:10px;padding:12px;margin-bottom:14px;">
+      <div style="font-size:13px;color:#555;margin-bottom:6px;">Estaba leudando: <strong id="hm-leudada"></strong> unidades</div>
+      <label style="font-size:13px;color:#333;font-weight:600;">¿Cuántas salieron bien?</label>
+      <input type="number" id="hm-cantidad" min="0" oninput="updateMerma()" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;" />
+      <div id="hm-merma-row" style="margin-top:8px;font-size:13px;color:#B71C1C;display:none;">Merma (se descarta): <strong id="hm-merma">0</strong> unidades</div>
+    </div>
+
+    <label style="font-size:13px;color:#333;font-weight:600;">Foto (opcional)</label>
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <label style="flex:1;background:#E8F5E9;color:#1B5E20;border-radius:8px;padding:11px;text-align:center;font-size:14px;font-weight:600;cursor:pointer;">
+        <i class="ti ti-camera"></i> Sacar / elegir foto
+        <input type="file" accept="image/*" capture="environment" onchange="onPhotoChange(this)" style="display:none;" />
+      </label>
+    </div>
+    <div id="hm-foto-preview"></div>
+
+    <button onclick="confirmHornear()" id="hm-confirm" style="width:100%;margin-top:18px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-send"></i> Horneado y despachar al Salón</button>
+  </div>
+</div>
+
+<div id="toast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B5E20;color:#fff;padding:12px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.25);"></div>
+
+<script>
+const SUPABASE_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+
+async function sbFetch(method, table, body=null, params='') {
+  const url = SUPABASE_URL + '/rest/v1/' + table + params;
+  const headers = {
+    'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates,return=representation' : 'return=representation'
+  };
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) { console.error('Supabase error:', await res.text()); return null; }
+  return method === 'DELETE' ? null : await res.json();
+}
+async function sbUpsert(table, data) { return sbFetch('POST', table, Array.isArray(data) ? data : [data]); }
+async function sbSelect(table, params='') { return sbFetch('GET', table, null, params); }
+async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
+  try { await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad }); } catch(e){}
+}
+
+let leudando = [];
+let pendingItem = null;
+let photoFile = null;
+
+function setStatus(t){ const e=document.getElementById('status-text'); if(e) e.textContent=t; }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(window._tt); window._tt=setTimeout(()=>t.style.display='none', 2600); }
+function fmtHora(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }
+function emptyState(t,s){ return '<div style="text-align:center;color:#999;padding:48px 16px;font-size:14px;">'+t+'<br><span style="font-size:13px;">'+(s||'')+'</span></div>'; }
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+  if(name==='hornear') loadLeudando();
+  if(name==='despachados') loadDespachados();
+  if(name==='mermas') loadMermas();
+  if(name==='registro') loadRegistro();
+}
+
+// ── A HORNEAR ──────────────────────────────────────────────
+async function loadLeudando(){
+  setStatus('Cargando…');
+  const rows = await sbSelect('cocina_leudado', '?estado=eq.leudando&order=created_at.asc');
+  leudando = rows || [];
+  renderLeudando();
+  setStatus('Listo');
+}
+function renderLeudando(){
+  const el = document.getElementById('hornear-list');
+  const cnt = document.getElementById('hornear-count');
+  cnt.textContent = leudando.length ? (leudando.length + (leudando.length===1?' tanda para hornear':' tandas para hornear')) : 'Nada en el horno por ahora';
+  if(!leudando.length){ el.innerHTML = emptyState('No hay nada leudando ahora. 😴','Cuando Cocina saque algo a leudar, aparece acá.'); return; }
+  el.innerHTML = leudando.map(l=>{
+    const nombre = l.producto_nombre || l.producto_id || 'Producto';
+    const origen = l.origen==='freezer' ? '🧊 Freezer' : '❄️ Cámara';
+    return '<div style="background:#fff;border:1px solid #E0E0E0;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
+      + '<div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:700;">'+nombre+'</div>'
+      + '<div style="font-size:13px;color:#666;margin-top:3px;">'+l.cantidad+' u · '+origen+' · '+fmtHora(l.created_at)+'</div></div></div>'
+      + '<button onclick="openHornear(\''+l.id+'\')" style="width:100%;margin-top:12px;background:#1B5E20;color:#fff;border:none;border-radius:9px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;"><i class="ti ti-flame"></i> Marcar horneado</button>'
+      + '</div>';
+  }).join('');
+}
+
+// ── MODAL ──────────────────────────────────────────────────
+function openHornear(id){
+  pendingItem = leudando.find(x=>String(x.id)===String(id));
+  if(!pendingItem) return;
+  photoFile = null;
+  document.getElementById('hm-nombre').textContent = pendingItem.producto_nombre || pendingItem.producto_id;
+  document.getElementById('hm-leudada').textContent = pendingItem.cantidad;
+  const inp = document.getElementById('hm-cantidad');
+  inp.value = pendingItem.cantidad; inp.max = pendingItem.cantidad;
+  document.getElementById('hm-foto-preview').innerHTML = '';
+  updateMerma();
+  document.getElementById('hornear-modal').style.display = 'flex';
+}
+function closeModal(){ document.getElementById('hornear-modal').style.display='none'; pendingItem=null; photoFile=null; }
+function updateMerma(){
+  if(!pendingItem) return;
+  const leud = Number(pendingItem.cantidad)||0;
+  const horn = Number(document.getElementById('hm-cantidad').value)||0;
+  const merma = Math.max(0, leud-horn);
+  document.getElementById('hm-merma').textContent = merma;
+  document.getElementById('hm-merma-row').style.display = merma>0 ? 'block' : 'none';
+}
+function onPhotoChange(input){
+  const f = input.files && input.files[0]; if(!f) return;
+  photoFile = f;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('hm-foto-preview').innerHTML = '<img src="'+e.target.result+'" style="max-width:100%;border-radius:8px;margin-top:10px;" />'; };
+  reader.readAsDataURL(f);
+}
+async function uploadFoto(file, item){
+  const ext = ((file.name||'foto.jpg').split('.').pop()||'jpg').toLowerCase();
+  const obj = Date.now() + '_' + ((item.producto_id||'item').replace(/[^a-z0-9_-]/gi,'')) + '.' + ext;
+  const res = await fetch(SUPABASE_URL + '/storage/v1/object/madrugada/' + obj, {
+    method:'POST',
+    headers:{ 'apikey':SUPABASE_KEY, 'Authorization':'Bearer '+SUPABASE_KEY, 'Content-Type': file.type||'image/jpeg', 'x-upsert':'true' },
+    body: file
+  });
+  if(!res.ok) throw new Error('upload '+res.status);
+  return SUPABASE_URL + '/storage/v1/object/public/madrugada/' + obj;
+}
+async function confirmHornear(){
+  if(!pendingItem) return;
+  const btn = document.getElementById('hm-confirm');
+  btn.disabled = true; btn.style.opacity = '.6';
+  const leud = Number(pendingItem.cantidad)||0;
+  const horn = Number(document.getElementById('hm-cantidad').value)||0;
+  const merma = Math.max(0, leud-horn);
+  setStatus('Despachando…');
+  let fotoUrl = null;
+  if(photoFile){ try { fotoUrl = await uploadFoto(photoFile, pendingItem); } catch(e){ console.warn('foto:', e); } }
+  try {
+    if(horn > 0){
+      await sbUpsert('salon_recepciones', [{
+        producto_id: pendingItem.producto_id,
+        producto_nombre: pendingItem.producto_nombre || pendingItem.producto_id,
+        cantidad: horn, sector_origen: 'madrugada', destino: 'salon', estado: 'despachado', foto_url: fotoUrl
+      }]);
+    }
+    if(merma > 0){
+      await sbUpsert('mermas', [{
+        sector: 'madrugada', producto_id: pendingItem.producto_id,
+        producto_nombre: pendingItem.producto_nombre || pendingItem.producto_id,
+        cantidad: merma, motivo: 'No leudó / no se pudo hornear'
+      }]);
+    }
+    await sbFetch('PATCH', 'cocina_leudado', { estado:'horneado', horneado_at:new Date().toISOString(), cantidad: horn }, '?id=eq.' + encodeURIComponent(pendingItem.id));
+    await sbLog('madrugada','horneado','Horneado y despachado al Salón: '+horn+' '+(pendingItem.producto_nombre||pendingItem.producto_id)+(merma>0?(' (merma '+merma+')'):''), horn, pendingItem.producto_id, 'u');
+    toast('✅ Despachado al Salón'+(merma>0?(' · merma '+merma):''));
+  } catch(e){ console.error(e); toast('⚠️ Hubo un error, probá de nuevo'); }
+  btn.disabled = false; btn.style.opacity = '1';
+  closeModal(); setStatus('Listo');
+  await loadLeudando();
+}
+
+// ── DESPACHADOS ────────────────────────────────────────────
+async function loadDespachados(){
+  setStatus('Cargando…');
+  const rows = await sbSelect('salon_recepciones', '?sector_origen=eq.madrugada&order=created_at.desc&limit=60');
+  const el = document.getElementById('despachados-list');
+  if(!rows || !rows.length){ el.innerHTML = emptyState('Todavía no despachaste nada hoy.',''); setStatus('Listo'); return; }
+  el.innerHTML = rows.map(r=>{
+    const conf = r.estado==='confirmado';
+    const badge = conf ? '<span style="background:#E8F5E9;color:#1B5E20;font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;">✓ Recibido en Salón</span>'
+                       : '<span style="background:#FFF3E0;color:#E65100;font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;">⏳ Esperando Salón</span>';
+    const foto = r.foto_url ? '<img src="'+r.foto_url+'" style="width:54px;height:54px;object-fit:cover;border-radius:8px;flex-shrink:0;" />' : '';
+    return '<div style="background:#fff;border:1px solid #E0E0E0;border-radius:12px;padding:12px;margin-bottom:9px;display:flex;gap:10px;align-items:center;">'
+      + foto
+      + '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:15px;">'+(r.producto_nombre||r.producto_id)+'</div>'
+      + '<div style="font-size:12px;color:#666;margin-top:2px;">'+r.cantidad+' u · '+fmtHora(r.created_at)+'</div>'
+      + '<div style="margin-top:6px;">'+badge+'</div></div></div>';
+  }).join('');
+  setStatus('Listo');
+}
+
+// ── MERMAS ─────────────────────────────────────────────────
+async function loadMermas(){
+  setStatus('Cargando…');
+  const hoy = new Date().toISOString().slice(0,10);
+  const rows = await sbSelect('mermas', '?sector=eq.madrugada&order=created_at.desc&limit=120');
+  const el = document.getElementById('mermas-list');
+  const tot = document.getElementById('mermas-total');
+  if(!rows || !rows.length){ tot.textContent=''; el.innerHTML = emptyState('Sin mermas registradas. 🎉',''); setStatus('Listo'); return; }
+  const totalHoy = rows.filter(r=>String(r.fecha)===hoy).reduce((a,r)=>a+(Number(r.cantidad)||0),0);
+  tot.textContent = '📉 Merma de hoy: ' + totalHoy + ' unidades';
+  el.innerHTML = rows.map(r=>'<div style="background:#fff;border:1px solid #FFCDD2;border-radius:10px;padding:11px;margin-bottom:8px;">'
+    + '<div style="display:flex;justify-content:space-between;"><strong>'+(r.producto_nombre||r.producto_id)+'</strong><span style="color:#B71C1C;font-weight:700;">-'+r.cantidad+'</span></div>'
+    + '<div style="font-size:12px;color:#777;margin-top:3px;">'+(r.motivo||'')+' · '+(r.fecha||'')+' '+(r.hora?String(r.hora).slice(0,5):'')+'</div></div>').join('');
+  setStatus('Listo');
+}
+
+// ── REGISTRO ───────────────────────────────────────────────
+async function loadRegistro(){
+  setStatus('Cargando…');
+  const hoy = new Date().toISOString().slice(0,10);
+  const rows = await sbSelect('registro_diario', '?sector=eq.madrugada&order=created_at.desc&limit=120');
+  const el = document.getElementById('registro-list');
+  if(!rows || !rows.length){ el.innerHTML = emptyState('Sin movimientos registrados hoy.',''); setStatus('Listo'); return; }
+  el.innerHTML = rows.map(r=>'<div style="border-bottom:1px solid #eee;padding:10px 2px;font-size:14px;">'
+    + '<span style="color:#1B5E20;">•</span> '+(r.descripcion||r.tipo)
+    + '<div style="font-size:11px;color:#999;">'+fmtHora(r.created_at)+'</div></div>').join('');
+  setStatus('Listo');
+}
+async function cerrarDia(){
+  if(!confirm('¿Cerrar el día de Madrugada? Queda registrado el cierre.')) return;
+  await sbLog('madrugada','cierre','🔒 Cierre de día de Madrugada');
+  toast('✅ Día cerrado');
+  loadRegistro();
+}
+
+// auto-refresh de lo que está leudando mientras se mira esa solapa
+setInterval(()=>{ const p=document.getElementById('panel-hornear'); if(p && p.classList.contains('active')) loadLeudando(); }, 60000);
+
+document.addEventListener('DOMContentLoaded', loadLeudando);
+loadLeudando();
+</script>
+</body>
+</html>
