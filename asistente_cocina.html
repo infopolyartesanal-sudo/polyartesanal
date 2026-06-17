@@ -1148,6 +1148,73 @@ function dispararAlarma() {
   addToLog('⏰ ALARMA: hora de sacar el leudado (14:00hs)', 'leudado');
 }
 
+// ── CONECTOR CÁMARA DE PANADERÍA → LEUDADO ──────────────────────
+let camaraDisponible = [];   // filas de camara_panaderia con cantidad > 0
+let leudandoCocina = [];     // filas de leudado_cocina estado='leudando'
+
+async function loadCamaraConector() {
+  try {
+    const cam = await sbSelect('camara_panaderia', '?cantidad=gt.0&order=nombre.asc');
+    camaraDisponible = cam || [];
+  } catch(e){ camaraDisponible = []; }
+  try {
+    const leu = await sbSelect('leudado_cocina', '?estado=eq.leudando&order=created_at.asc');
+    leudandoCocina = leu || [];
+  } catch(e){ leudandoCocina = []; }
+  renderLeudado();
+}
+
+async function sacarDeCamara(prodId, nombre, disponible) {
+  const qtyStr = prompt('¿Cuánto sacás a leudar de "' + nombre + '"? (disponible: ' + disponible + ')', disponible);
+  if (qtyStr === null) return;
+  let qty = parseFloat(qtyStr);
+  if (!qty || qty <= 0) return;
+  if (qty > disponible) qty = disponible;
+  const nuevo = Math.max(0, Math.round((disponible - qty) * 10) / 10);
+  try {
+    await sbFetch('PATCH', 'camara_panaderia', { cantidad: nuevo, updated_at: new Date().toISOString() }, '?id=eq.' + encodeURIComponent(prodId));
+    await sbUpsert('leudado_cocina', [{ producto_id: prodId, producto_nombre: nombre, cantidad: qty, origen: 'camara', estado: 'leudando' }]);
+    addToLog('📥 Sacado a leudar de cámara: ' + qty + ' ' + nombre, 'leudado');
+  } catch(e){ console.warn('sacarDeCamara error:', e); }
+  loadCamaraConector();
+}
+
+function renderCamaraConector() {
+  let html = '';
+  html += '<div style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;padding:8px 0 6px;font-family:system-ui,sans-serif;">❄️ Cámara de Panadería — disponible para sacar</div>';
+  if (!camaraDisponible.length) {
+    html += '<div style="text-align:center;color:#aaa;padding:10px;font-size:13px;">No hay nada en la cámara de Panadería ahora.</div>';
+  } else {
+    for (const c of camaraDisponible) {
+      const disp = c.cantidad || 0;
+      const nombreSafe = String(c.nombre || c.id).replace(/'/g, '');
+      html += '<div class="leudado-item">' +
+        '<div class="leudado-info">' +
+          '<div class="leudado-nombre">' + (c.nombre || c.id) + '</div>' +
+          '<div class="leudado-sugerido">En cámara: ' + disp + '</div>' +
+        '</div>' +
+        '<button class="leudado-notif-btn" onclick="sacarDeCamara(\'' + c.id + '\',\'' + nombreSafe + '\',' + disp + ')">📥 Sacar a leudar</button>' +
+      '</div>';
+    }
+  }
+  html += '<div style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;padding:12px 0 6px;font-family:system-ui,sans-serif;">🕒 Leudando ahora (para el turno noche)</div>';
+  if (!leudandoCocina.length) {
+    html += '<div style="text-align:center;color:#aaa;padding:10px;font-size:13px;">Todavía no sacaste nada a leudar.</div>';
+  } else {
+    for (const l of leudandoCocina) {
+      const hora = l.created_at ? new Date(l.created_at).toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'}) : '';
+      html += '<div class="leudado-item">' +
+        '<div class="leudado-info">' +
+          '<div class="leudado-nombre">' + l.cantidad + ' × ' + (l.producto_nombre || l.producto_id) + '</div>' +
+          '<div class="leudado-sugerido">🕒 Leudando' + (hora ? ' · sacado ' + hora : '') + ' · lo hornea el turno noche</div>' +
+        '</div>' +
+      '</div>';
+    }
+  }
+  html += '<div style="height:1px;background:#eee;margin:14px 0;"></div>';
+  return html;
+}
+
 function renderLeudado() {
   const el = document.getElementById('leudado-panel');
   if (!el) return;
@@ -1182,7 +1249,7 @@ function renderLeudado() {
   }
 
   // Progress
-  let html = alarmHtml;
+  let html = renderCamaraConector() + alarmHtml;
   html += `<div class="leudado-progress">
     <div class="leudado-progress-bar"><div class="leudado-progress-fill" style="width:${pct}%"></div></div>
     <span>${sacadosCount}/${dayItems.length} sacados</span>
@@ -1567,6 +1634,9 @@ function confirmDeposito() {
   const s = stockState[currentRecipe.name];
   s.local += local; s.heladera += heladera; s.freezer += freezer; s.estante += estante;
   saveStock();
+
+  // Descontar la materia prima de esta tanda del depósito
+  if (currentRecipe.ingredients) descontarIngredientesDeposito(currentRecipe.ingredients, 'cocina');
 
   // Lo que va a "🏪 Local directo" se despacha al Salón como pendiente de confirmar
   if (local > 0) {
@@ -2077,14 +2147,13 @@ async function loadConectorPanaderia() {
 function renderConectorPanaderia() {
   const el = document.getElementById('conector-panaderia');
   if (!el) return;
-  let html = '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">📥 Sacar a leudar (stock de Panadería)</div>';
+  let html = '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">❄️ Sacar de la cámara a leudar</div>';
 
   const disp = [];
   (conectorCamara || []).forEach(r => { if ((r.cantidad || 0) > 0) disp.push({ origen:'camara', id:r.id, nombre:r.nombre || r.id, cant: r.cantidad }); });
-  (conectorFreezer || []).forEach(r => { const t = r.total || 0; if (t > 0) disp.push({ origen:'freezer', id:r.id, nombre:r.nombre || r.id, cant: t }); });
 
   if (!disp.length) {
-    html += '<div style="color:#aaa;font-size:13px;padding:6px 0 10px;">No hay stock disponible en la cámara ni el freezer de Panadería.</div>';
+    html += '<div style="color:#aaa;font-size:13px;padding:6px 0 10px;">No hay nada en la cámara de Panadería todavía. Cuando Panadería mande producción a ❄️ Cámara, te aparece acá.</div>';
   } else {
     disp.forEach(d => {
       const icon = d.origen === 'camara' ? '❄️' : '🧊';
@@ -2194,64 +2263,138 @@ const LEUDADO_TO_FREEZER = {
 
 // ── MAPA: ingrediente texto libre → ID materia prima depósito ──────
 const ING_TO_MP = {
-  'harina 0000':        { id: 'harina_0000', factor: 0.001 },  // g → kg
-  'harina 000':         { id: 'harina_000',  factor: 0.001 },
-  'harina trigo 000':   { id: 'harina_000',  factor: 0.001 },
-  'harina trigo 0000':  { id: 'harina_0000', factor: 0.001 },
-  'trigo 000':          { id: 'harina_000',  factor: 0.001 },
-  'trigo 0000':         { id: 'harina_0000', factor: 0.001 },
-  'harina integral':    { id: 'harina_integral', factor: 0.001 },
-  'harina trigo integral': { id: 'harina_integral', factor: 0.001 },
-  'harina de espelta':  { id: 'harina_espelta', factor: 0.001 },
-  'harina integral de espelta': { id: 'harina_espelta', factor: 0.001 },
-  'harina integral de centeno': { id: 'harina_centeno', factor: 0.001 },
-  'harina de centeno':  { id: 'harina_centeno', factor: 0.001 },
-  'harina de almendras': { id: 'harina_almendras', factor: 0.001 },
-  'harina de coco':     { id: 'harina_coco', factor: 0.001 },
-  'manteca':            { id: 'manteca',   factor: 0.001 },
-  'margarina':          { id: 'margarina', factor: 0.001 },
-  'sal':                { id: 'sal',       factor: 0.001 },
-  'levadura':           { id: 'levadura',  factor: 0.001 },
-  'levadura fresca':    { id: 'levadura',  factor: 0.001 },
-  'azucar':             { id: 'azucar',    factor: 0.001 },
-  'azúcar':             { id: 'azucar',    factor: 0.001 },
-  'aceite':             { id: 'aceite',    factor: 0.001 },
-  'aceite girasol':     { id: 'aceite',    factor: 0.001 },
-  'leche':              { id: 'leche',     factor: 0.001 },
-  'huevos':             { id: 'huevos',    factor: 1 },
-  'huevo':              { id: 'huevos',    factor: 1 },
-  'grasa':              { id: 'grasa',     factor: 0.001 },
-  'miel':               { id: 'miel',      factor: 0.001 },
-  'membrillo':          { id: 'membrillo', factor: 0.001 },
-  'almidón':            { id: 'almidon',   factor: 0.001 },
-  'almidón de maíz':    { id: 'almidon',   factor: 0.001 },
-  'polenta':            { id: 'polenta',   factor: 0.001 },
+  'harina integral de centeno': { id: 'harina_centeno' },
+  'integral de centeno': { id: 'harina_centeno' },
+  'harina de centeno': { id: 'harina_centeno' },
+  'centeno': { id: 'harina_centeno' },
+  'harina integral de espelta': { id: 'harina_espelta' },
+  'harina de espelta': { id: 'harina_espelta' },
+  'molde espelta': { id: 'harina_espelta' },
+  'espelta': { id: 'harina_espelta' },
+  'harina de almendra': { id: 'harina_almendras' },
+  'harina almendra': { id: 'harina_almendras' },
+  'harina de coco': { id: 'harina_coco' },
+  'harina integral': { id: 'harina_integral' },
+  'trigo integral': { id: 'harina_integral' },
+  'harina blanca 0000': { id: 'harina_0000' },
+  'harina 0000': { id: 'harina_0000' },
+  'trigo 0000': { id: 'harina_0000' },
+  '0000': { id: 'harina_0000' },
+  'harina 000': { id: 'harina_000' },
+  'trigo 000': { id: 'harina_000' },
+  '000': { id: 'harina_000' },
+  'harina blanca': { id: 'harina_0000' },
+  'manteca': { id: 'manteca' },
+  'margarina': { id: 'margarina' },
+  'almidon': { id: 'almidon' },
+  'azucar impalpable': { id: 'azucar_impalpable' },
+  'impalpable': { id: 'azucar_impalpable' },
+  'azucar': { id: 'azucar' },
+  'bicarbonato': { id: 'bicarbonato' },
+  'polvo de hornear': { id: 'polvo_hornear' },
+  'polvo hornear': { id: 'polvo_hornear' },
+  'levadura': { id: 'levadura' },
+  'frescura': { id: 'frescura' },
+  'mejorador': { id: 'mejorador' },
+  'aditivo': { id: 'aditivo' },
+  'curcuma': { id: 'curcuma' },
+  'canela': { id: 'canela' },
+  'semillas': { id: 'semillas_mix' },
+  'algarroba': { id: 'algarroba' },
+  'cacao': { id: 'cacao' },
+  'chocolate blanco': { id: 'chocolate_blanco' },
+  'chocolate semiamargo': { id: 'chocolate_semiamargo' },
+  'chocolate': { id: 'chocolate_semiamargo' },
+  'coco rallado': { id: 'coco_rallado' },
+  'eritritol': { id: 'eritritol' },
+  'esencia de naranja': { id: 'esencia_naranja' },
+  'esencia naranja': { id: 'esencia_naranja' },
+  'vainilla': { id: 'vainilla' },
+  'miel': { id: 'miel' },
+  'polenta': { id: 'polenta' },
+  'queso rallado': { id: 'queso_rallado' },
+  'pure de tomate': { id: 'pure_tomate' },
+  'pure tomate': { id: 'pure_tomate' },
+  'salsa barbacoa': { id: 'salsa_barbacoa' },
+  'sal fina': { id: 'sal' },
+  'sal': { id: 'sal' },
+  'pimenton': { id: 'pimenton' },
+  'nuez moscada': { id: 'nuez_moscada' },
+  'pimienta': { id: 'pimienta' },
+  'oregano': { id: 'oregano' },
+  'adobo': { id: 'adobo' },
+  'demiglas': { id: 'demiglas' },
+  'pasas': { id: 'pasas_uva' },
+  'mani': { id: 'mani' },
+  'avena': { id: 'avena' },
+  'nuez tostada': { id: 'nueces' },
+  'nueces': { id: 'nueces' },
+  'nuez': { id: 'nueces' },
+  'cafe': { id: 'cafe' },
+  'aceite': { id: 'aceite' },
+  'queso de maquina': { id: 'queso_maquina' },
+  'queso maquina': { id: 'queso_maquina' },
+  'queso crema': { id: 'queso_crema' },
+  'queso cremoso': { id: 'queso_cremoso' },
+  'crema': { id: 'crema' },
+  'leche': { id: 'leche' },
+  'yema': { id: 'huevos' },
+  'clara': { id: 'huevos' },
+  'huevos': { id: 'huevos' },
+  'huevo': { id: 'huevos' },
+  'grasa': { id: 'grasa' },
+  'carne picada': { id: 'carne_picada' },
+  'carne de cerdo': { id: 'cerdo' },
+  'cerdo': { id: 'cerdo' },
+  'carne cortada a cuchillo': { id: 'carne_picada' },
+  'carne a cuchillo': { id: 'carne_picada' },
+  'carne': { id: 'carne_picada' },
+  'pollo': { id: 'pollo' },
+  'nalga': { id: 'nalga' },
+  'jamon cocido': { id: 'jamon_cocido' },
+  'jamon crudo': { id: 'jamon_crudo' },
+  'jamon picado': { id: 'jamon_cocido' },
+  'jamon': { id: 'jamon_cocido' },
+  'muzzarella': { id: 'muzzarella' },
+  'mozzarella': { id: 'muzzarella' },
+  'ricota': { id: 'ricota' },
+  'mayonesa': { id: 'mayonesa' },
+  'pan de miga': { id: 'pan_miga' },
+  'migas': { id: 'pan_miga' },
+  'miga': { id: 'pan_miga' },
+  'cebolla': { id: 'cebolla' },
+  'morron': { id: 'morron' },
+  'choclo': { id: 'choclo' },
+  'portobelo': { id: 'portobelo' },
+  'zapallito': { id: 'zapallito' },
+  'calabaza': { id: 'calabaza' },
+  'zanahoria': { id: 'zanahoria' },
+  'manzana': { id: 'manzana' },
+  'berenjena': { id: 'berenjena' },
+  'aceituna': { id: 'aceitunas' },
+  'lechuga': { id: 'lechuga' },
+  'tomate': { id: 'tomate' },
+  'rucula': { id: 'rucula' },
+  'perejil': { id: 'perejil' },
+  'papa': { id: 'papa' },
+  'ajo': { id: 'ajo' },
+  'membrillo': { id: 'membrillo' },
 };
 
 // ── PARSEAR ingrediente texto → { mpId, cantidad, unidad } ────────
 function parsearIngrediente(ingText) {
-  const txt = ingText.toLowerCase().trim();
-  // Extraer número y unidad del inicio: "2800g harina 0000" → [2800, 'g', 'harina 0000']
-  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|cc|ml|lt?|u|cucharad[ai]ta?s?|cucharas?|litros?)?\s+(.+)/);
+  const txt = ingText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  const match = txt.match(/^(\d+(?:[.,]\d+)?)\s*(kgs?|grs?|gm|gr|g|cc|ml|lts?|litros?|lt|l|u|uni(?:dad(?:es)?)?)?\.?\s*(.+)$/);
   if (!match) return null;
-
   let cantidad = parseFloat(match[1].replace(',', '.'));
-  const unidad = match[2] || 'u';
+  const unidad = (match[2] || 'u').toLowerCase();
   const nombreIng = match[3].trim();
-
-  // Convertir a kg si está en gramos o cc/ml
   let cantKg = cantidad;
-  if (unidad === 'g') cantKg = cantidad / 1000;
-  else if (unidad === 'cc' || unidad === 'ml') cantKg = cantidad / 1000;
-  else if (unidad === 'kg' || unidad === 'lt' || unidad === 'l' || unidad === 'litros') cantKg = cantidad;
-
-  // Buscar match en ING_TO_MP
+  if (['g','gm','gr','grs'].includes(unidad)) cantKg = cantidad / 1000;
+  else if (['cc','ml'].includes(unidad)) cantKg = cantidad / 1000;
   let mpId = null;
   for (const [key, val] of Object.entries(ING_TO_MP)) {
-    if (nombreIng.includes(key)) {
-      mpId = val.id;
-      break;
-    }
+    if (nombreIng.includes(key)) { mpId = val.id; break; }
   }
   if (!mpId) return null;
   return { mpId, cantKg };
