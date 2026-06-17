@@ -1216,8 +1216,10 @@ function renderCamaraConector() {
 }
 
 function renderLeudado() {
+  // SISTEMA VIEJO DESACTIVADO: el leudado ahora es UNA sola lista unificada (cámara + freezer) en renderConectorPanaderia.
   const el = document.getElementById('leudado-panel');
-  if (!el) return;
+  if (el) el.innerHTML = '';
+  return;
   const dayKey = getDayKeyLeudado();
   const dayItems = LEUDADO_SEMANAL[dayKey] || [];
   const now = new Date();
@@ -1426,7 +1428,7 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'stock') { renderStock(); checkStockAlerts(); }
   if (name === 'tareas') renderTareas();
-  if (name === 'leudado') { renderLeudado(); loadConectorPanaderia(); }
+  if (name === 'leudado') { loadConectorPanaderia(); }
   if (name === 'log') renderLog();
 }
 
@@ -2147,13 +2149,14 @@ async function loadConectorPanaderia() {
 function renderConectorPanaderia() {
   const el = document.getElementById('conector-panaderia');
   if (!el) return;
-  let html = '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">❄️ Sacar de la cámara a leudar</div>';
+  let html = '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">🥖 Sacar a leudar — cámara o freezer</div>';
 
   const disp = [];
   (conectorCamara || []).forEach(r => { if ((r.cantidad || 0) > 0) disp.push({ origen:'camara', id:r.id, nombre:r.nombre || r.id, cant: r.cantidad }); });
+  (conectorFreezer || []).forEach(r => { if ((r.total || 0) > 0) disp.push({ origen:'freezer', id:r.id, nombre:r.nombre || r.id, cant: r.total }); });
 
   if (!disp.length) {
-    html += '<div style="color:#aaa;font-size:13px;padding:6px 0 10px;">No hay nada en la cámara de Panadería todavía. Cuando Panadería mande producción a ❄️ Cámara, te aparece acá.</div>';
+    html += '<div style="color:#aaa;font-size:13px;padding:6px 0 10px;">No hay nada en la cámara ni en el freezer de Panadería para sacar. Cuando Panadería mande producción, te aparece acá.</div>';
   } else {
     disp.forEach(d => {
       const icon = d.origen === 'camara' ? '❄️' : '🧊';
