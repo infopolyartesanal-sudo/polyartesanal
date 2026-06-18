@@ -438,6 +438,22 @@ const INSUMOS_LOCAL = [
 // ── STATE ──────────────────────────────────────────
 function initStock() {
   try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(e){}
+  // Junta duplicados viejos hacia el producto correcto (se auto-arregla una vez)
+  var MIGR_DUP = {
+    'cocina_canastita_calabaza':'canastita_calabaza',
+    'pasteleria_torta_poly':'torta_poly',
+    'cocina_sandwich_de_miga_jamón_y_queso_(blanco)':'sandwich_jyq'
+  };
+  var migrado = false;
+  for (var oldId in MIGR_DUP){
+    if (stockState[oldId] != null){
+      var newId = MIGR_DUP[oldId];
+      stockState[newId] = (stockState[newId]||0) + stockState[oldId];
+      delete stockState[oldId];
+      migrado = true;
+    }
+  }
+  if (migrado) { try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){} }
   const allItems = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL];
   for (const item of allItems) {
     if (stockState[item.id] === undefined) stockState[item.id] = 0;
@@ -449,9 +465,91 @@ function saveStock() {
   const allItems = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL];
   const rows = allItems.map(item => ({
     id: item.id, nombre: item.nombre, cantidad: stockState[item.id]||0,
-    unidad: item.unidad, sector: item.sector||'insumos', min_local: item.minLocal||0
+    unidad: item.unidad, sector: item.sector||'insumos', min_local: item.minLocal||0,
+    precio: getPrecio(item.id)
   }));
   sbUpsert('salon_stock', rows).catch(()=>{});
+}
+
+const PRECIOS_DEFAULT = {
+  'bizcochito': 18000,
+  'bizcochitos_de_manteca_y_grasa': 18000,
+  'bizcochuelo_vainilla_torta_grande': 25000,
+  'budin_manzana': 10500,
+  'budin_manzana_y_canela_integral': 10500,
+  'canastita_calabaza': 3300,
+  'canastita_hongos': 3300,
+  'canastita_hongos_integral': 3300,
+  'canastita_humita': 3300,
+  'canastita_humita_clasica': 3300,
+  'canastita_zapallito': 3300,
+  'caserito': 6000,
+  'cookie_keto': 65000,
+  'cookies_de_coco_sin_gluten': 45000,
+  'cookies_keto_choco_cafe': 65000,
+  'cookies_keto_coco_y_lima': 65000,
+  'cookies_keto_de_almendras': 65000,
+  'cookies_keto_nuez': 65000,
+  'cremona_comun': 5200,
+  'cremona_jyq': 5200,
+  'cremona_membrillo': 5200,
+  'cremonas': 5200,
+  'empanada_cerdo': 3300,
+  'empanada_cuchillo': 3300,
+  'empanada_picada': 3300,
+  'empanada_pollo': 3300,
+  'empanadas_carne_cortada_a_cuchillo': 3300,
+  'empanadas_cerdo_a_la_barbacoa': 3300,
+  'empanadas_de_pollo': 3300,
+  'facturas_de_grasa': 1350,
+  'facturas_veganas': 1350,
+  'librito': 18000,
+  'librito_integral': 18000,
+  'libritos_clasicos': 18000,
+  'libritos_integrales': 18000,
+  'masa_seca': 45000,
+  'masa_seca_integral': 45000,
+  'palito_queso': 18000,
+  'palitos_de_queso_de_hojaldre': 18000,
+  'palmerita': 18000,
+  'palmeritas': 18000,
+  'pan_boniato': 7000,
+  'pan_boniato_calabaza': 7000,
+  'pan_caserito_frances': 6000,
+  'pan_de_centeno': 9000,
+  'pan_de_maiz': 7000,
+  'pan_integral_sin_sal': 6500,
+  'pan_molde': 6500,
+  'pan_molde_blanco': 6500,
+  'pan_molde_de_espelta': 9900,
+  'pan_molde_integral': 6500,
+  'pan_molde_integral_sin_sal': 6500,
+  'pebetes': 2500,
+  'pepa_algarroba': 45000,
+  'pepas_de_algarroba': 45000,
+  'prepizza': 7000,
+  'prepizza_integral': 7000,
+  'sandwich_de_miga_aceitunas': 3000,
+  'sandwich_de_miga_berenjenas': 3400,
+  'sandwich_huevo': 3200,
+  'sandwich_jamon_crudo': 3000,
+  'sandwich_jyq': 3000,
+  'sandwich_vegetal': 3000
+};
+let preciosCustom = JSON.parse(localStorage.getItem('salon_precios') || '{}');
+function getPrecio(id){ return (preciosCustom[id] != null) ? preciosCustom[id] : (PRECIOS_DEFAULT[id] || 0); }
+function fmtPrecio(p){ return p ? ('$' + Number(p).toLocaleString('es-AR')) : '—'; }
+function editarPrecio(id){
+  const cur = getPrecio(id);
+  const v = prompt('Precio de venta de: ' + getItemName(id) + '\n($ por ' + (([].concat(PRODUCTOS_LOCAL,PRODUCTOS_EXTRA,INSUMOS_LOCAL).find(function(p){return p.id===id;})||{}).unidad || 'u') + ')', cur || '');
+  if (v === null) return;
+  const num = parseFloat(String(v).replace(/[^0-9.,]/g,'').replace(',','.'));
+  if (isNaN(num) || num < 0) { alert('Poné un número válido.'); return; }
+  preciosCustom[id] = num;
+  localStorage.setItem('salon_precios', JSON.stringify(preciosCustom));
+  saveStock();
+  renderStock();
+  if (typeof showToast === 'function') showToast('💲 Precio actualizado');
 }
 
 function getStatus(item) {
@@ -498,6 +596,10 @@ function renderStock(filterQ) {
             <button class="adj-btn plus" onclick="adjustStock('${item.id}',(${item.paso||1}))">+</button>
           </div>
           <div class="stock-min">Mínimo recomendado: ${item.minLocal} ${item.unidad}</div>
+          <div class="stock-min" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+            💲 Precio: <strong>${fmtPrecio(getPrecio(item.id))}</strong>
+            <button onclick="editarPrecio('${item.id}')" style="background:#EDE7F6;color:#4A148C;border:none;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;">✏️ Editar</button>
+          </div>
         </div>
       </div>`;
     }
@@ -1081,10 +1183,36 @@ function renderDespachosPendientes(){
         + '</div>';
     }).join('');
 }
+function normKeySalon(s){
+  return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+}
+// Alias para casos donde el nombre del sector no coincide con el del catálogo del Salón
+const ALIAS_DESPACHO = {
+  'facturas_de_manteca':'medialuna_manteca'
+};
+// Resuelve un despacho entrante a un id de producto del Salón (evita duplicados)
+function resolverProductoSalon(productoId, productoNombre){
+  const cat = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL);
+  const nkNom = normKeySalon(productoNombre);
+  const nkId = normKeySalon(productoId);
+  // alias explícito
+  if (ALIAS_DESPACHO[nkNom]) return ALIAS_DESPACHO[nkNom];
+  if (ALIAS_DESPACHO[nkId]) return ALIAS_DESPACHO[nkId];
+  // id exacto ya existente en el catálogo
+  let f = cat.find(function(p){ return p.id === productoId; });
+  if (f) return f.id;
+  // mismo nombre normalizado (preserva el producto y su stock)
+  f = cat.find(function(p){ return normKeySalon(p.nombre) === nkNom && nkNom; });
+  if (f) return f.id;
+  // id estable derivado del nombre (un solo producto por receta, sin duplicar)
+  return nkNom || nkId || ('rec_'+Date.now());
+}
+
 async function confirmarDespacho(id){
   const r = despachosPend.find(function(x){ return String(x.id)===String(id); });
   if(!r) return;
-  const pid = r.producto_id || ('rec_'+Date.now());
+  const pid = resolverProductoSalon(r.producto_id, r.producto_nombre);
   const cant = Number(r.cantidad)||0;
   const known = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL).some(function(p){ return p.id===pid; });
   if(!known){
