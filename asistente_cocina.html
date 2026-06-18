@@ -664,6 +664,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   loadTareas();
   loadConectorPanaderia();
+  loadLeudado();
   renderRecipes();
   renderStock();
   showLimpiezaIndicator();
@@ -1216,10 +1217,8 @@ function renderCamaraConector() {
 }
 
 function renderLeudado() {
-  // SISTEMA VIEJO DESACTIVADO: el leudado ahora es UNA sola lista unificada (cámara + freezer) en renderConectorPanaderia.
   const el = document.getElementById('leudado-panel');
-  if (el) el.innerHTML = '';
-  return;
+  if (!el) return;
   const dayKey = getDayKeyLeudado();
   const dayItems = LEUDADO_SEMANAL[dayKey] || [];
   const now = new Date();
@@ -1251,7 +1250,7 @@ function renderLeudado() {
   }
 
   // Progress
-  let html = renderCamaraConector() + alarmHtml;
+  let html = alarmHtml;
   html += `<div class="leudado-progress">
     <div class="leudado-progress-bar"><div class="leudado-progress-fill" style="width:${pct}%"></div></div>
     <span>${sacadosCount}/${dayItems.length} sacados</span>
@@ -1428,7 +1427,7 @@ function switchTab(name) {
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'stock') { renderStock(); checkStockAlerts(); }
   if (name === 'tareas') renderTareas();
-  if (name === 'leudado') { loadConectorPanaderia(); }
+  if (name === 'leudado') { loadConectorPanaderia(); loadLeudado(); renderLeudado(); }
   if (name === 'log') renderLog();
 }
 
