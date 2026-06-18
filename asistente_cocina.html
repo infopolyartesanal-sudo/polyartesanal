@@ -1077,12 +1077,29 @@ async function toggleSacado(id) {
 
   if (item.sacado) {
     addToLog('🧊 Sacado para leudar: ' + def.nombre + ' (' + item.cantidad + ')', 'leudado');
-    // ── INTEGRACIÓN: descontar del freezer de panadería ──
+    // ── descontar del freezer de panadería ──
     try {
       await descontarDelFreezer(def.nombre, item.cantidad);
     } catch(e) { console.warn('toggleSacado freezer error:', e); }
+    // ── AVISAR A MADRUGADA: crear el leudado para que lo horneen ──
+    try {
+      const slug = 'leud_' + String(def.nombre).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+      const res = await sbUpsert('cocina_leudado', [{ producto_id: slug, producto_nombre: def.nombre, cantidad: item.cantidad, origen: 'freezer', estado: 'leudando' }]);
+      if (res && res[0] && res[0].id != null) { item.leudadoRowId = res[0].id; saveLeudado(); }
+    } catch(e) { console.warn('toggleSacado leudado→madrugada error:', e); }
+    if (typeof loadConectorPanaderia === 'function') loadConectorPanaderia();
   } else if (eraSacado) {
     addToLog('↩️ Devuelto al freezer: ' + def.nombre + ' (' + item.cantidad + ')', 'leudado');
+    // ── quitar de Madrugada lo que se devolvió al freezer ──
+    try {
+      if (item.leudadoRowId != null) {
+        await sbFetch('DELETE', 'cocina_leudado', null, '?id=eq.' + encodeURIComponent(item.leudadoRowId) + '&estado=eq.leudando');
+        item.leudadoRowId = null; saveLeudado();
+      } else {
+        await sbFetch('DELETE', 'cocina_leudado', null, '?producto_nombre=eq.' + encodeURIComponent(def.nombre) + '&estado=eq.leudando');
+      }
+    } catch(e) { console.warn('toggleSacado quitar leudado error:', e); }
+    if (typeof loadConectorPanaderia === 'function') loadConectorPanaderia();
   }
 }
 
