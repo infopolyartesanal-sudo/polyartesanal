@@ -301,6 +301,7 @@
       <div id="ctrl-pie"></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
         <button onclick="traerIngresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📥 Traer despachos</button>
+        <button onclick="traerEgresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📤 Traer egresos</button>
         <button onclick="guardarControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#6A1B9A;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">💾 Guardar</button>
         <button onclick="cerrarTurnoControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#E65100;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🔒 Cerrar turno</button>
         <button onclick="imprimirControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#2E7D32;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Firmar</button>
@@ -1526,7 +1527,7 @@ async function loadControl(){
 
   if(existing){
     const itemsMap={};
-    (existing.items||[]).forEach(it=>{ itemsMap[it.c]={i:Number(it.i)||0,g:Number(it.g)||0,f:Number(it.f)||0}; });
+    (existing.items||[]).forEach(it=>{ itemsMap[it.c]={i:Number(it.i)||0,g:Number(it.g)||0,e:Number(it.e)||0,f:Number(it.f)||0}; });
     controlState={ id:existing.id, fecha, turno, responsable:existing.responsable||'', hora_apertura:existing.hora_apertura||'',
       hora_cierre:existing.hora_cierre||'', estado:existing.estado||'abierto',
       remanentes:existing.remanentes||'', devoluciones:existing.devoluciones||'', consumo_interno:existing.consumo_interno||'',
@@ -1535,10 +1536,11 @@ async function loadControl(){
     // NUEVO: inicial = final del turno anterior (arrastre)
     const inicialMap=await calcularInicialArrastre(fecha,turno);
     const itemsMap={};
-    CONTROL_CATALOGO.forEach(p=>{ itemsMap[p.c]={i:inicialMap[p.c]||0,g:0,f:0}; });
+    CONTROL_CATALOGO.forEach(p=>{ itemsMap[p.c]={i:inicialMap[p.c]||0,g:0,e:0,f:0}; });
     controlState={ id:null, fecha, turno, responsable:'', hora_apertura:'', hora_cierre:'', estado:'abierto',
       remanentes:'', devoluciones:'', consumo_interno:'', items:itemsMap };
     await traerIngresos(true); // pre-cargar ingresos del turno desde los despachos (editable)
+    await traerEgresos(true); // pre-cargar egresos del turno (editable)
   }
   // reflejar encabezado
   document.getElementById('ctrl-responsable').value=controlState.responsable;
@@ -1621,7 +1623,48 @@ async function traerIngresos(silent){
   }
 }
 
-function ctrlVendido(it){ return (Number(it.i)||0)+(Number(it.g)||0)-(Number(it.f)||0); }
+// PUENTE de egresos: id de producto del Salón -> código de la planilla
+const ALIAS_EGRESO_ID = {
+  'medialuna_manteca':'53', 'medialuna_grasa':'53',
+  'caserito':'32',
+  'librito':'25', 'libritos':'25',
+  'pan_maiz':'21',
+  'pan_molde_blanco':'10', 'pan_molde':'10',
+  'pan_integral':'12',
+  'canastita_calabaza':'136',
+  'cremona_comun':'24', 'cremona_membrillo':'24', 'cremona_jyq':'24',
+  'sandwich_jyq':'39'
+};
+
+async function traerEgresos(silent){
+  if(!controlState) return;
+  const fecha=controlState.fecha;
+  let params;
+  if(controlState.turno==='manana'){
+    params='?created_at=gte.'+fecha+'T00:00:00&created_at=lt.'+fecha+'T14:00:00';
+  } else {
+    params='?created_at=gte.'+fecha+'T14:00:00&created_at=lte.'+fecha+'T23:59:59';
+  }
+  let recs=[];
+  try{ recs=await sbSelect('salon_egresos',params) || []; }catch(e){ console.warn('traerEgresos',e); }
+  const idx={}; CONTROL_CATALOGO.forEach(p=>{ idx[normCtrl(p.n)]=p.c; });
+  const acum={}; let sinMatch=0;
+  recs.forEach(r=>{
+    const key=normCtrl(r.producto_nombre);
+    const cod = ALIAS_EGRESO_ID[r.producto_id] || ALIAS_INGRESO[key] || idx[key];
+    if(cod){ acum[cod]=(acum[cod]||0)+(Number(r.cantidad)||0); } else { sinMatch++; }
+  });
+  let aplicados=0;
+  Object.entries(acum).forEach(([cod,cant])=>{ if(controlState.items[cod]){ controlState.items[cod].e=cant; aplicados++; } });
+  if(!silent){
+    renderControlTabla(); renderControlPie();
+    let msg = aplicados>0 ? ('📤 '+aplicados+' egresos cargados al control') : 'No hubo egresos en este turno';
+    if(sinMatch>0) msg += ' · '+sinMatch+' no están en la planilla';
+    showToast(msg);
+  }
+}
+
+function ctrlVendido(it){ return (Number(it.i)||0)+(Number(it.g)||0)-(Number(it.e)||0)-(Number(it.f)||0); }
 function ctrlTotal(){
   let t=0; CONTROL_CATALOGO.forEach(p=>{ const it=controlState.items[p.c]; if(it){ t+=ctrlVendido(it)*p.p; } }); return t;
 }
@@ -1640,7 +1683,7 @@ function renderControlTabla(){
   let h='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:12px;">'
     +'<thead><tr style="background:#F3E5F5;color:#4A148C;">'
     +'<th style="text-align:left;padding:6px;position:sticky;left:0;background:#F3E5F5;">Producto</th>'
-    +'<th style="padding:6px;">Inicial</th><th style="padding:6px;">Ingreso</th><th style="padding:6px;">Final</th>'
+    +'<th style="padding:6px;">Inicial</th><th style="padding:6px;">Ingreso</th><th style="padding:6px;">Egreso</th><th style="padding:6px;">Final</th>'
     +'<th style="padding:6px;">Vend.</th><th style="padding:6px;">$ a rendir</th></tr></thead><tbody>';
   for(const p of prods){
     const it=controlState.items[p.c]||{i:0,g:0,f:0};
@@ -1651,6 +1694,7 @@ function renderControlTabla(){
       +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cg-'+p.c+'" value="'+(it.g||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
+      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ce-'+p.c+'" value="'+(it.e||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
       +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+v+'</td>'
       +'<td style="text-align:right;padding-right:6px;font-weight:700;color:#2E7D32;" id="cm-'+p.c+'">'+fmtPrecio(imp)+'</td>'
@@ -1664,7 +1708,7 @@ function ctrlEdit(cod){
   if(!controlState||!controlState.items[cod]) return;
   const gi=id=>{const e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;};
   const it=controlState.items[cod];
-  it.i=gi('ci-'+cod); it.g=gi('cg-'+cod); it.f=gi('cf-'+cod);
+  it.i=gi('ci-'+cod); it.g=gi('cg-'+cod); it.e=gi('ce-'+cod); it.f=gi('cf-'+cod);
   const p=CONTROL_CATALOGO.find(x=>x.c===cod);
   const v=ctrlVendido(it);
   const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=v;
@@ -1697,7 +1741,7 @@ function ctrlMeta(){
 
 function ctrlBuildRow(){
   ctrlMeta();
-  const items=CONTROL_CATALOGO.map(p=>{ const it=controlState.items[p.c]||{i:0,g:0,f:0}; return {c:p.c,i:it.i||0,g:it.g||0,f:it.f||0}; });
+  const items=CONTROL_CATALOGO.map(p=>{ const it=controlState.items[p.c]||{i:0,g:0,e:0,f:0}; return {c:p.c,i:it.i||0,g:it.g||0,e:it.e||0,f:it.f||0}; });
   return {
     fecha:controlState.fecha, turno:controlState.turno, responsable:controlState.responsable,
     hora_apertura:(document.getElementById('ctrl-hora')||{}).value||'',
@@ -1738,7 +1782,7 @@ function imprimirControl(){
   ctrlMeta();
   const filas=CONTROL_CATALOGO.map(p=>{
     const it=controlState.items[p.c]||{i:0,g:0,f:0}; const v=ctrlVendido(it);
-    return '<tr><td>'+p.n+'</td><td class="n">'+(it.i||0)+'</td><td class="n">'+(it.g||0)+'</td><td class="n">'+(it.f||0)+'</td><td class="n">'+v+'</td><td class="n">'+fmtPrecio(p.p)+'</td><td class="n">'+fmtPrecio(v*p.p)+'</td></tr>';
+    return '<tr><td>'+p.n+'</td><td class="n">'+(it.i||0)+'</td><td class="n">'+(it.g||0)+'</td><td class="n">'+(it.e||0)+'</td><td class="n">'+(it.f||0)+'</td><td class="n">'+v+'</td><td class="n">'+fmtPrecio(p.p)+'</td><td class="n">'+fmtPrecio(v*p.p)+'</td></tr>';
   }).join('');
   const w=window.open('','_print','width=900,height=700');
   w.document.write('<html><head><title>Control de stock</title><style>'
@@ -1751,7 +1795,7 @@ function imprimirControl(){
     +'<h1>Control de stock — Poly Artesanal</h1>'
     +'<div class="hdr"><b>Fecha:</b> '+controlState.fecha+' &nbsp; <b>Turno:</b> '+turnoLabel(controlState.turno).replace(/[^A-Za-zñÑ ]/g,'').trim()
     +' &nbsp; <b>Responsable:</b> '+(controlState.responsable||'__________')+' &nbsp; <b>Hora:</b> '+((document.getElementById('ctrl-hora')||{}).value||'____')+'</div>'
-    +'<table><thead><tr><th>Producto</th><th>Inicial</th><th>Ingreso</th><th>Final</th><th>Vendido</th><th>Precio</th><th>$ a rendir</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<table><thead><tr><th>Producto</th><th>Inicial</th><th>Ingreso</th><th>Egreso</th><th>Final</th><th>Vendido</th><th>Precio</th><th>$ a rendir</th></tr></thead><tbody>'+filas+'</tbody></table>'
     +'<div class="tot">TOTAL A RENDIR: '+fmtPrecio(ctrlTotal())+'</div>'
     +'<div style="margin-top:8px;font-size:12px;"><b>Remanentes:</b> '+(controlState.remanentes||'')+'<br><b>Devoluciones:</b> '+(controlState.devoluciones||'')+'<br><b>Consumo interno:</b> '+(controlState.consumo_interno||'')+'</div>'
     +'<div class="firmas"><div class="firma">Firma vendedora</div><div class="firma">Firma encargada</div></div>'
