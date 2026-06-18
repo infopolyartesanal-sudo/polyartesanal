@@ -141,6 +141,7 @@
     <button class="tab" onclick="switchTab('comanda')" id="tab-comanda"><i class="ti ti-send"></i>Comanda</button>
     <button class="tab" onclick="switchTab('egresos')" id="tab-egresos"><i class="ti ti-arrow-up"></i>Egresos</button>
     <button class="tab" onclick="switchTab('informe')" id="tab-informe"><i class="ti ti-printer"></i>Informe</button>
+    <button class="tab" onclick="switchTab('control')" id="tab-control"><i class="ti ti-clipboard-check"></i>Control</button>
     <button class="tab" onclick="switchTab('pedidos-salon')" id="tab-pedidos-salon" style="position:relative;">
       <i class="ti ti-bell"></i>Pedidos
     </button>
@@ -282,6 +283,33 @@
   </div>
 
     <!-- PEDIDOS SALON -->
+  <!-- CONTROL DE STOCK DIARIO -->
+  <div class="panel" id="panel-control">
+    <div style="flex:1;overflow-y:auto;padding:12px;font-family:system-ui,sans-serif;">
+      <div style="font-size:15px;font-weight:800;color:#6A1B9A;margin-bottom:4px;">📋 Control de stock diario</div>
+      <div style="font-size:12px;color:#888;margin-bottom:10px;">Inicial + Ingreso − Final = Vendido. El total debe coincidir con la facturación.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
+        <input type="date" id="ctrl-fecha" onchange="loadControl()" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+        <select id="ctrl-turno" onchange="loadControl()" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
+          <option value="manana">🌅 Mañana</option>
+          <option value="tarde">🌇 Tarde</option>
+        </select>
+        <input id="ctrl-responsable" placeholder="Responsable" oninput="ctrlMeta()" style="padding:6px;border:1px solid #ddd;border-radius:6px;flex:1;min-width:110px;">
+        <input id="ctrl-hora" placeholder="Hora" style="padding:6px;border:1px solid #ddd;border-radius:6px;width:74px;">
+      </div>
+      <div id="ctrl-estado-bar"></div>
+      <input id="ctrl-buscar" placeholder="🔎 Buscar producto..." oninput="renderControlTabla()" style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px;margin:6px 0;box-sizing:border-box;">
+      <div id="ctrl-tabla"></div>
+      <div id="ctrl-pie"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
+        <button onclick="traerIngresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📥 Traer ingresos de hoy</button>
+        <button onclick="guardarControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#6A1B9A;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">💾 Guardar</button>
+        <button onclick="cerrarTurnoControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#E65100;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🔒 Cerrar turno</button>
+        <button onclick="imprimirControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#2E7D32;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Firmar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="panel" id="panel-pedidos-salon">
     <div style="padding:12px 12px 0;font-family:system-ui,sans-serif;">
       <div style="font-size:13px;font-weight:700;color:#6A1B9A;margin-bottom:6px;">📋 Pedidos para salon</div>
@@ -988,6 +1016,7 @@ function switchTab(name) {
   if (_tab) _tab.classList.add('active');
   if (_panel) _panel.classList.add('active');
   if (name==='stock') renderStock();
+  if (name==='control' && typeof loadControl==='function') loadControl();
   if (name==='pedidos-salon' && typeof loadPedidos_salon === 'function') loadPedidos_salon();
   if (name==='insumos') renderInsumosPanel();
   if (name==='recepcion') { renderRecepcionHistory(); loadDespachosPendientes(); }
@@ -1315,6 +1344,379 @@ function showToast(msg){
   t.textContent=msg; t.style.display='block'; clearTimeout(window._st); window._st=setTimeout(function(){ t.style.display='none'; },2500);
 }
 setInterval(function(){ const p=document.getElementById('panel-recepcion'); if(p&&p.classList.contains('active')) loadDespachosPendientes(); }, 45000);
+
+
+
+// ══════════════════════════════════════════════════════
+// CONTROL DE STOCK DIARIO POR TURNO
+// ══════════════════════════════════════════════════════
+const CONTROL_CATALOGO = [
+  {c:'44',n:"Biscochitos grasa clasico",p:18000},
+  {c:'25',n:"Libritos CLASICOS CRIOLLITOS",p:18000},
+  {c:'43',n:"Palitos de QUESO",p:18000},
+  {c:'50',n:"palmeritas",p:18000},
+  {c:'45',n:"Biscochitos INTEGRALES",p:18000},
+  {c:'26',n:"Libritos INTEGRALES",p:18000},
+  {c:'46',n:"Chipa",p:25500},
+  {c:'32',n:"Pan caserito",p:6000},
+  {c:'24',n:"cremonas",p:5200},
+  {c:'29',n:"Figasas",p:6000},
+  {c:'30',n:"Negritos",p:6000},
+  {c:'31',n:"Pan frances",p:4000},
+  {c:'53',n:"Facturas",p:1350},
+  {c:'63',n:"budín sin azúcar",p:13500},
+  {c:'104',n:"Tarta membrillo CHICA INTEGRAL",p:8500},
+  {c:'57',n:"alfajorcitos de maicena x 1un",p:700},
+  {c:'120',n:"Torta GRANDE BALCARCE",p:27000},
+  {c:'180',n:"BOMBON",p:1300},
+  {c:'121',n:"Torta grande CHAJA",p:27000},
+  {c:'48',n:"grisines",p:18000},
+  {c:'114',n:"LEMONPIE MEDIANO",p:18000},
+  {c:'167',n:"MASA SECA",p:45000},
+  {c:'66',n:"masas secas queso pote",p:4800},
+  {c:'122',n:"MATILDA GRANDE",p:27000},
+  {c:'158',n:"MEDIALUNA DE jamon y queso",p:3000},
+  {c:'147',n:"Milanesa a la napolitana con papas fritas GRANDE",p:16000},
+  {c:'123',n:"MOUSE DE CHOCOLATE GRANDE",p:27000},
+  {c:'111',n:"Pastafrola BATATA MEDIANA",p:18000},
+  {c:'190',n:"Pastafrola CHICA de espelta y MEMBRILLO",p:8500},
+  {c:'189',n:"Pastafrola mediana de espelta y MEMBRILLO",p:8500},
+  {c:'110',n:"Pastafrola membrillo MEDIANA",p:18000},
+  {c:'169',n:"Pepas clasicas",p:45000},
+  {c:'154',n:"PORCION MATILDA",p:8500},
+  {c:'172',n:"PORCION mouse de CAFE",p:8700},
+  {c:'140',n:"Porcion de torta BALCARCE",p:8700},
+  {c:'141',n:"Porcion de torta CHAJA",p:8700},
+  {c:'145',n:"Porcion de torta CHESCAKE",p:8700},
+  {c:'143',n:"Porcion de torta de VAINILLA",p:8700},
+  {c:'144',n:"Porcion de torta FRUTOS ROJOS",p:8700},
+  {c:'142',n:"Porcion de torta MOUSE DE CHOCOLATE",p:8700},
+  {c:'151',n:"Porcion Torta Chocolate con d.d. LECHE",p:8700},
+  {c:'139',n:"Porcion torta CHOCOTORTA",p:8700},
+  {c:'125',n:"REDVELVET GRANDE",p:27000},
+  {c:'84',n:"sandwich jamon y queso flauton",p:3800},
+  {c:'39',n:"Sandwich miga clásico jyq",p:3000},
+  {c:'42',n:"Sandwich miga Especial",p:3400},
+  {c:'40',n:"Sandwich miga pan negro JYQ",p:3000},
+  {c:'41',n:"Sandwich miga surtido",p:3200},
+  {c:'115',n:"TARTA MEDIANA DURAZNO",p:18000},
+  {c:'113',n:"TARTA MEDIANA RICOTA",p:18000},
+  {c:'117',n:"TARTA MEDIANA FRUTILLA",p:18000},
+  {c:'116',n:"TARTA MEDIANA FRUTOS ROJOS",p:18000},
+  {c:'118',n:"TARTA MEDIANA LIMA",p:18000},
+  {c:'157',n:"TARTA MEDIANA DULCE DE LECHE CHOCOLATE",p:18000},
+  {c:'105',n:"Tarta chica BATATA BLANCA",p:8000},
+  {c:'108',n:"Tarta chica COCO Y D.D.LECHE BLANCA",p:8000},
+  {c:'103',n:"Tarta chica de membrillo masa blanca",p:8000},
+  {c:'107',n:"Tarta chica MANZANA BLANCA",p:8000},
+  {c:'106',n:"Tarta chica RICOTA BLANCA",p:8000},
+  {c:'109',n:"Tarta MEDIANA COCO Y D.D.LECHE",p:18000},
+  {c:'112',n:"Tarta Mediana MANZANA",p:18000},
+  {c:'191',n:"tarta mediana MANZANA DE ESPELTA",p:21000},
+  {c:'124',n:"TORTA VAINILLA Y D.D.L. GRANDE",p:25000},
+  {c:'153',n:"Torta Brownie comun",p:21000},
+  {c:'152',n:"Torta grande Chocolate con d.d. LECHE",p:27000},
+  {c:'155',n:"TORTA GRANDE CHOCOLATE Y FRUTOS ROJOS",p:27000},
+  {c:'171',n:"torta GRANDE mouse de CAFE",p:27000},
+  {c:'192',n:"Torta PINK grande",p:27000},
+  {c:'156',n:"TORTA PORCION DULCE DE LECHE Y MERENGUE",p:8700},
+  {c:'82',n:"viandas premium",p:7000},
+  {c:'100',n:"Pastelitos Batata",p:2200},
+  {c:'99',n:"Pastelitos membrillo",p:2200},
+  {c:'130',n:"Talitas integrales",p:3500},
+  {c:'69',n:"trufas",p:3000},
+  {c:'92',n:"barra brava adaptogenos",p:2800},
+  {c:'89',n:"barra brava coco",p:2000},
+  {c:'90',n:"barra brava frutilla",p:2000},
+  {c:'87',n:"barra brava proteica arándanos",p:2500},
+  {c:'88',n:"barra brava proteica datiles",p:2500},
+  {c:'91',n:"barra brava tropical",p:2000},
+  {c:'86',n:"barritas bravitos",p:1500},
+  {c:'161',n:"cookies KETO",p:65000},
+  {c:'93',n:"barritas mundial",p:2800},
+  {c:'160',n:"Galletas de queso keto",p:65000},
+  {c:'119',n:"BROWNIE SIN GLUTEN",p:22000},
+  {c:'94',n:"sandwich milanesa",p:15000},
+  {c:'159',n:"Scon keto",p:57000},
+  {c:'15',n:"Pan M. Almendras",p:17000},
+  {c:'59',n:"Crakers keto",p:65000},
+  {c:'38',n:"Focaccias",p:3000},
+  {c:'35',n:"Prepizza grande blanca",p:3000},
+  {c:'163',n:"canastita de CEBOLLA Y QUESO",p:3300},
+  {c:'165',n:"Canastita de HUMITA blanca",p:3300},
+  {c:'149',n:"Canastitas CAPRESE",p:3300},
+  {c:'136',n:"Canastitas de CALABAZA",p:3300},
+  {c:'148',n:"Canastitas de CALABAZA INTEGRALES",p:3300},
+  {c:'138',n:"Canastitas de HONGOS",p:3300},
+  {c:'137',n:"Canastitas de HONGOS INTEGRAL",p:3300},
+  {c:'193',n:"canastita zapallito clasica",p:3300},
+  {c:'194',n:"canastita zapallito integral",p:3300},
+  {c:'166',n:"Canastitas de HUMITA INTEGRAL",p:3300},
+  {c:'168',n:"cerdo a la barbacoa",p:3300},
+  {c:'162',n:"empanada carne COMUN blanca",p:3300},
+  {c:'134',n:"Empanada de CERDO A LA MOSTAZA",p:3300},
+  {c:'135',n:"Empanada de JAMON Y QUESO",p:3300},
+  {c:'133',n:"Empanada de POLLO",p:3300},
+  {c:'131',n:"Empanada de carne INTEGRAL",p:3300},
+  {c:'132',n:"Empanadas CARNE COR. CICHILLO CLAS.",p:3300},
+  {c:'33',n:"palitos de coco",p:3500},
+  {c:'98',n:"pan saborizado",p:3500},
+  {c:'54',n:"Alfajores grandes clasico",p:4800},
+  {c:'85',n:"prepizzas espelta",p:5000},
+  {c:'55',n:"Alfajores grandes veganos",p:4800},
+  {c:'56',n:"Alfajores grandes sin gluten",p:4800},
+  {c:'10',n:"Pan M. Blanco",p:6500},
+  {c:'12',n:"Pan M. Integral",p:6500},
+  {c:'13',n:"Pan M. Integral sin sal",p:6500},
+  {c:'18',n:"Pan M. Salvado",p:6500},
+  {c:'78',n:"budin poly porcion",p:7000},
+  {c:'22',n:"Pan M. Boniato",p:7000},
+  {c:'21',n:"Pan M. Maiz",p:7000},
+  {c:'11',n:"Pan. M. Blanco semillas",p:7000},
+  {c:'16',n:"Pan M. Integral avena",p:7000},
+  {c:'14',n:"Pan M. Integral con semillas",p:7000},
+  {c:'60',n:"porcion budin",p:7000},
+  {c:'37',n:"Prepizza integral x 3 individual",p:7000},
+  {c:'17',n:"Pan M. Centeno",p:9000},
+  {c:'20',n:"Pan M. Espelta",p:9900},
+  {c:'101',n:"Carrot cake integral",p:10500},
+  {c:'102',n:"Cacao amargo, algarroba y nuez",p:10500},
+  {c:'61',n:"manzana y canela integral",p:10500},
+  {c:'62',n:"Budín Sin Gluten",p:12000},
+  {c:'64',n:"budin ingles",p:13000},
+  {c:'95',n:"coockies clasicas (pepito/red velvet/limon/choco)",p:45000},
+  {c:'146',n:"PEPAS ALGARROBA VEGAN",p:45000},
+  {c:'170',n:"Pepas de ESPELTA integrales",p:45000},
+  {c:'164',n:"cookies sin gluten",p:45000}
+];
+
+function normCtrl(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+function fechaHoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function turnoLabel(t){ return t==='manana' ? '🌅 Mañana' : '🌇 Tarde'; }
+
+let controlState = null; // { fecha, turno, responsable, hora_apertura, hora_cierre, estado, remanentes, devoluciones, consumo_interno, items:{cod:{i,g,f}} }
+
+function ctrlInitInputs(){
+  const f=document.getElementById('ctrl-fecha'); if(f && !f.value) f.value=fechaHoyISO();
+}
+
+async function loadControl(){
+  ctrlInitInputs();
+  const fecha=document.getElementById('ctrl-fecha').value || fechaHoyISO();
+  const turno=document.getElementById('ctrl-turno').value;
+  let existing=null;
+  try{
+    const rows=await sbSelect('control_stock_turno','?fecha=eq.'+fecha+'&turno=eq.'+turno);
+    if(rows && rows.length) existing=rows[0];
+  }catch(e){ console.warn('loadControl',e); }
+
+  if(existing){
+    const itemsMap={};
+    (existing.items||[]).forEach(it=>{ itemsMap[it.c]={i:Number(it.i)||0,g:Number(it.g)||0,f:Number(it.f)||0}; });
+    controlState={ id:existing.id, fecha, turno, responsable:existing.responsable||'', hora_apertura:existing.hora_apertura||'',
+      hora_cierre:existing.hora_cierre||'', estado:existing.estado||'abierto',
+      remanentes:existing.remanentes||'', devoluciones:existing.devoluciones||'', consumo_interno:existing.consumo_interno||'',
+      items:itemsMap };
+  } else {
+    // NUEVO: inicial = final del turno anterior (arrastre)
+    const inicialMap=await calcularInicialArrastre(fecha,turno);
+    const itemsMap={};
+    CONTROL_CATALOGO.forEach(p=>{ itemsMap[p.c]={i:inicialMap[p.c]||0,g:0,f:0}; });
+    controlState={ id:null, fecha, turno, responsable:'', hora_apertura:'', hora_cierre:'', estado:'abierto',
+      remanentes:'', devoluciones:'', consumo_interno:'', items:itemsMap };
+    // pre-cargar ingresos de los despachos recibidos hoy (editable)
+    await traerIngresos(true);
+  }
+  // reflejar encabezado
+  document.getElementById('ctrl-responsable').value=controlState.responsable;
+  document.getElementById('ctrl-hora').value = (controlState.turno==='manana'?controlState.hora_apertura:controlState.hora_apertura)||'';
+  renderControlEstado();
+  renderControlTabla();
+  renderControlPie();
+}
+
+// Calcula el inicial arrastrando el FINAL del turno anterior
+async function calcularInicialArrastre(fecha,turno){
+  const map={};
+  try{
+    let prev=null;
+    if(turno==='tarde'){
+      const r=await sbSelect('control_stock_turno','?fecha=eq.'+fecha+'&turno=eq.manana');
+      if(r && r.length) prev=r[0];
+    } else {
+      // mañana: tomar el último turno del día anterior (tarde, si no mañana)
+      const d=new Date(fecha+'T12:00:00'); d.setDate(d.getDate()-1);
+      const ayer=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      let r=await sbSelect('control_stock_turno','?fecha=eq.'+ayer+'&turno=eq.tarde');
+      if(!(r&&r.length)) r=await sbSelect('control_stock_turno','?fecha=eq.'+ayer+'&turno=eq.manana');
+      if(r && r.length) prev=r[0];
+    }
+    if(prev) (prev.items||[]).forEach(it=>{ map[it.c]=Number(it.f)||0; });
+  }catch(e){ console.warn('arrastre',e); }
+  return map;
+}
+
+// Trae ingresos de los despachos confirmados de la fecha (match por nombre). silent=true no avisa.
+async function traerIngresos(silent){
+  if(!controlState) return;
+  const fecha=controlState.fecha;
+  let recs=[];
+  try{
+    recs=await sbSelect('salon_recepciones','?estado=eq.confirmado&created_at=gte.'+fecha+'T00:00:00&created_at=lte.'+fecha+'T23:59:59') || [];
+  }catch(e){ console.warn('traerIngresos',e); }
+  // index catálogo por nombre normalizado
+  const idx={}; CONTROL_CATALOGO.forEach(p=>{ idx[normCtrl(p.n)]=p.c; });
+  let aplicados=0;
+  const acum={};
+  recs.forEach(r=>{
+    const key=normCtrl(r.producto_nombre);
+    const cod=idx[key];
+    if(cod){ acum[cod]=(acum[cod]||0)+(Number(r.cantidad)||0); }
+  });
+  Object.entries(acum).forEach(([cod,cant])=>{ if(controlState.items[cod]){ controlState.items[cod].g=cant; aplicados++; } });
+  if(!silent){
+    renderControlTabla(); renderControlPie();
+    showToast(aplicados>0 ? ('📥 '+aplicados+' ingresos traídos de despachos') : 'No hay despachos de hoy que coincidan');
+  }
+}
+
+function ctrlVendido(it){ return (Number(it.i)||0)+(Number(it.g)||0)-(Number(it.f)||0); }
+function ctrlTotal(){
+  let t=0; CONTROL_CATALOGO.forEach(p=>{ const it=controlState.items[p.c]; if(it){ t+=ctrlVendido(it)*p.p; } }); return t;
+}
+
+function renderControlEstado(){
+  const el=document.getElementById('ctrl-estado-bar'); if(!el) return;
+  const cerrado=controlState.estado==='cerrado';
+  el.innerHTML = '<div style="background:'+(cerrado?'#dcfce7':'#fef9c3')+';color:'+(cerrado?'#166534':'#92400e')+';border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;margin:6px 0;">'
+    + (cerrado?'🔒 Turno CERRADO — guardado y listo para imprimir':'✏️ Turno abierto — cargá los conteos')+'</div>';
+}
+
+function renderControlTabla(){
+  const el=document.getElementById('ctrl-tabla'); if(!el||!controlState) return;
+  const q=normCtrl((document.getElementById('ctrl-buscar')||{}).value||'');
+  const prods=q ? CONTROL_CATALOGO.filter(p=>normCtrl(p.n).includes(q)) : CONTROL_CATALOGO;
+  let h='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:12px;">'
+    +'<thead><tr style="background:#F3E5F5;color:#4A148C;">'
+    +'<th style="text-align:left;padding:6px;position:sticky;left:0;background:#F3E5F5;">Producto</th>'
+    +'<th style="padding:6px;">Inicial</th><th style="padding:6px;">Ingreso</th><th style="padding:6px;">Final</th>'
+    +'<th style="padding:6px;">Vend.</th><th style="padding:6px;">$ a rendir</th></tr></thead><tbody>';
+  for(const p of prods){
+    const it=controlState.items[p.c]||{i:0,g:0,f:0};
+    const v=ctrlVendido(it); const imp=v*p.p;
+    const dis=controlState.estado==='cerrado'?'disabled':'';
+    const inp='width:52px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;font-size:12px;';
+    h+='<tr style="border-bottom:1px solid #f0f0f0;">'
+      +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
+      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
+      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cg-'+p.c+'" value="'+(it.g||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
+      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
+      +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+v+'</td>'
+      +'<td style="text-align:right;padding-right:6px;font-weight:700;color:#2E7D32;" id="cm-'+p.c+'">'+fmtPrecio(imp)+'</td>'
+      +'</tr>';
+  }
+  h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+
+function ctrlEdit(cod){
+  if(!controlState||!controlState.items[cod]) return;
+  const gi=id=>{const e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;};
+  const it=controlState.items[cod];
+  it.i=gi('ci-'+cod); it.g=gi('cg-'+cod); it.f=gi('cf-'+cod);
+  const p=CONTROL_CATALOGO.find(x=>x.c===cod);
+  const v=ctrlVendido(it);
+  const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=v;
+  const cm=document.getElementById('cm-'+cod); if(cm) cm.textContent=fmtPrecio(v*p.p);
+  renderControlPie(); // actualiza total
+}
+
+function renderControlPie(){
+  const el=document.getElementById('ctrl-pie'); if(!el||!controlState) return;
+  const dis=controlState.estado==='cerrado'?'disabled':'';
+  const ta='width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-family:system-ui,sans-serif;font-size:12px;';
+  el.innerHTML=
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;">'
+    +'<div><label style="font-size:11px;color:#888;">Remanentes</label><textarea '+dis+' id="ctrl-remanentes" rows="2" oninput="ctrlMeta()" style="'+ta+'">'+(controlState.remanentes||'')+'</textarea></div>'
+    +'<div><label style="font-size:11px;color:#888;">Devoluciones</label><textarea '+dis+' id="ctrl-devoluciones" rows="2" oninput="ctrlMeta()" style="'+ta+'">'+(controlState.devoluciones||'')+'</textarea></div>'
+    +'<div><label style="font-size:11px;color:#888;">Consumo interno</label><textarea '+dis+' id="ctrl-consumo" rows="2" oninput="ctrlMeta()" style="'+ta+'">'+(controlState.consumo_interno||'')+'</textarea></div>'
+    +'</div>'
+    +'<div style="margin-top:12px;background:#EDE7F6;border-radius:10px;padding:12px;display:flex;justify-content:space-between;align-items:center;">'
+    +'<span style="font-size:13px;font-weight:700;color:#4A148C;">💵 TOTAL A RENDIR (debe coincidir con facturación)</span>'
+    +'<span style="font-size:20px;font-weight:800;color:#2E7D32;">'+fmtPrecio(ctrlTotal())+'</span></div>';
+}
+
+function ctrlMeta(){
+  if(!controlState) return;
+  controlState.responsable=(document.getElementById('ctrl-responsable')||{}).value||'';
+  controlState.remanentes=(document.getElementById('ctrl-remanentes')||{}).value||'';
+  controlState.devoluciones=(document.getElementById('ctrl-devoluciones')||{}).value||'';
+  controlState.consumo_interno=(document.getElementById('ctrl-consumo')||{}).value||'';
+}
+
+function ctrlBuildRow(){
+  ctrlMeta();
+  const items=CONTROL_CATALOGO.map(p=>{ const it=controlState.items[p.c]||{i:0,g:0,f:0}; return {c:p.c,i:it.i||0,g:it.g||0,f:it.f||0}; });
+  return {
+    fecha:controlState.fecha, turno:controlState.turno, responsable:controlState.responsable,
+    hora_apertura:(document.getElementById('ctrl-hora')||{}).value||'',
+    hora_cierre:controlState.hora_cierre||'',
+    estado:controlState.estado, remanentes:controlState.remanentes, devoluciones:controlState.devoluciones,
+    consumo_interno:controlState.consumo_interno, total_a_rendir:ctrlTotal(),
+    items:items, updated_at:new Date().toISOString()
+  };
+}
+
+async function guardarControl(silent){
+  if(!controlState) return;
+  const row=ctrlBuildRow();
+  try{
+    if(controlState.id){
+      await sbFetch('PATCH','control_stock_turno',row,'?id=eq.'+controlState.id);
+    } else {
+      const res=await sbFetch('POST','control_stock_turno',[row]);
+      if(res && res[0] && res[0].id!=null) controlState.id=res[0].id;
+    }
+    if(!silent) showToast('💾 Control guardado');
+  }catch(e){ console.warn('guardarControl',e); if(!silent) alert('No se pudo guardar. Reintentá.'); }
+}
+
+async function cerrarTurnoControl(){
+  if(!controlState) return;
+  if(!confirm('¿Cerrar el turno '+turnoLabel(controlState.turno)+' del '+controlState.fecha+'?\nEl Final pasará como Inicial del próximo turno.')) return;
+  ctrlMeta();
+  controlState.estado='cerrado';
+  controlState.hora_cierre=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+  await guardarControl(true);
+  renderControlEstado(); renderControlTabla(); renderControlPie();
+  showToast('🔒 Turno cerrado y guardado');
+}
+
+function imprimirControl(){
+  if(!controlState) return;
+  ctrlMeta();
+  const filas=CONTROL_CATALOGO.map(p=>{
+    const it=controlState.items[p.c]||{i:0,g:0,f:0}; const v=ctrlVendido(it);
+    return '<tr><td>'+p.n+'</td><td class="n">'+(it.i||0)+'</td><td class="n">'+(it.g||0)+'</td><td class="n">'+(it.f||0)+'</td><td class="n">'+v+'</td><td class="n">'+fmtPrecio(p.p)+'</td><td class="n">'+fmtPrecio(v*p.p)+'</td></tr>';
+  }).join('');
+  const w=window.open('','_print','width=900,height=700');
+  w.document.write('<html><head><title>Control de stock</title><style>'
+    +'body{font-family:system-ui,Arial,sans-serif;padding:16px;color:#111;}'
+    +'h1{font-size:18px;margin:0 0 4px;} .hdr{font-size:13px;margin-bottom:10px;}'
+    +'table{width:100%;border-collapse:collapse;font-size:11px;} th,td{border:1px solid #999;padding:3px 5px;} th{background:#eee;}'
+    +'td.n{text-align:right;} .tot{font-size:14px;font-weight:bold;margin-top:10px;} .firmas{margin-top:40px;display:flex;justify-content:space-between;}'
+    +'.firma{width:45%;border-top:1px solid #000;text-align:center;padding-top:4px;font-size:12px;}'
+    +'</style></head><body>'
+    +'<h1>Control de stock — Poly Artesanal</h1>'
+    +'<div class="hdr"><b>Fecha:</b> '+controlState.fecha+' &nbsp; <b>Turno:</b> '+turnoLabel(controlState.turno).replace(/[^A-Za-zñÑ ]/g,'').trim()
+    +' &nbsp; <b>Responsable:</b> '+(controlState.responsable||'__________')+' &nbsp; <b>Hora:</b> '+((document.getElementById('ctrl-hora')||{}).value||'____')+'</div>'
+    +'<table><thead><tr><th>Producto</th><th>Inicial</th><th>Ingreso</th><th>Final</th><th>Vendido</th><th>Precio</th><th>$ a rendir</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<div class="tot">TOTAL A RENDIR: '+fmtPrecio(ctrlTotal())+'</div>'
+    +'<div style="margin-top:8px;font-size:12px;"><b>Remanentes:</b> '+(controlState.remanentes||'')+'<br><b>Devoluciones:</b> '+(controlState.devoluciones||'')+'<br><b>Consumo interno:</b> '+(controlState.consumo_interno||'')+'</div>'
+    +'<div class="firmas"><div class="firma">Firma vendedora</div><div class="firma">Firma encargada</div></div>'
+    +'</body></html>');
+  w.document.close(); setTimeout(()=>{ w.print(); },300);
+}
 
 </script>
 </body>
