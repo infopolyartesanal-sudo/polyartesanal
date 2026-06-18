@@ -136,20 +136,16 @@
   </div>
 
   <div id="tabs">
-    <button class="tab active" onclick="switchTab('stock')" id="tab-stock"><i class="ti ti-package"></i>Stock</button>
-    <button class="tab" onclick="switchTab('recepcion')" id="tab-recepcion"><i class="ti ti-truck-delivery"></i>Recepción</button>
-    <button class="tab" onclick="switchTab('comanda')" id="tab-comanda"><i class="ti ti-send"></i>Comanda</button>
+    <button class="tab active" onclick="switchTab('recepcion')" id="tab-recepcion"><i class="ti ti-truck-delivery"></i>Recepción</button>
+    <button class="tab" onclick="switchTab('control')" id="tab-control"><i class="ti ti-clipboard-check"></i>Control</button>
+    <button class="tab" onclick="switchTab('comanda')" id="tab-comanda" style="position:relative;"><i class="ti ti-send"></i>Pedidos</button>
     <button class="tab" onclick="switchTab('egresos')" id="tab-egresos"><i class="ti ti-arrow-up"></i>Egresos</button>
     <button class="tab" onclick="switchTab('informe')" id="tab-informe"><i class="ti ti-printer"></i>Informe</button>
-    <button class="tab" onclick="switchTab('control')" id="tab-control"><i class="ti ti-clipboard-check"></i>Control</button>
-    <button class="tab" onclick="switchTab('pedidos-salon')" id="tab-pedidos-salon" style="position:relative;">
-      <i class="ti ti-bell"></i>Pedidos
-    </button>
-    <button class="tab" onclick="switchTab('chat')" id="tab-chat"><i class="ti ti-message-circle"></i>Chat</button>
+    <button class="tab" onclick="switchTab('chat')" id="tab-chat"><i class="ti ti-checklist"></i>Tareas</button>
   </div>
 
   <!-- STOCK LOCAL -->
-  <div class="panel active" id="panel-stock">
+  <div class="panel" id="panel-stock">
     <div id="stock-alert" class="alert-banner danger"></div>
     <div class="search-bar" style="display:flex;gap:8px;align-items:center;">
       <input class="search-input" id="search-stock" placeholder="Buscar producto..." oninput="filterStock(this.value)" style="flex:1;" />
@@ -193,7 +189,7 @@
   </div>
 
   <!-- RECEPCIÓN -->
-  <div class="panel" id="panel-recepcion">
+  <div class="panel active" id="panel-recepcion">
     <div id="despachos-pendientes-wrap" style="padding:12px 12px 0;"></div>
     <div class="recepcion-form">
       <div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:8px;">📦 Registrar mercadería recibida</div>
@@ -243,8 +239,10 @@
         </label>
         <button onclick="enviarComanda()" style="width:100%;padding:13px;background:var(--primary-dark);color:#fff;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;"><i class="ti ti-send"></i> Enviar comanda</button>
       </div>
-      <div style="font-size:13px;font-weight:700;color:#555;margin-bottom:8px;">Comandas enviadas</div>
+      <div style="font-size:13px;font-weight:700;color:#555;margin-bottom:8px;">Pedidos enviados</div>
       <div id="mis-comandas-list"></div>
+      <div style="font-size:13px;font-weight:700;color:#555;margin:18px 0 8px;">📥 Pedidos que me hicieron</div>
+      <div id="pedidos-salon-list"></div>
     </div>
   </div>
 
@@ -302,7 +300,7 @@
       <div id="ctrl-tabla"></div>
       <div id="ctrl-pie"></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
-        <button onclick="traerIngresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📥 Traer ingresos de hoy</button>
+        <button onclick="traerIngresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📥 Traer despachos</button>
         <button onclick="guardarControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#6A1B9A;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">💾 Guardar</button>
         <button onclick="cerrarTurnoControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#E65100;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🔒 Cerrar turno</button>
         <button onclick="imprimirControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#2E7D32;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Firmar</button>
@@ -310,23 +308,25 @@
     </div>
   </div>
 
-  <div class="panel" id="panel-pedidos-salon">
-    <div style="padding:12px 12px 0;font-family:system-ui,sans-serif;">
-      <div style="font-size:13px;font-weight:700;color:#6A1B9A;margin-bottom:6px;">📋 Pedidos para salon</div>
-      <div style="font-size:12px;color:#aaa;margin-bottom:10px;">Pedidos recibidos de otros sectores. Tocá para cambiar el estado.</div>
-    </div>
-    <div id="pedidos-salon-list" style="flex:1;overflow-y:auto;padding:0 12px 12px;"></div>
-  </div>
-
   <!-- CHAT -->
   <div class="panel" id="panel-chat">
-    <div id="chat-messages">
-      <div class="msg bot">¡Hola! 🏪 Soy el asistente del salón. Puedo ayudarte a revisar el stock del local, registrar recepciones, o avisarte qué está faltando. ¿Qué necesitás?</div>
-    </div>
-    <div id="chat-input-area">
-      <input type="text" id="chat-input" placeholder="Consultá sobre el local..." />
-      <button id="mic-btn" onclick="toggleMic()"><i class="ti ti-microphone"></i></button>
-      <button id="send-btn" onclick="sendMessage()"><i class="ti ti-send"></i></button>
+    <div style="flex:1;overflow-y:auto;padding:12px;font-family:system-ui,sans-serif;">
+      <div style="font-size:15px;font-weight:800;color:#6A1B9A;margin-bottom:4px;">✅ Tareas del turno</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;">
+        <select id="tareas-turno" onchange="renderTareas()" style="padding:7px;border:1px solid #ddd;border-radius:8px;">
+          <option value="manana">🌅 Mañana (06:30–13:30)</option>
+          <option value="tarde">🌇 Tarde (13:30–19:30)</option>
+        </select>
+        <span id="tareas-fecha" style="font-size:12px;color:#888;"></span>
+      </div>
+      <div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#7a5b00;line-height:1.5;">
+        <b>Recordá siempre:</b><br>
+        🧾 Facturar TODA venta — sin ticket no hay venta.<br>
+        🗣️ Decir el total en voz alta al cobrar.<br>
+        👀 Reponer la vidriera si un producto queda con menos de 3 unidades.
+      </div>
+      <div id="tareas-progreso"></div>
+      <div id="tareas-lista"></div>
     </div>
   </div>
 
@@ -1017,31 +1017,44 @@ function switchTab(name) {
   if (_panel) _panel.classList.add('active');
   if (name==='stock') renderStock();
   if (name==='control' && typeof loadControl==='function') loadControl();
-  if (name==='pedidos-salon' && typeof loadPedidos_salon === 'function') loadPedidos_salon();
+  if (name==='chat' && typeof renderTareas==='function') renderTareas();
   if (name==='insumos') renderInsumosPanel();
   if (name==='recepcion') { renderRecepcionHistory(); loadDespachosPendientes(); }
-  if (name==='comanda') loadMisComandas();
+  if (name==='comanda') { loadMisComandas(); if (typeof loadPedidos_salon==='function') loadPedidos_salon(); }
   if (name==='egresos') { initEgresosSelect(); renderEgresosHistory(); }
   if (name==='informe') renderInforme();
 }
 
 // ── ALARMAS LIMPIEZA E HIELO ──────────────────────
-const DIAS_LIMPIEZA = [1,3,5];
-let alarmaLimpiezaActivada = false;
-let alarmaHieloActivada = false;
-
+// Alarmas en los horarios clave de cada turno (según descripción de puesto)
+const ALARMAS_HORARIO = [
+  {h:7,  m:30, txt:'🔓 Abrir el local (07:30 en punto)'},
+  {h:13, m:0,  txt:'🧮 Empezar cierre: conteo de caja y control de stock de cierre'},
+  {h:14, m:30, txt:'🔓 Reabrir el local (14:30 en punto)'},
+  {h:19, m:0,  txt:'🌙 Iniciar cierre: contar caja y control de stock nocturno'},
+  {h:19, m:30, txt:'🔒 Cerrar el local con llave y dejar la planilla firmada'},
+];
+const alarmasDisparadas = {};
 function checkAlarmas() {
   const now = new Date();
   const dia = now.getDay(), hora = now.getHours(), min = now.getMinutes();
-  if (hora===15 && min===0 && !alarmaHieloActivada) {
-    alarmaHieloActivada = true;
-    fireNotification('🧊 ¡Guardar hielo en el freezer!','Son las 15:00hs');
-    addToLog('🧊 ALARMA: Guardar hielo en el freezer');
+  const hoyKey = now.toDateString();
+  ALARMAS_HORARIO.forEach((a,idx)=>{
+    const k = hoyKey+'_'+idx;
+    if (hora===a.h && min===a.m && !alarmasDisparadas[k]) {
+      alarmasDisparadas[k]=true;
+      fireNotification('⏰ Tarea del turno', a.txt);
+      if (typeof addToLog==='function') addToLog('⏰ '+a.txt);
+    }
+  });
+  // Heladera: lunes (mañana) y jueves (tarde)
+  if (dia===1 && hora===7 && min===0 && !alarmasDisparadas[hoyKey+'_hel']) {
+    alarmasDisparadas[hoyKey+'_hel']=true;
+    fireNotification('🧊 Limpieza de heladera','Hoy lunes toca limpiar la heladera (retirar vencidos y registrar)');
   }
-  if (DIAS_LIMPIEZA.includes(dia) && hora===15 && min===0 && !alarmaLimpiezaActivada) {
-    alarmaLimpiezaActivada = true;
-    fireNotification('🧹 ¡Limpieza general!','Son las 15:00hs — todos a limpiar');
-    addToLog('🧹 ALARMA: Limpieza general');
+  if (dia===4 && hora===14 && min===0 && !alarmasDisparadas[hoyKey+'_hel']) {
+    alarmasDisparadas[hoyKey+'_hel']=true;
+    fireNotification('🧊 Limpieza de heladera','Hoy jueves toca limpiar la heladera (retirar vencidos y registrar)');
   }
 }
 
@@ -1071,7 +1084,8 @@ window.addEventListener('DOMContentLoaded', () => {
   loadDespachosPendientes();
   loadMisComandas();
   checkAlerts();
-  document.getElementById('chat-input').addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
+  const _ci=document.getElementById('chat-input'); if(_ci) _ci.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
+  if (typeof initTareas==='function') initTareas();
 });
 
 
@@ -1176,7 +1190,7 @@ async function cambiarEstadoPedido_salon(id, nuevoEstado) {
 }
 
 function updatePedidosBadge_salon() {
-  const tab = document.getElementById('tab-pedidos-salon');
+  const tab = document.getElementById('tab-comanda');
   if (!tab) return;
   const existing = tab.querySelector('.int-badge');
   if (existing) existing.remove();
@@ -1524,8 +1538,7 @@ async function loadControl(){
     CONTROL_CATALOGO.forEach(p=>{ itemsMap[p.c]={i:inicialMap[p.c]||0,g:0,f:0}; });
     controlState={ id:null, fecha, turno, responsable:'', hora_apertura:'', hora_cierre:'', estado:'abierto',
       remanentes:'', devoluciones:'', consumo_interno:'', items:itemsMap };
-    // pre-cargar ingresos de los despachos recibidos hoy (editable)
-    await traerIngresos(true);
+    await traerIngresos(true); // pre-cargar ingresos del turno desde los despachos (editable)
   }
   // reflejar encabezado
   document.getElementById('ctrl-responsable').value=controlState.responsable;
@@ -1557,26 +1570,54 @@ async function calcularInicialArrastre(fecha,turno){
 }
 
 // Trae ingresos de los despachos confirmados de la fecha (match por nombre). silent=true no avisa.
+// PUENTE: nombre con que despacha cada sector  ->  código del producto en la planilla
+const ALIAS_INGRESO = {
+  'budin carrot zanahoria y nuez':'101',
+  'canastita calabaza':'136',
+  'cremona comun':'24', 'cremona membrillo':'24', 'cremona jamon y queso':'24', 'cremona jyq':'24',
+  'libritos kg':'25', 'libritos clasicos':'25',
+  'libritos integrales':'26',
+  'medialunas de grasa':'53', 'medialunas de manteca':'53', 'facturas de grasa':'53', 'facturas de manteca':'53',
+  'pan caserito frances kg':'32', 'pan caserito':'32', 'pan caserito frances':'32',
+  'pan de maiz':'21', 'pan m maiz':'21',
+  'pan molde unidad 800g':'10', 'pan molde blanco':'10', 'pan m blanco':'10', 'pan molde':'10',
+  'pan molde integral':'12', 'pan m integral':'12',
+  'pepas de algarroba':'146', 'pepas algarroba vegan':'146',
+  'sandwich de miga jamon y queso blanco':'39', 'sandwich miga clasico jyq':'39',
+  'palitos de queso de hojaldre':'43', 'palitos de queso':'43',
+  'palmeritas':'50', 'bizcochitos de manteca y grasa':'44', 'bizcochitos':'44',
+  'prepizza integral':'37', 'pebetes':'158'
+};
+
 async function traerIngresos(silent){
   if(!controlState) return;
   const fecha=controlState.fecha;
+  // ventana del turno: mañana hasta las 14hs, tarde de 14hs en adelante (evita duplicar entre turnos)
+  let params;
+  if(controlState.turno==='manana'){
+    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T00:00:00&created_at=lt.'+fecha+'T14:00:00';
+  } else {
+    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T14:00:00&created_at=lte.'+fecha+'T23:59:59';
+  }
   let recs=[];
-  try{
-    recs=await sbSelect('salon_recepciones','?estado=eq.confirmado&created_at=gte.'+fecha+'T00:00:00&created_at=lte.'+fecha+'T23:59:59') || [];
-  }catch(e){ console.warn('traerIngresos',e); }
-  // index catálogo por nombre normalizado
+  try{ recs=await sbSelect('salon_recepciones',params) || []; }
+  catch(e){ console.warn('traerIngresos',e); }
+  // índice del catálogo por nombre normalizado (para los que coinciden directo)
   const idx={}; CONTROL_CATALOGO.forEach(p=>{ idx[normCtrl(p.n)]=p.c; });
-  let aplicados=0;
-  const acum={};
+  const acum={}; let sinMatch=0;
   recs.forEach(r=>{
     const key=normCtrl(r.producto_nombre);
-    const cod=idx[key];
+    const cod = ALIAS_INGRESO[key] || idx[key]; // puente primero, luego nombre directo
     if(cod){ acum[cod]=(acum[cod]||0)+(Number(r.cantidad)||0); }
+    else { sinMatch++; }
   });
+  let aplicados=0;
   Object.entries(acum).forEach(([cod,cant])=>{ if(controlState.items[cod]){ controlState.items[cod].g=cant; aplicados++; } });
   if(!silent){
     renderControlTabla(); renderControlPie();
-    showToast(aplicados>0 ? ('📥 '+aplicados+' ingresos traídos de despachos') : 'No hay despachos de hoy que coincidan');
+    let msg = aplicados>0 ? ('📥 '+aplicados+' ingresos cargados de despachos') : 'No hubo despachos en este turno';
+    if(sinMatch>0) msg += ' · '+sinMatch+' no están en la planilla';
+    showToast(msg);
   }
 }
 
@@ -1716,6 +1757,92 @@ function imprimirControl(){
     +'<div class="firmas"><div class="firma">Firma vendedora</div><div class="firma">Firma encargada</div></div>'
     +'</body></html>');
   w.document.close(); setTimeout(()=>{ w.print(); },300);
+}
+
+
+
+// ══════════════════════════════════════════════════════
+// TAREAS DIARIAS POR TURNO (según descripción de puesto)
+// ══════════════════════════════════════════════════════
+const TAREAS = {
+  manana: [
+    {id:'m_ingreso',   h:'06:30', g:'Apertura', t:'Ingresar, lavarse las manos, uniforme limpio y cofia. Carnet de manipulación vigente.'},
+    {id:'m_verif',     h:'06:30', g:'Apertura', t:'Verificar que esté en su lugar todo el producto que dejó Cocina.'},
+    {id:'m_stock_ap',  h:'06:30', g:'Stock',    t:'Completar el control de stock de APERTURA.', link:'control'},
+    {id:'m_vidriera',  h:'07:00', g:'Apertura', t:'Acomodar vidriera y bandejas según el manual de presentación.'},
+    {id:'m_vidrios',   h:'07:00', g:'Limpieza', t:'Limpiar vidrios (interior y exterior), estantes, latas y pisos.'},
+    {id:'m_vereda',    h:'07:00', g:'Limpieza', t:'Limpiar la vereda antes de abrir.'},
+    {id:'m_heladera',  h:'07:00', g:'Limpieza', t:'🧊 Limpieza de heladera: retirar vencidos, limpiar estantes y registrar.', soloDia:1},
+    {id:'m_abrir',     h:'07:30', g:'Apertura', t:'Abrir el local 07:30 en punto.'},
+    {id:'m_caja',      h:'13:00', g:'Cierre',   t:'Conteo de caja.'},
+    {id:'m_stock_ci',  h:'13:00', g:'Stock',    t:'Completar el control de stock de CIERRE de turno.', link:'control'},
+    {id:'m_limpio',    h:'13:15', g:'Cierre',   t:'Dejar el local limpio y ordenado para la Vendedora 2.'},
+    {id:'m_traspaso',  h:'13:30', g:'Cierre',   t:'Cambio de turno: firmar la planilla de traspaso, en presencia de ambas.'},
+  ],
+  tarde: [
+    {id:'t_ingreso',   h:'13:30', g:'Apertura', t:'Ingresar antes de 13:30, uniforme limpio y cofia. Carnet vigente.'},
+    {id:'t_traspaso',  h:'13:30', g:'Apertura', t:'Recibir el turno: revisar y firmar la planilla de traspaso (caja y stock).'},
+    {id:'t_repo',      h:'13:30', g:'Stock',    t:'Reponer mercadería del depósito.'},
+    {id:'t_limp',      h:'13:45', g:'Limpieza', t:'Limpiar el local (vidrios, estantes, latas y pisos) y acomodar la vidriera.'},
+    {id:'t_heladera',  h:'13:45', g:'Limpieza', t:'🧊 Limpieza de heladera: retirar vencidos, limpiar estantes y registrar.', soloDia:4},
+    {id:'t_reabrir',   h:'14:30', g:'Apertura', t:'Reabrir el local 14:30 en punto.'},
+    {id:'t_caja',      h:'19:00', g:'Cierre',   t:'Iniciar el cierre: contar caja.'},
+    {id:'t_stock_noc', h:'19:00', g:'Stock',    t:'Control de stock NOCTURNO completo y completar planilla.', link:'control'},
+    {id:'t_cerrar',    h:'19:30', g:'Cierre',   t:'Cerrar el local con llave 19:30.'},
+    {id:'t_planilla',  h:'19:30', g:'Cierre',   t:'Dejar la planilla de stock nocturno firmada para el Cocinero (llega 04:00).'},
+  ]
+};
+const TAREAS_GRUPOS = ['Apertura','Limpieza','Stock','Cierre'];
+const TAREAS_GRUPO_ICON = {Apertura:'🔓', Limpieza:'🧹', Stock:'📋', Cierre:'🌙'};
+
+function tareasFechaHoy(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function tareasKey(turno){ return 'salon_tareas_'+tareasFechaHoy()+'_'+turno; }
+function tareasLoad(turno){ try{ return JSON.parse(localStorage.getItem(tareasKey(turno))||'{}'); }catch(e){ return {}; } }
+function tareasSave(turno, st){ try{ localStorage.setItem(tareasKey(turno), JSON.stringify(st)); }catch(e){} }
+
+function initTareas(){
+  const sel=document.getElementById('tareas-turno');
+  if(sel){ sel.value = (new Date().getHours() < 14) ? 'manana' : 'tarde'; }
+  renderTareas();
+}
+
+function toggleTarea(turno, id){
+  const st=tareasLoad(turno); st[id]=!st[id]; tareasSave(turno, st); renderTareas();
+}
+
+function renderTareas(){
+  const cont=document.getElementById('tareas-lista'); if(!cont) return;
+  const turno=(document.getElementById('tareas-turno')||{}).value || 'manana';
+  const hoyDia=new Date().getDay();
+  const fechaEl=document.getElementById('tareas-fecha'); if(fechaEl) fechaEl.textContent='📅 '+tareasFechaHoy();
+  const st=tareasLoad(turno);
+  // filtrar tareas de heladera que no son del día
+  const items=TAREAS[turno].filter(it=> !it.soloDia || it.soloDia===hoyDia);
+  const hechas=items.filter(it=>st[it.id]).length;
+  // progreso
+  const prog=document.getElementById('tareas-progreso');
+  if(prog){
+    const pct=items.length? Math.round(hechas/items.length*100):0;
+    prog.innerHTML='<div style="display:flex;justify-content:space-between;font-size:12px;color:#555;margin-bottom:4px;"><span>Progreso del turno</span><span style="font-weight:700;">'+hechas+'/'+items.length+'</span></div>'
+      +'<div style="height:10px;background:#eee;border-radius:6px;overflow:hidden;margin-bottom:14px;"><div style="height:100%;width:'+pct+'%;background:'+(pct===100?'#2E7D32':'#6A1B9A')+';transition:width .3s;"></div></div>';
+  }
+  let html='';
+  for(const g of TAREAS_GRUPOS){
+    const gItems=items.filter(it=>it.g===g);
+    if(!gItems.length) continue;
+    html+='<div style="font-size:13px;font-weight:800;color:#4A148C;margin:14px 0 6px;">'+(TAREAS_GRUPO_ICON[g]||'')+' '+g+'</div>';
+    for(const it of gItems){
+      const done=!!st[it.id];
+      const linkBtn = it.link ? '<button onclick="event.stopPropagation(); switchTab(\''+it.link+'\')" style="margin-left:8px;padding:3px 8px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;">Ir al Control →</button>' : '';
+      html+='<div onclick="toggleTarea(\''+turno+'\',\''+it.id+'\')" style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid '+(done?'#C8E6C9':'#eee')+';background:'+(done?'#F1F8E9':'#fff')+';border-radius:10px;margin-bottom:6px;cursor:pointer;">'
+        +'<div style="width:22px;height:22px;border-radius:6px;border:2px solid '+(done?'#2E7D32':'#bbb')+';background:'+(done?'#2E7D32':'#fff')+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;font-weight:900;">'+(done?'✓':'')+'</div>'
+        +'<div style="flex:1;">'
+        +'<div style="font-size:11px;color:#999;font-weight:700;">'+it.h+'</div>'
+        +'<div style="font-size:13px;color:#333;'+(done?'text-decoration:line-through;color:#999;':'')+'">'+it.t+linkBtn+'</div>'
+        +'</div></div>';
+    }
+  }
+  cont.innerHTML=html;
 }
 
 </script>
