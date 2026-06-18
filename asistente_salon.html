@@ -472,6 +472,19 @@ function saveStock() {
 }
 
 const PRECIOS_DEFAULT = {
+  'torta_vainilla_y_dulce_de_leche': 25000,
+  'torta_brownie': 21000,
+  'torta_chocolate_con_dulce_de_leche': 27000,
+  'torta_chocolate_y_frutos_rojos': 27000,
+  'torta_vainilla_y_crema': 25000,
+  'torta_mousse_de_cafe': 27000,
+  'torta_pink': 27000,
+  'chocotorta': 27000,
+  'torta_balcarce': 27000,
+  'torta_chaja': 27000,
+  'torta_mousse_de_chocolate': 27000,
+  'lemon_pie': 18000,
+  'bombones_reventa': 1300,
   'bizcochito': 18000,
   'bizcochitos_de_manteca_y_grasa': 18000,
   'bizcochuelo_vainilla_torta_grande': 25000,
@@ -970,9 +983,12 @@ function imprimirInforme() { window.print(); }
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
-  document.getElementById('panel-'+name).classList.add('active');
+  const _tab = document.getElementById('tab-'+name);
+  const _panel = document.getElementById('panel-'+name);
+  if (_tab) _tab.classList.add('active');
+  if (_panel) _panel.classList.add('active');
   if (name==='stock') renderStock();
+  if (name==='pedidos-salon' && typeof loadPedidos_salon === 'function') loadPedidos_salon();
   if (name==='insumos') renderInsumosPanel();
   if (name==='recepcion') { renderRecepcionHistory(); loadDespachosPendientes(); }
   if (name==='comanda') loadMisComandas();
