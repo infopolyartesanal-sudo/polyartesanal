@@ -1189,7 +1189,19 @@ function normKeySalon(s){
 }
 // Alias para casos donde el nombre del sector no coincide con el del catálogo del Salón
 const ALIAS_DESPACHO = {
-  'facturas_de_manteca':'medialuna_manteca'
+  'facturas_de_manteca':'medialuna_manteca',
+  // empanadas (receta en plural -> producto que ya existía)
+  'empanadas_de_pollo':'empanada_pollo',
+  'empanadas_cerdo_a_la_barbacoa':'empanada_cerdo',
+  'empanadas_carne_cortada_a_cuchillo':'empanada_cuchillo',
+  'empanadas_picada_clasica':'empanada_picada',
+  // canastitas
+  'canastita_humita_clasica':'canastita_humita',
+  'canastita_zapallitos':'canastita_zapallito',
+  // sándwiches que ya tenías
+  'sandwich_de_miga_jamon_y_queso_blanco':'sandwich_jyq',
+  'sandwich_de_miga_huevo_duro':'sandwich_huevo',
+  'sandwich_de_miga_jamon_crudo_y_rucula':'sandwich_jamon_crudo'
 };
 // Resuelve un despacho entrante a un id de producto del Salón (evita duplicados)
 function resolverProductoSalon(productoId, productoNombre){
