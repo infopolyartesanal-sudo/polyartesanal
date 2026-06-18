@@ -1636,7 +1636,7 @@ function renderProduccion() {
         </div>
         <div class="prod-freezer-row">
           <span class="prod-freezer-label">❄️ Stock cámara</span>
-          <span class="prod-freezer-value">${getCamaraTotal(cat.id)} ${cat.unidad}</span>
+          <span class="prod-freezer-value" onclick="setCamaraExacto('${cat.id}')" style="cursor:pointer;" title="Tocá para escribir el stock exacto">${getCamaraTotal(cat.id)} ${cat.unidad} ✏️</span>
         </div>
         ${hoyTarget ? `<div class="prod-day-detail">📅 Hoy necesitás: <strong>${hoyTarget} ${cat.unidad}</strong> — ${freezer >= hoyTarget ? '✅ cubierto' : '⚠️ faltan ' + (Math.round((hoyTarget - freezer)*10)/10) + ' ' + cat.unidad}</div>` : ''}
       </div>
@@ -1673,7 +1673,7 @@ function renderProduccion() {
         </div>
         <div class="prod-freezer-row">
           <span class="prod-freezer-label">❄️ Stock cámara</span>
-          <span class="prod-freezer-value">${getCamaraTotal(cat.id)} ${cat.unidad}</span>
+          <span class="prod-freezer-value" onclick="setCamaraExacto('${cat.id}')" style="cursor:pointer;" title="Tocá para escribir el stock exacto">${getCamaraTotal(cat.id)} ${cat.unidad} ✏️</span>
         </div>
       </div>
     </div>`;
@@ -2161,6 +2161,47 @@ function addToCamara(id, tandas) {
   renderProduccion();
 }
 
+function setFreezerExacto(productId, subtipId) {
+  const fp = getFreezerProduct(productId);
+  const cat = (typeof FREEZER_CATALOG !== 'undefined') ? FREEZER_CATALOG.find(c => c.id === productId) : null;
+  let actual, nombre;
+  if (subtipId) {
+    actual = (fp.subtipos && fp.subtipos[subtipId]) || 0;
+    nombre = (cat && cat.subtipos ? (cat.subtipos.find(s => s.id === subtipId) || {}).nombre : '') || subtipId;
+  } else {
+    actual = fp.total || 0;
+    nombre = cat ? cat.nombre : productId;
+  }
+  const v = prompt('Cantidad exacta de ' + nombre + ':', Math.round(actual * 10) / 10);
+  if (v === null) return;
+  const num = parseFloat(String(v).replace(',', '.').replace(/[^0-9.]/g, ''));
+  if (isNaN(num) || num < 0) { alert('Poné un número válido (0 o más).'); return; }
+  if (subtipId) {
+    if (!fp.subtipos) fp.subtipos = {};
+    fp.subtipos[subtipId] = num;
+    fp.total = Object.values(fp.subtipos).reduce((a, b) => a + b, 0);
+  } else {
+    fp.total = num;
+  }
+  saveFreezerPan();
+  renderFreezer();
+  if (typeof addToLog === 'function') addToLog('✏️ Ajuste manual freezer: ' + nombre + ' → ' + num, 'freezer');
+}
+
+function setCamaraExacto(productId) {
+  const cat = (typeof PROD_CATALOG !== 'undefined') ? PROD_CATALOG.find(c => c.id === productId) : null;
+  const nombre = cat ? cat.nombre : productId;
+  const actual = getCamaraTotal(productId);
+  const v = prompt('Stock exacto en cámara de ' + nombre + ':', actual);
+  if (v === null) return;
+  const num = parseFloat(String(v).replace(',', '.').replace(/[^0-9.]/g, ''));
+  if (isNaN(num) || num < 0) { alert('Poné un número válido (0 o más).'); return; }
+  camaraPanState[productId] = Math.round(num * 10) / 10;
+  saveCamaraPan();
+  renderProduccion();
+  if (typeof addToLog === 'function') addToLog('✏️ Ajuste manual cámara: ' + nombre + ' → ' + num, 'camara');
+}
+
 function renderFreezer() {
   const el = document.getElementById('freezer-panel');
   if (!el) return;
@@ -2187,7 +2228,7 @@ function renderFreezer() {
           <span class="freezer-sub-name">${sub.nombre}</span>
           <div style="display:flex;align-items:center;gap:6px;">
             <button class="freezer-adj-btn" onclick="adjustFreezerManual('${cat.id}','${sub.id}',-1)">−</button>
-            <span class="freezer-sub-val ${val === 0 ? 'critical' : val > 20 ? 'ok' : ''}">${Math.round(val)}</span>
+            <span class="freezer-sub-val ${val === 0 ? 'critical' : val > 20 ? 'ok' : ''}" onclick="setFreezerExacto('${cat.id}','${sub.id}')" style="cursor:pointer;" title="Tocá el número para escribir la cantidad exacta">${Math.round(val)} ✏️</span>
             <button class="freezer-adj-btn plus" onclick="adjustFreezerManual('${cat.id}','${sub.id}',1)">+</button>
           </div>
         </div>`;
@@ -2198,7 +2239,7 @@ function renderFreezer() {
         <div class="freezer-adj-row">
           <span class="freezer-adj-label">Ajuste manual</span>
           <button class="freezer-adj-btn" onclick="adjustFreezerManual('${cat.id}',null,-1)">−</button>
-          <span class="freezer-adj-val">${Math.round(fp.total * 10)/10}</span>
+          <span class="freezer-adj-val" onclick="setFreezerExacto('${cat.id}',null)" style="cursor:pointer;" title="Tocá para escribir la cantidad exacta">${Math.round(fp.total * 10)/10} ✏️</span>
           <button class="freezer-adj-btn plus" onclick="adjustFreezerManual('${cat.id}',null,1)">+</button>
         </div>
       </div>`;
