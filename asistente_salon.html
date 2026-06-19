@@ -260,6 +260,11 @@
       <div style="display:flex;gap:8px;margin-bottom:8px;">
         <select id="egr-producto" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;background:var(--primary-light);"></select>
       </div>
+      <input type="file" id="egr-foto-input" accept="image/*" capture="environment" onchange="onEgrPhotoChange(this)" style="display:none;" />
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <button type="button" onclick="document.getElementById('egr-foto-input').click()" style="padding:9px 14px;background:#fff;color:var(--primary-dark);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap;">📷 Foto (opcional)</button>
+        <div id="egr-foto-preview" style="flex:1;"></div>
+      </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <select id="egr-tipo" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;">
           <option value="desperdicio">🗑 Desperdicio / baja</option>
@@ -905,24 +910,48 @@ function initEgresosSelect() {
   }
 }
 
-function registrarEgreso() {
+let egrPhotoFile = null;
+function onEgrPhotoChange(input){
+  const f = input.files && input.files[0]; if(!f) return;
+  egrPhotoFile = f;
+  const reader = new FileReader();
+  reader.onload = e => { const pv=document.getElementById('egr-foto-preview'); if(pv) pv.innerHTML = '<img src="'+e.target.result+'" style="height:44px;border-radius:8px;" /> <span style="font-size:11px;color:#2E7D32;">✓ foto lista</span>'; };
+  reader.readAsDataURL(f);
+}
+async function uploadFotoEgreso(file, prodId){
+  const ext = ((file.name||'foto.jpg').split('.').pop()||'jpg').toLowerCase();
+  const obj = 'egreso_'+Date.now()+'_'+((prodId||'item').replace(/[^a-z0-9_-]/gi,''))+'.'+ext;
+  const res = await fetch(SUPABASE_URL + '/storage/v1/object/madrugada/' + obj, {
+    method:'POST',
+    headers:{ 'apikey':SUPABASE_KEY, 'Authorization':'Bearer '+SUPABASE_KEY, 'Content-Type': file.type||'image/jpeg', 'x-upsert':'true' },
+    body: file
+  });
+  if(!res.ok) throw new Error('upload '+res.status);
+  return SUPABASE_URL + '/storage/v1/object/public/madrugada/' + obj;
+}
+
+async function registrarEgreso() {
   const prodId = document.getElementById('egr-producto').value;
   const tipo = document.getElementById('egr-tipo').value;
   const cantidad = parseFloat(document.getElementById('egr-cantidad').value);
   if (!prodId || !cantidad || cantidad <= 0) { alert('Seleccioná un producto e ingresá la cantidad.'); return; }
   const nombre = getItemName(prodId);
+  let fotoUrl = null;
+  if (egrPhotoFile) { try { fotoUrl = await uploadFotoEgreso(egrPhotoFile, prodId); } catch(e){ console.warn('foto egreso:', e); } }
   stockState[prodId] = Math.max(0, (stockState[prodId] || 0) - cantidad);
   saveStock();
   const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
   const tipoLabels = { desperdicio:'🗑 Desperdicio', consumo_empleado:'👤 Consumo empleado', devolucion:'↩ Devolución', otro:'📋 Otro' };
-  egresos.unshift({ prodId, nombre, cantidad, tipo, tipoLabel: tipoLabels[tipo], time: now });
+  egresos.unshift({ prodId, nombre, cantidad, tipo, tipoLabel: tipoLabels[tipo], time: now, foto_url: fotoUrl });
   localStorage.setItem(EGRESOS_KEY, JSON.stringify(egresos));
-  sbUpsert('salon_egresos', { producto_id: prodId, producto_nombre: nombre, cantidad, tipo }).catch(()=>{});
+  sbUpsert('salon_egresos', { producto_id: prodId, producto_nombre: nombre, cantidad, tipo, foto_url: fotoUrl }).catch(()=>{});
   renderEgresosHistory();
   renderStock();
   addToLog(tipoLabels[tipo] + ': ' + cantidad + ' ' + nombre);
   document.getElementById('egr-cantidad').value = '';
   document.getElementById('egr-producto').value = '';
+  egrPhotoFile = null;
+  const pv = document.getElementById('egr-foto-preview'); if(pv) pv.innerHTML = '';
 }
 
 function renderEgresosHistory() {
@@ -930,6 +959,7 @@ function renderEgresosHistory() {
   if (!el) return;
   if (!egresos.length) { el.innerHTML = '<div style="text-align:center;color:#aaa;padding:24px;font-size:14px;">Sin egresos registrados hoy.</div>'; return; }
   el.innerHTML = egresos.map(e => `<div class="recepcion-item">
+    ${e.foto_url ? '<img src="'+e.foto_url+'" style="width:46px;height:46px;object-fit:cover;border-radius:8px;flex-shrink:0;" />' : ''}
     <div class="ri-time">${e.time}</div>
     <div class="ri-text">−${e.cantidad} × ${e.nombre}</div>
     <div class="ri-sector" style="color:var(--danger);">${e.tipoLabel}</div>
