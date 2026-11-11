@@ -176,6 +176,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Georgi
 
 /* ── LAST UPDATE ── */
 .last-update{font-size:10px;color:var(--text3);font-family:system-ui,sans-serif;text-align:center;padding:4px;}
+
+  /* fix: que el chat y las listas scrolleen dentro del panel y no tapen la barra de escribir */
+  .panel { min-height: 0; }
+  .panel > * { min-height: 0; }
+  #chat-messages { min-height: 0; }
+  #tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs .tab { flex: 1 0 auto; min-width: 58px; }
 </style>
 </head>
 <body>
@@ -415,7 +423,7 @@ async function loadAlertas() {
 }
 
 async function loadPedidos() {
-  const rows = await sbSelect('pedidos_sector', '?estado=neq.entregado&order=created_at.desc&limit=100');
+  const rows = await sbSelect('pedidos_sector', '?estado=not.in.(entregado,rechazado)&order=created_at.desc&limit=100');
   if (rows) pedidos = rows;
 }
 

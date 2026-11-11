@@ -383,6 +383,15 @@
   #api-key-section { padding: 12px 16px; background: #fbe9e7; border-bottom: 1px solid #FFCCBC; font-family: system-ui, sans-serif; display: flex; gap: 8px; align-items: center; }
   #api-key-input { flex: 1; border: 1px solid #FFCCBC; border-radius: 8px; padding: 8px 10px; font-size: 13px; font-family: system-ui, sans-serif; background: white; outline: none; }
   #api-key-save { padding: 8px 14px; background: #E64A19; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: system-ui, sans-serif; }
+
+  /* fix: que el chat y las listas scrolleen dentro del panel y no tapen la barra de escribir */
+  .panel { min-height: 0; }
+  .panel > * { min-height: 0; }
+  #chat-messages { min-height: 0; }
+  #tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs .tab { flex: 1 0 auto; min-width: 58px; }
+  .alert-banner { max-height: 26vh; overflow-y: auto; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -617,6 +626,24 @@ async function sbSelect(table, params='') {
 
 async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
   await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
+}
+// ── PRODUCCIÓN → DESCUENTO DE STOCK (función central en Supabase) ──
+// Descuenta del inventario (tabla insumos) los ingredientes de la receta costeada.
+// Si el producto no tiene receta vinculada, queda registrado y aparece en Gestión → Producción.
+async function registrarProduccion(sector, producto, tandas = 1, unidades = null, unidadesPorTanda = null) {
+  try {
+    const r = await sbFetch('POST', 'rpc/registrar_produccion', {
+      p_sector: sector, p_producto: producto, p_tandas: tandas,
+      p_unidades: unidades, p_unidades_por_tanda: unidadesPorTanda
+    });
+    if (!r) { console.error('registrarProduccion: sin respuesta'); return null; }
+    if (r.ok) {
+      if (typeof addToLog === 'function') addToLog('📦 Stock descontado: ' + r.insumos + ' insumos (' + producto + ')', 'receta');
+    } else if (typeof addToLog === 'function') {
+      addToLog('⚠️ ' + producto + ' no tiene receta vinculada: avisale a Poly para vincularla en Gestión → Producción', 'receta');
+    }
+    return r;
+  } catch (e) { console.error('registrarProduccion error:', e); return null; }
 }
 // ── END SUPABASE ──────────────────────────────────
 
@@ -1657,7 +1684,7 @@ function confirmDeposito() {
   saveStock();
 
   // Descontar la materia prima de esta tanda del depósito
-  if (currentRecipe.ingredients) descontarIngredientesDeposito(currentRecipe.ingredients, 'cocina');
+  registrarProduccion('cocina', currentRecipe.name, 1, (local + heladera + freezer + estante) || null);
 
   // Lo que va a "🏪 Local directo" se despacha al Salón como pendiente de confirmar
   if (local > 0) {
@@ -2059,7 +2086,7 @@ async function checkAndPublishAlerts_cocina() {
 
 async function loadPedidos_cocina() {
   try {
-    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.cocina&estado=neq.entregado&order=created_at.desc');
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.cocina&estado=not.in.(entregado,rechazado)&order=created_at.desc');
     if (rows) {
       pedidos_cocina = rows;
       renderPedidos_cocina();
@@ -2081,7 +2108,7 @@ function renderPedidos_cocina() {
     let btns = '';
     if (p.estado === 'pendiente') {
       btns = `<button onclick="cambiarEstadoPedido_cocina(${p.id},'en_proceso')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">▶ Tomar</button>
-              <button onclick="cambiarEstadoPedido_cocina(${p.id},'entregado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
+              <button onclick="cambiarEstadoPedido_cocina(${p.id},'rechazado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
     } else if (p.estado === 'en_proceso') {
       btns = `<button onclick="cambiarEstadoPedido_cocina(${p.id},'listo')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#2E7D32;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">✓ Listo para entregar</button>`;
     } else if (p.estado === 'listo') {
@@ -2105,7 +2132,7 @@ function renderPedidos_cocina() {
 async function cambiarEstadoPedido_cocina(id, nuevoEstado) {
   try {
     await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
-    if (nuevoEstado === 'entregado') {
+    if (nuevoEstado === 'entregado' || nuevoEstado === 'rechazado') {
       pedidos_cocina = pedidos_cocina.filter(p => p.id !== id);
     } else {
       const p = pedidos_cocina.find(p => p.id === id);

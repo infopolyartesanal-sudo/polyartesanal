@@ -312,6 +312,15 @@
   .ped-badge.en_proceso{background:#dbeafe;color:#1e40af;}
   .ped-badge.listo{background:#dcfce7;color:#166534;}
   .tab-badge-red{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#E24B4A;color:#fff;font-size:10px;font-weight:700;position:absolute;top:4px;right:4px;animation:pulse 2s infinite;}
+
+  /* fix: que el chat y las listas scrolleen dentro del panel y no tapen la barra de escribir */
+  .panel { min-height: 0; }
+  .panel > * { min-height: 0; }
+  #chat-messages { min-height: 0; }
+  #tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs .tab { flex: 1 0 auto; min-width: 58px; }
+  .alert-banner { max-height: 26vh; overflow-y: auto; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -527,6 +536,24 @@ async function sbSelect(table, params='') {
 
 async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
   await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
+}
+// ── PRODUCCIÓN → DESCUENTO DE STOCK (función central en Supabase) ──
+// Descuenta del inventario (tabla insumos) los ingredientes de la receta costeada.
+// Si el producto no tiene receta vinculada, queda registrado y aparece en Gestión → Producción.
+async function registrarProduccion(sector, producto, tandas = 1, unidades = null, unidadesPorTanda = null) {
+  try {
+    const r = await sbFetch('POST', 'rpc/registrar_produccion', {
+      p_sector: sector, p_producto: producto, p_tandas: tandas,
+      p_unidades: unidades, p_unidades_por_tanda: unidadesPorTanda
+    });
+    if (!r) { console.error('registrarProduccion: sin respuesta'); return null; }
+    if (r.ok) {
+      if (typeof addToLog === 'function') addToLog('📦 Stock descontado: ' + r.insumos + ' insumos (' + producto + ')', 'receta');
+    } else if (typeof addToLog === 'function') {
+      addToLog('⚠️ ' + producto + ' no tiene receta vinculada: avisale a Poly para vincularla en Gestión → Producción', 'receta');
+    }
+    return r;
+  } catch (e) { console.error('registrarProduccion error:', e); return null; }
 }
 // ── END SUPABASE ──────────────────────────────────
 
@@ -1156,7 +1183,7 @@ function confirmDeposito() {
   saveStock();
 
   // Descontar la materia prima de esta tanda del depósito
-  if (currentRecipe.ingredients) descontarIngredientesDeposito(currentRecipe.ingredients, 'pasteleria');
+  registrarProduccion('pasteleria', currentRecipe.name, 1, (local + heladera + freezer + estante) || null);
 
   // Lo que va a "🏪 Local directo" se despacha al Salón como pendiente de confirmar
   if (local > 0) {
@@ -1567,7 +1594,7 @@ async function checkAndPublishAlerts() {
 // ── CARGAR PEDIDOS DIRIGIDOS A PASTELERÍA ──
 async function loadPedidosPasteleria() {
   try {
-    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.pasteleria&estado=neq.entregado&order=created_at.desc');
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.pasteleria&estado=not.in.(entregado,rechazado)&order=created_at.desc');
     if (rows) {
       pedidosPasteleria = rows;
       renderPedidosPasteleria();
@@ -1590,7 +1617,7 @@ function renderPedidosPasteleria() {
     let btns = '';
     if (p.estado === 'pendiente') {
       btns = `<button class="ped-btn" onclick="cambiarEstadoPedido(${p.id},'en_proceso')">▶ Tomar</button>
-              <button class="ped-btn" style="color:#E24B4A;" onclick="cambiarEstadoPedido(${p.id},'entregado')">✗ Rechazar</button>`;
+              <button class="ped-btn" style="color:#E24B4A;" onclick="cambiarEstadoPedido(${p.id},'rechazado')">✗ Rechazar</button>`;
     } else if (p.estado === 'en_proceso') {
       btns = `<button class="ped-btn primary" onclick="cambiarEstadoPedido(${p.id},'listo')">✓ Listo para entregar</button>`;
     } else if (p.estado === 'listo') {
@@ -1614,7 +1641,7 @@ function renderPedidosPasteleria() {
 async function cambiarEstadoPedido(id, nuevoEstado) {
   try {
     await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
-    if (nuevoEstado === 'entregado') {
+    if (nuevoEstado === 'entregado' || nuevoEstado === 'rechazado') {
       pedidosPasteleria = pedidosPasteleria.filter(p => p.id !== id);
     } else {
       const p = pedidosPasteleria.find(p => p.id === id);

@@ -126,6 +126,15 @@
   #api-key-section{padding:10px 12px;background:var(--primary-light);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;}
   #api-key-input{flex:1;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;outline:none;background:#fff;}
   #api-key-save{padding:8px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;}
+
+  /* fix: que el chat y las listas scrolleen dentro del panel y no tapen la barra de escribir */
+  .panel { min-height: 0; }
+  .panel > * { min-height: 0; }
+  #chat-messages { min-height: 0; }
+  #tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs .tab { flex: 1 0 auto; min-width: 58px; }
+  .alert-banner { max-height: 26vh; overflow-y: auto; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -149,7 +158,7 @@
     <button class="tab" onclick="switchTab('facturas')" id="tab-facturas"><i class="ti ti-file-invoice"></i>Facturas</button>
     <button class="tab" onclick="switchTab('pedidos')" id="tab-pedidos"><i class="ti ti-shopping-cart"></i>Pedidos</button>
     <button class="tab" onclick="switchTab('pedidos-deposito')" id="tab-pedidos-deposito" style="position:relative;">
-      <i class="ti ti-bell"></i>Pedidos
+      <i class="ti ti-bell"></i>De sectores
     </button>
     <button class="tab" onclick="switchTab('chat')" id="tab-chat"><i class="ti ti-message-circle"></i>Asistente</button>
   </div>
@@ -177,6 +186,11 @@
 
   <div class="panel" id="panel-pedidos">
     <div id="pedidos-panel"></div>
+  </div>
+
+  <div class="panel" id="panel-pedidos-deposito">
+    <div class="sector-title">Pedidos que hicieron los sectores al depósito</div>
+    <div id="pedidos-deposito-list"></div>
   </div>
 
   <div class="panel" id="panel-chat">
@@ -796,6 +810,7 @@ function switchTab(name) {
   if (name === 'stock') renderStock();
   if (name === 'pedidos') renderPedidos();
   if (name === 'facturas') renderFacturasHistory();
+  if (name === 'pedidos-deposito' && typeof renderPedidos_deposito === 'function') renderPedidos_deposito();
 }
 
 // ── INIT ──────────────────────────────────────────
@@ -862,7 +877,7 @@ async function checkAndPublishAlerts_deposito() {
 
 async function loadPedidos_deposito() {
   try {
-    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.deposito&estado=neq.entregado&order=created_at.desc');
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.deposito&estado=not.in.(entregado,rechazado)&order=created_at.desc');
     if (rows) {
       pedidos_deposito = rows;
       renderPedidos_deposito();
@@ -884,7 +899,7 @@ function renderPedidos_deposito() {
     let btns = '';
     if (p.estado === 'pendiente') {
       btns = `<button onclick="cambiarEstadoPedido_deposito(${p.id},'en_proceso')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">▶ Tomar</button>
-              <button onclick="cambiarEstadoPedido_deposito(${p.id},'entregado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
+              <button onclick="cambiarEstadoPedido_deposito(${p.id},'rechazado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
     } else if (p.estado === 'en_proceso') {
       btns = `<button onclick="cambiarEstadoPedido_deposito(${p.id},'listo')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#1565C0;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">✓ Listo para entregar</button>`;
     } else if (p.estado === 'listo') {
@@ -908,7 +923,7 @@ function renderPedidos_deposito() {
 async function cambiarEstadoPedido_deposito(id, nuevoEstado) {
   try {
     await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
-    if (nuevoEstado === 'entregado') {
+    if (nuevoEstado === 'entregado' || nuevoEstado === 'rechazado') {
       pedidos_deposito = pedidos_deposito.filter(p => p.id !== id);
     } else {
       const p = pedidos_deposito.find(p => p.id === id);

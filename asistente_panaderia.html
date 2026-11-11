@@ -564,6 +564,15 @@
     color: #666; cursor: pointer;
   }
   .checklist-reset-btn:hover { background: #f0ede8; }
+
+  /* fix: que el chat y las listas scrolleen dentro del panel y no tapen la barra de escribir */
+  .panel { min-height: 0; }
+  .panel > * { min-height: 0; }
+  #chat-messages { min-height: 0; }
+  #tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  #tabs .tab { flex: 1 0 auto; min-width: 58px; }
+  .alert-banner { max-height: 26vh; overflow-y: auto; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -582,6 +591,7 @@
       </p>
       <input type="password" id="api-key-input" placeholder="sk-ant-..." autocomplete="off" />
       <button id="save-api-btn" onclick="saveApiKey()">Guardar y comenzar</button>
+      <button onclick="document.getElementById('api-setup').classList.add('hidden');try{sessionStorage.setItem('sin_ia','1')}catch(e){}" style="margin-top:10px;width:100%;padding:12px;border-radius:10px;border:1px solid #ccc;background:#fff;color:#555;font-size:14px;cursor:pointer;">Entrar sin IA (producción, freezer y pedidos funcionan igual)</button>
       <div id="api-error">Clave inválida. Asegurate de que empiece con sk-ant-</div>
       <p style="margin-top:12px;font-size:12px;color:#999">La clave se guarda solo en tu dispositivo, nunca se envía a nadie más que a Anthropic.</p>
     </div>
@@ -782,6 +792,24 @@ async function sbSelect(table, params='') {
 async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
   await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
 }
+// ── PRODUCCIÓN → DESCUENTO DE STOCK (función central en Supabase) ──
+// Descuenta del inventario (tabla insumos) los ingredientes de la receta costeada.
+// Si el producto no tiene receta vinculada, queda registrado y aparece en Gestión → Producción.
+async function registrarProduccion(sector, producto, tandas = 1, unidades = null, unidadesPorTanda = null) {
+  try {
+    const r = await sbFetch('POST', 'rpc/registrar_produccion', {
+      p_sector: sector, p_producto: producto, p_tandas: tandas,
+      p_unidades: unidades, p_unidades_por_tanda: unidadesPorTanda
+    });
+    if (!r) { console.error('registrarProduccion: sin respuesta'); return null; }
+    if (r.ok) {
+      if (typeof addToLog === 'function') addToLog('📦 Stock descontado: ' + r.insumos + ' insumos (' + producto + ')', 'receta');
+    } else if (typeof addToLog === 'function') {
+      addToLog('⚠️ ' + producto + ' no tiene receta vinculada: avisale a Poly para vincularla en Gestión → Producción', 'receta');
+    }
+    return r;
+  } catch (e) { console.error('registrarProduccion error:', e); return null; }
+}
 // ── END SUPABASE ──────────────────────────────────
 
 // Polyfill para Safari/iOS viejos
@@ -810,6 +838,7 @@ function init() {
   if (apiKey && apiKey.startsWith('sk-ant-')) {
     document.getElementById('api-setup').classList.add('hidden');
   }
+  try { if (sessionStorage.getItem('sin_ia')) document.getElementById('api-setup').classList.add('hidden'); } catch(e) {}
   // Versión del recetario — cambiar este número fuerza reset en todos los dispositivos
   const RECIPES_VERSION = '2';
   const savedVersion = localStorage.getItem(RECIPES_KEY + '_version');
@@ -1560,22 +1589,8 @@ async function addTanda(id) {
   renderProduccion();
   addToLog('🏭 Tanda completada: ' + cat.nombre + ' (' + item.tandasHechas + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
 
-  // ── INTEGRACIÓN: descontar ingredientes de la receta del depósito ──
-  try {
-    // Buscar la receta: primero por mapeo fijo, después por nombre parecido
-    let receta = null;
-    if (typeof recipes !== 'undefined') {
-      const recetaName = (typeof PROD_TO_RECIPE !== 'undefined') ? PROD_TO_RECIPE[id] : null;
-      if (recetaName) receta = recipes.find(r => r.name === recetaName);
-      if (!receta) receta = recipes.find(r =>
-        r.name.toLowerCase().includes(cat.nombre.toLowerCase()) ||
-        cat.nombre.toLowerCase().includes(r.name.toLowerCase().split(' ')[0])
-      );
-    }
-    if (receta && receta.ingredients) {
-      await descontarIngredientesDeposito(receta.ingredients, 'panaderia');
-    }
-  } catch(e) { console.warn('addTanda integración error:', e); }
+  // ── INTEGRACIÓN: descontar ingredientes del inventario (función central) ──
+  registrarProduccion('panaderia', cat.nombre, 1, null, cat.rendimiento);
 }
 
 function removeTanda(id) {
@@ -1585,6 +1600,9 @@ function removeTanda(id) {
   if (getProdDestino(id) === 'camara') { addToCamara(id, -1); } else { updateFreezerFromTanda(id, -1); }
   saveProdState();
   renderProduccion();
+  // Deshacer tanda: devuelve los ingredientes al inventario
+  const catR = PROD_CATALOG.find(c => c.id === id);
+  if (catR) registrarProduccion('panaderia', catR.nombre, -1, null, catR.rendimiento);
 }
 
 function renderProduccion() {
@@ -2325,7 +2343,7 @@ async function checkAndPublishAlerts_panaderia() {
 
 async function loadPedidos_panaderia() {
   try {
-    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.panaderia&estado=neq.entregado&order=created_at.desc');
+    const rows = await sbSelect('pedidos_sector', '?hacia_sector=eq.panaderia&estado=not.in.(entregado,rechazado)&order=created_at.desc');
     if (rows) {
       pedidos_panaderia = rows;
       renderPedidos_panaderia();
@@ -2347,7 +2365,7 @@ function renderPedidos_panaderia() {
     let btns = '';
     if (p.estado === 'pendiente') {
       btns = `<button onclick="cambiarEstadoPedido_panaderia(${p.id},'en_proceso')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">▶ Tomar</button>
-              <button onclick="cambiarEstadoPedido_panaderia(${p.id},'entregado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
+              <button onclick="cambiarEstadoPedido_panaderia(${p.id},'rechazado')" style="flex:1;padding:8px;border-radius:8px;border:1px solid #fca5a5;color:#E24B4A;background:#fff;font-size:12px;cursor:pointer;font-family:system-ui,sans-serif;">✗ Rechazar</button>`;
     } else if (p.estado === 'en_proceso') {
       btns = `<button onclick="cambiarEstadoPedido_panaderia(${p.id},'listo')" style="width:100%;padding:9px;border-radius:8px;border:none;background:#E65100;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:system-ui,sans-serif;">✓ Listo para entregar</button>`;
     } else if (p.estado === 'listo') {
@@ -2371,7 +2389,7 @@ function renderPedidos_panaderia() {
 async function cambiarEstadoPedido_panaderia(id, nuevoEstado) {
   try {
     await sbFetch('PATCH', 'pedidos_sector', { estado: nuevoEstado, updated_at: new Date().toISOString() }, '?id=eq.' + id);
-    if (nuevoEstado === 'entregado') {
+    if (nuevoEstado === 'entregado' || nuevoEstado === 'rechazado') {
       pedidos_panaderia = pedidos_panaderia.filter(p => p.id !== id);
     } else {
       const p = pedidos_panaderia.find(p => p.id === id);
