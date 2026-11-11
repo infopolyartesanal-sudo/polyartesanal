@@ -417,8 +417,14 @@ function editarReceta(id,duplicar){
   const secs=[...new Set(D.recetas.map(x=>x.seccion).filter(Boolean))].sort();
   modal(`<h2>${id&&!duplicar?'Editar':'Nueva'} receta</h2>${opcionesIngredientes()}<datalist id="dlSec">${secs.map(s=>`<option>${esc(s)}</option>`).join('')}</datalist>
   <div class="fila"><div><label>Nombre</label><input id="rN" value="${esc(duplicar?r.nombre+' (copia)':r.nombre)}"></div><div><label>Sección</label><input id="rS" list="dlSec" value="${esc(r.seccion||'')}"></div></div>
-  <div class="fila"><div><label>Precio de venta (por unidad)</label><input id="rP" type="number" step="any" value="${r.precio_venta||''}"></div><div><label>Rinde (unidades)</label><input id="rR" type="number" step="any" value="${r.rendimiento||1}"></div>
+  <div class="fila"><div><label>Precio de venta (por unidad)</label><input id="rP" type="number" step="any" value="${r.precio_venta||''}"></div><div><label>Esta receta rinde (unidades)</label><input id="rR" type="number" step="any" value="${r.rendimiento||1}"></div>
   <div><label>Tipo</label><select id="rT"><option value="PRODUCCION">Producto de venta</option><option value="BASE" ${r.tipo==='BASE'?'selected':''}>Masa / base (se usa en otras recetas)</option></select></div></div>
+  <div class="card" style="background:#f6faf6;margin-top:10px"><b style="color:var(--verde)">🏭 Producción y venta</b>
+  <div class="fila"><div><label>Sector que lo produce</label><select id="rSec">${[['panaderia','🍞 Panadería'],['pasteleria','🍰 Pastelería'],['cocina','🍳 Cocina'],['reventa','🛒 Reventa (se compra hecho)']].map(([k,n])=>`<option value="${k}" ${(r.sector||'panaderia')===k?'selected':''}>${n}</option>`).join('')}</select></div>
+  <div><label>Una tanda produce (unidades o kg)</label><input id="rUT" type="number" step="any" value="${r.unidades_tanda||''}" placeholder="ej: 120"></div>
+  <div><label>Se vende por</label><select id="rUV"><option value="u">unidad</option><option value="kg" ${r.unidad_venta==='kg'?'selected':''}>kg</option></select></div>
+  <div><label>Cuota semanal (opcional)</label><input id="rCS" type="number" step="any" value="${r.cuota_semanal||''}" placeholder="ej: 600"></div></div>
+  <p class="muted" style="margin:6px 0 0">Si cargás "Rinde por tanda", la receta aparece en el módulo del sector para registrar tandas (completa o ½): suma al freezer y descuenta los insumos. También aparece en los pedidos de clientes del Salón.</p></div>
   <label>Ingredientes <span class="muted">(cantidad para el total que rinde la receta · las masas/bases aparecen con 📋)</span></label>
   <div class="scroll"><table id="tIng"><tr><th>Insumo o receta</th><th>Cantidad</th><th>Unidad</th><th>Merma %</th><th></th></tr>${(r.ingredientes||[]).map(filaIng).join('')}${filaIng()}</table></div>
   <button class="btn sec peq" style="margin-top:6px" onclick="document.querySelector('#tIng tbody').insertAdjacentHTML('beforeend',filaIng())">+ ingrediente</button>
@@ -436,8 +442,14 @@ async function guardarReceta(id){
     ingredientes.push(it)});
   if(errores.length&&!window._okErr){window._okErr=1;return toast('No encontré: '+errores.join(', ')+'. Elegilos de la lista o tocá Guardar otra vez para dejarlos sin vincular.',7000)}
   window._okErr=0;
-  const row={nombre,seccion:$('#rS').value.trim()||null,precio_venta:+$('#rP').value||0,rendimiento:+$('#rR').value||1,tipo:$('#rT').value,ingredientes,pasos:$('#rPa').value.split('\n').map(s=>s.trim()).filter(Boolean),updated_at:new Date().toISOString()};
-  if(id){const [x]=await sbUpd('recetas','id=eq.'+id,row);Object.assign(recMap[id],x)}else{const [x]=await sbIns('recetas',[row]);D.recetas.push(x)}
+  const sector=$('#rSec').value,ut=+$('#rUT').value||null;
+  const row={nombre,seccion:$('#rS').value.trim()||null,precio_venta:+$('#rP').value||0,rendimiento:+$('#rR').value||1,tipo:$('#rT').value,ingredientes,pasos:$('#rPa').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    sector,unidades_tanda:ut,unidad_venta:$('#rUV').value,cuota_semanal:+$('#rCS').value||null,updated_at:new Date().toISOString()};
+  let rid=id;
+  if(id){const [x]=await sbUpd('recetas','id=eq.'+id,row);Object.assign(recMap[id],x)}else{const [x]=await sbIns('recetas',[row]);D.recetas.push(x);rid=x.id}
+  // vincula la receta con la producción del sector (descuento de insumos al registrar tandas)
+  if(ut&&['panaderia','pasteleria','cocina'].includes(sector)){await sbIns('produccion_mapeo',[{sector,producto:nombre,receta_id:rid,unidades_por_tanda:ut}],true);
+    const mm=D.mapeo.find(m=>m.sector===sector&&m.producto===nombre);if(mm){mm.receta_id=rid;mm.unidades_por_tanda=ut}else D.mapeo.push({sector,producto:nombre,receta_id:rid,unidades_por_tanda:ut})}
   D.recetas.sort((a,b)=>a.nombre.localeCompare(b.nombre));indexar();cerrarModal();toast('Receta guardada ✅');if(vistaActual==='recetas')vRecetas();
 }
 async function borrarReceta(id){await sbDel('recetas','id=eq.'+id);D.recetas=D.recetas.filter(r=>r.id!==id);indexar();toast('Receta borrada');vRecetas()}

@@ -1623,6 +1623,26 @@ function getProdItem(id) {
   return prodState[id];
 }
 
+// ── Media tanda / tanda completa ──
+function getTamanoTanda(id) { return getProdItem(id).tamano === 0.5 ? 0.5 : 1; }
+function setTamanoTanda(id, t) { getProdItem(id).tamano = (t === 0.5 ? 0.5 : 1); saveProdState(); renderProduccion(); }
+function fmtTandas(n) {
+  n = Math.round((+n || 0) * 2) / 2;
+  const ent = Math.floor(n), medio = n - ent >= 0.5;
+  return medio ? (ent ? ent + '½' : '½') : String(ent);
+}
+function botonesTamano(id) {
+  const t = getTamanoTanda(id);
+  const st = (on) => (on ? 'background:#534AB7;color:#fff;border-color:#534AB7;' : 'background:#fff;color:#333;') + 'padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;';
+  return `<div class="prod-tandas-row">
+          <span class="prod-tandas-label">Al tocar +</span>
+          <div class="prod-tanda-btns">
+            <button onclick="setTamanoTanda('${id}',1)" style="${st(t === 1)}">Tanda completa</button>
+            <button onclick="setTamanoTanda('${id}',0.5)" style="${st(t === 0.5)}">½ tanda</button>
+          </div>
+        </div>`;
+}
+
 const PROD_TO_RECIPE = {
   'libritos_integrales': 'Libritos Integrales',
   'libritos_clasicos': 'Libritos Clásicos',
@@ -1653,27 +1673,32 @@ const PROD_TO_RECIPE = {
 
 async function addTanda(id) {
   const item = getProdItem(id);
-  item.tandasHechas++;
+  const t = getTamanoTanda(id);
+  item.tandasHechas = Math.round((item.tandasHechas + t) * 2) / 2;
+  item.hist = (item.hist || []).concat([t]).slice(-30);
   const cat = PROD_CATALOG.find(c => c.id === id);
-  if (getProdDestino(id) === 'camara') { addToCamara(id, 1); } else { updateFreezerFromTanda(id, 1); }
+  if (getProdDestino(id) === 'camara') { addToCamara(id, t); } else { updateFreezerFromTanda(id, t); }
   saveProdState();
   renderProduccion();
-  addToLog('🏭 Tanda completada: ' + cat.nombre + ' (' + item.tandasHechas + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
+  addToLog('🏭 ' + (t === 0.5 ? 'Media tanda' : 'Tanda') + ' completada: ' + cat.nombre + ' (' + fmtTandas(item.tandasHechas) + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
 
   // ── INTEGRACIÓN: descontar ingredientes del inventario (función central) ──
-  registrarProduccion('panaderia', cat.nombre, 1, null, cat.rendimiento);
+  registrarProduccion('panaderia', cat.nombre, t, null, cat.rendimiento);
 }
 
 function removeTanda(id) {
   const item = getProdItem(id);
   if (item.tandasHechas <= 0) return;
-  item.tandasHechas--;
-  if (getProdDestino(id) === 'camara') { addToCamara(id, -1); } else { updateFreezerFromTanda(id, -1); }
+  // deshace lo último que se sumó (media o completa)
+  let t = (item.hist && item.hist.length) ? item.hist.pop() : getTamanoTanda(id);
+  if (t > item.tandasHechas) t = item.tandasHechas;
+  item.tandasHechas = Math.max(0, Math.round((item.tandasHechas - t) * 2) / 2);
+  if (getProdDestino(id) === 'camara') { addToCamara(id, -t); } else { updateFreezerFromTanda(id, -t); }
   saveProdState();
   renderProduccion();
   // Deshacer tanda: devuelve los ingredientes al inventario
   const catR = PROD_CATALOG.find(c => c.id === id);
-  if (catR) registrarProduccion('panaderia', catR.nombre, -1, null, catR.rendimiento);
+  if (catR) registrarProduccion('panaderia', catR.nombre, -t, null, catR.rendimiento);
 }
 
 function renderProduccion() {
@@ -1697,7 +1722,7 @@ function renderProduccion() {
     const freezer = getFreezerTotal(cat.id);
     const hoyTarget = cat.dias[dayName] || null;
     const status = pct >= 100 ? 'ok' : pct >= 50 ? 'warn' : 'danger';
-    const badge = pct >= 100 ? '✓ Completo' : `${hechas}/${total} tandas`;
+    const badge = pct >= 100 ? '✓ Completo' : `${fmtTandas(hechas)}/${total} tandas`;
 
     html += `<div class="prod-card">
       <div class="prod-card-header">
@@ -1717,11 +1742,12 @@ function renderProduccion() {
             <button onclick="setProdDestino('${cat.id}','camara')" style="${getProdDestino(cat.id)==='camara'?'background:#534AB7;color:#fff;border-color:#534AB7;':'background:#fff;color:#333;'}padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;">❄️ Cámara</button>
           </div>
         </div>
+        ${botonesTamano(cat.id)}
         <div class="prod-tandas-row">
           <span class="prod-tandas-label">Tandas completadas</span>
           <div class="prod-tanda-btns">
             <button class="prod-tanda-btn minus" onclick="removeTanda('${cat.id}')">−</button>
-            <span class="prod-tanda-count">${hechas}</span>
+            <span class="prod-tanda-count">${fmtTandas(hechas)}</span>
             <button class="prod-tanda-btn plus" onclick="addTanda('${cat.id}')">+</button>
           </div>
         </div>
@@ -1757,11 +1783,12 @@ function renderProduccion() {
             <button onclick="setProdDestino('${cat.id}','camara')" style="${getProdDestino(cat.id)==='camara'?'background:#534AB7;color:#fff;border-color:#534AB7;':'background:#fff;color:#333;'}padding:5px 9px;border:1px solid #ddd;border-radius:7px;font-family:system-ui,sans-serif;font-size:12px;cursor:pointer;">❄️ Cámara</button>
           </div>
         </div>
+        ${botonesTamano(cat.id)}
         <div class="prod-tandas-row">
           <span class="prod-tandas-label">Tandas realizadas</span>
           <div class="prod-tanda-btns">
             <button class="prod-tanda-btn minus" onclick="removeTanda('${cat.id}')">−</button>
-            <span class="prod-tanda-count">${getProdItem(cat.id).tandasHechas}</span>
+            <span class="prod-tanda-count">${fmtTandas(getProdItem(cat.id).tandasHechas)}</span>
             <button class="prod-tanda-btn plus" onclick="addTanda('${cat.id}')">+</button>
           </div>
         </div>
@@ -1843,7 +1870,7 @@ function renderWelcomeSummary() {
       const item = prodState[cat.id] || { tandasHechas: 0 };
       const faltan = Math.max(0, cat.tandas - item.tandasHechas);
       const metaHoy = cat.dias[dayKey] || null;
-      if (metaHoy && faltan > 0) pendientes.push(cat.nombre + ' (' + faltan + ' tanda' + (faltan > 1 ? 's' : '') + ')');
+      if (metaHoy && faltan > 0) pendientes.push(cat.nombre + ' (' + fmtTandas(faltan) + ' tanda' + (faltan > 1 ? 's' : '') + ')');
     }
     if (pendientes.length > 0) lines.push('🏭 Para hoy: ' + pendientes.slice(0,3).join(', ') + (pendientes.length > 3 ? ' y más...' : '') + '.');
     else if (Object.keys(prodState).length > 0) lines.push('✅ ¡Toda la producción del día completada!');
@@ -2186,15 +2213,25 @@ function updateFreezerFromTanda(prodId, cantidad) {
   if (!cat) return;
   const fp = getFreezerProduct(map.id);
 
+  // Lo que rinde UNA tanda sale del catálogo de producción (ej: Facturas de Manteca = 120 u).
+  // Los subtipos solo indican la proporción (medialunas, lenguitas, etc.), no el total por tanda.
+  const prodCat = (typeof PROD_CATALOG !== 'undefined') ? PROD_CATALOG.find(c => c.id === prodId) : null;
+  const rinde = (prodCat && prodCat.rendimiento) ? prodCat.rendimiento : (cat.unidadesPorTanda || 1);
   if (cat.subtipos && cat.subtipos.length > 0) {
-    for (const sub of cat.subtipos) {
+    const pesos = cat.subtipos.map(sub => sub.unidadesPorTanda || sub.unidadesPorMasa || 1);
+    const sumaPesos = pesos.reduce((a, b) => a + b, 0) || 1;
+    const signo = cantidad < 0 ? -1 : 1;
+    const totalUnid = Math.round(Math.abs(rinde * cantidad));
+    let repartido = 0;
+    cat.subtipos.forEach((sub, i) => {
       if (!fp.subtipos[sub.id]) fp.subtipos[sub.id] = 0;
-      const unidades = Math.round((sub.unidadesPorTanda || 0) * cantidad);
-      fp.subtipos[sub.id] = Math.max(0, fp.subtipos[sub.id] + unidades);
-    }
+      const unidades = (i === cat.subtipos.length - 1) ? totalUnid - repartido : Math.round(totalUnid * pesos[i] / sumaPesos);
+      repartido += unidades;
+      fp.subtipos[sub.id] = Math.max(0, fp.subtipos[sub.id] + signo * unidades);
+    });
     fp.total = Object.values(fp.subtipos).reduce((a,b) => a+b, 0);
   } else {
-    const unidades = (cat.unidadesPorTanda || 1) * cantidad;
+    const unidades = rinde * cantidad;
     fp.total = Math.max(0, Math.round((fp.total + unidades) * 10) / 10);
   }
   saveFreezerPan();
@@ -2778,6 +2815,155 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
   }
 }
 
+
+</script>
+<script>
+/* ── PEDIDOS DE CLIENTES (Salón → este sector) ──
+   Alerta fija hasta que el producto se despacha al Salón. */
+(function () {
+  var SECTOR = 'panaderia';
+  var SB = 'https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
+  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+  var items = [];
+  function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function hoyYMD(off) { var d = new Date(); d.setDate(d.getDate() + (off || 0)); return d.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }); }
+  function cuando(f, h) {
+    var t = f === hoyYMD(0) ? 'HOY' : f === hoyYMD(1) ? 'Mañana' : (f < hoyYMD(0) ? 'ATRASADO ' : '') + new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+    return t + (h ? ' ' + h : '');
+  }
+  function urg(f) { return f <= hoyYMD(0) ? 'r' : f === hoyYMD(1) ? 'n' : 'v'; }
+
+  var css = document.createElement('style');
+  css.textContent = '#pc-pill{position:fixed;top:4px;right:4px;z-index:99998;border:0;border-radius:16px;padding:6px 12px;font:700 13px system-ui,sans-serif;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);display:none}' +
+    '#pc-pill.r{background:#C62828;animation:pcpulse 1.2s infinite}#pc-pill.n{background:#E65100}#pc-pill.v{background:#2E7D32}' +
+    '@keyframes pcpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}' +
+    '#pc-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:18px 10px}' +
+    '#pc-box{background:#fff;border-radius:14px;max-width:560px;width:100%;padding:16px;font-family:system-ui,sans-serif;color:#222}' +
+    '.pc-ped{border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:10px}.pc-ped.r{border-color:#ef9a9a;background:#fff5f5}.pc-ped.n{border-color:#ffcc80;background:#fffaf2}' +
+    '.pc-it{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-top:1px dashed #eee}.pc-it b{flex:1 1 100%;font-size:15px}' +
+    '.pc-btn{border:0;border-radius:8px;padding:9px 11px;font:700 13px system-ui,sans-serif;cursor:pointer;color:#fff;white-space:nowrap}';
+  document.head.appendChild(css);
+
+  function montar() {
+    if (document.getElementById('pc-pill')) return;
+    var pill = document.createElement('button'); pill.id = 'pc-pill'; pill.onclick = abrir; document.body.appendChild(pill);
+    var ov = document.createElement('div'); ov.id = 'pc-ov'; ov.innerHTML = '<div id="pc-box"></div>';
+    ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; };
+    document.body.appendChild(ov);
+  }
+  function cargar() {
+    return fetch(SB + 'pedidos_clientes_items?select=*,pedidos_clientes(*)&sector=eq.' + SECTOR + '&estado=in.(pendiente,recibido)&order=id', { headers: H })
+      .then(function (r) { return r.json(); })
+      .then(function (rows) { items = (rows || []).filter(function (i) { return i.pedidos_clientes && ['pendiente', 'en_produccion', 'listo'].indexOf(i.pedidos_clientes.estado) >= 0; }); pintar(); })
+      .catch(function () {});
+  }
+  function pintar() {
+    montar();
+    var pill = document.getElementById('pc-pill');
+    if (!items.length) { pill.style.display = 'none'; return; }
+    var peor = items.map(function (i) { return urg(i.pedidos_clientes.fecha_retiro); }).sort()[0];
+    pill.className = peor; pill.style.display = 'block';
+    pill.textContent = '🔔 ' + items.length + ' pedido' + (items.length > 1 ? 's' : '') + ' de clientes';
+    if (document.getElementById('pc-ov').style.display === 'flex') abrir();
+  }
+  function abrir() {
+    var ov = document.getElementById('pc-ov'), box = document.getElementById('pc-box');
+    var grupos = {};
+    items.forEach(function (i) { (grupos[i.pedido_id] = grupos[i.pedido_id] || { p: i.pedidos_clientes, it: [] }).it.push(i); });
+    var lista = Object.keys(grupos).map(function (k) { return grupos[k]; }).sort(function (a, b) { return (a.p.fecha_retiro + (a.p.hora_retiro || '')).localeCompare(b.p.fecha_retiro + (b.p.hora_retiro || '')); });
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:17px">🔔 Pedidos de clientes</b><button onclick="document.getElementById(\'pc-ov\').style.display=\'none\'" style="border:0;background:none;font-size:24px;cursor:pointer">×</button></div>' +
+      '<div style="font-size:12px;color:#666;margin-bottom:10px">Tocá <b>Recibido</b> cuando lo veas y <b>Despachar al Salón</b> cuando esté listo. El aviso no se va hasta despacharlo.</div>' +
+      (lista.length ? lista.map(function (g) {
+        var p = g.p, u = urg(p.fecha_retiro);
+        return '<div class="pc-ped ' + u + '"><div style="display:flex;justify-content:space-between;gap:8px"><b>#' + p.numero + ' · ' + esc(p.cliente) + '</b><span style="font-weight:700;color:' + (u === 'r' ? '#C62828' : u === 'n' ? '#E65100' : '#2E7D32') + '">' + cuando(p.fecha_retiro, p.hora_retiro) + '</span></div>' +
+          '<div style="font-size:12px;color:#555;margin:3px 0 4px">' + (p.envio ? '🛵 Envío a ' + esc(p.direccion) : '🏪 Retira en el local') + (p.notas ? ' · 📝 ' + esc(p.notas) : '') + '</div>' +
+          g.it.map(function (i) {
+            return '<div class="pc-it"><b>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + '</b>' +
+              (i.estado === 'pendiente' ? '<button class="pc-btn" style="background:#1565C0" onclick="pcAvanzar(' + i.id + ',\'recibido\')">👍 Recibido</button>' : '<span style="font-size:12px;color:#1565C0">✓ recibido</span>') +
+              '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button></div>';
+          }).join('') + '</div>';
+      }).join('') : '<p style="color:#888;text-align:center;padding:20px">No hay pedidos pendientes 👌</p>');
+    ov.style.display = 'flex';
+  }
+  window.pcAvanzar = function (id, estado) {
+    if (estado === 'despachado' && !confirm('¿Despachar al Salón? Se manda a Recepción del Salón para sumar a su stock.')) return;
+    fetch(SB + 'rpc/pedido_item_avanzar', { method: 'POST', headers: H, body: JSON.stringify({ p_item: id, p_estado: estado }) })
+      .then(function (r) { return r.json(); })
+      .then(function () { if (typeof addToLog === 'function') addToLog((estado === 'recibido' ? '👍 Pedido de cliente recibido' : '🚚 Pedido de cliente despachado al Salón') + ' (#' + id + ')', 'pedido'); return cargar(); })
+      .catch(function () { alert('No se pudo guardar. Revisá la conexión y probá de nuevo.'); });
+  };
+  function iniciar() { cargar(); setInterval(cargar, 45000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+})();
+
+</script>
+<script>
+/* ── RECETAS: solo la administradora edita; las recetas nuevas de Gestión entran al flujo del sector ── */
+(function () {
+  var SECTOR = 'panaderia';
+  var SB = 'https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
+  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var H = { apikey: KEY, Authorization: 'Bearer ' + KEY };
+  function esAdmin() { return !!(window.POLY_USUARIO && window.POLY_USUARIO.rol === 'admin'); }
+
+  // 1) Bloqueo de edición para no-administradores
+  var st = document.createElement('style');
+  st.textContent = 'body.no-admin #add-recipe-btn, body.no-admin .add-recipe-btn, body.no-admin .recipe-action-btn { display: none !important; }';
+  document.head.appendChild(st);
+  function aplicar() { if (document.body) document.body.classList.toggle('no-admin', !esAdmin()); }
+  ['openAddRecipe', 'openEditRecipe', 'deleteRecipe', 'saveRecipe'].forEach(function (n) {
+    var f = window[n];
+    if (typeof f === 'function') window[n] = function () {
+      if (!esAdmin()) { alert('Solo la administradora puede crear o modificar recetas. Pedíselo a Poly (se cargan en Gestión → Recetas).'); return; }
+      return f.apply(this, arguments);
+    };
+  });
+  aplicar(); var n = 0, iv = setInterval(function () { aplicar(); if (++n > 20) clearInterval(iv); }, 500);
+
+  // 2) Recetas nuevas creadas en Gestión para este sector
+  function linea(i) { var q = +i.cantidad || 0, u = (i.unidad || '').toLowerCase(); if (u === 'kg' && q < 1) return Math.round(q * 1000) + 'gm ' + i.nombre; if ((u.indexOf('litro') === 0) && q < 1) return Math.round(q * 1000) + 'cc ' + i.nombre; return q + ' ' + (i.unidad || '') + ' ' + i.nombre; }
+  function slug(s) { return 'g_' + (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40); }
+  function cargar() {
+    Promise.all([
+      fetch(SB + 'recetas?select=id,nombre,ingredientes,pasos,unidades_tanda,cuota_semanal,unidad_venta,tipo&sector=eq.' + SECTOR + '&unidades_tanda=gt.0', { headers: H }).then(function (r) { return r.json(); }),
+      fetch(SB + 'produccion_mapeo?select=producto,receta_id&sector=eq.' + SECTOR, { headers: H }).then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      var recs = res[0] || [], mapeo = res[1] || [];
+      // las que ya tienen un producto propio en el sector (catálogo original) no se duplican
+      var yaVinculadas = {};
+      mapeo.forEach(function (m) { if (m.receta_id && m.producto.toLowerCase() !== '') yaVinculadas[m.receta_id] = (yaVinculadas[m.receta_id] || []).concat(m.producto.toLowerCase()); });
+      var nuevas = recs.filter(function (r) { var v = yaVinculadas[r.id] || []; return v.every(function (p) { return p === r.nombre.toLowerCase(); }); });
+      if (!nuevas.length) return;
+      if (SECTOR === 'panaderia' && typeof PROD_CATALOG !== 'undefined') {
+        nuevas.forEach(function (r) {
+          var id = slug(r.nombre);
+          if (PROD_CATALOG.some(function (c) { return c.id === id || c.nombre.toLowerCase() === r.nombre.toLowerCase(); })) return;
+          var rinde = +r.unidades_tanda, cuota = +r.cuota_semanal || 0, unidad = r.unidad_venta || 'u';
+          PROD_CATALOG.push({ id: id, nombre: r.nombre, unidad: unidad, rendimiento: rinde, cuota: cuota, tandas: cuota ? Math.max(1, Math.ceil(cuota / rinde)) : 0, pedidoOnly: !cuota, dias: {} });
+          if (typeof FREEZER_CATALOG !== 'undefined' && !FREEZER_CATALOG.some(function (c) { return c.id === id; })) FREEZER_CATALOG.push({ id: id, nombre: r.nombre, unidad: unidad, unidadesPorTanda: rinde, subtipos: [] });
+          if (typeof PROD_TO_FREEZER !== 'undefined') PROD_TO_FREEZER[id] = { id: id };
+        });
+        if (typeof renderProduccion === 'function') renderProduccion();
+        if (typeof renderFreezer === 'function') renderFreezer();
+      } else if (typeof recipes !== 'undefined') {
+        var base = 900000;
+        nuevas.forEach(function (r, k) {
+          if (recipes.some(function (x) { return (x.name || '').toLowerCase() === r.nombre.toLowerCase(); })) return;
+          recipes.push({ id: base + k, name: r.nombre, ingredients: (r.ingredientes || []).map(linea), steps: r.pasos || [],
+            cookTime: null, rendimiento: (+r.unidades_tanda) + ' ' + (r.unidad_venta || 'u') + ' por tanda', deposito: 'local', _gestion: true });
+        });
+        if (typeof renderRecipes === 'function') renderRecipes();
+      }
+    }).catch(function () {});
+  }
+  // esperamos a que el módulo termine de cargar sus propias recetas
+  var intentos = 0;
+  (function esperar() {
+    var listo = SECTOR === 'panaderia' ? (typeof PROD_CATALOG !== 'undefined') : (typeof recipes !== 'undefined' && recipes.length > 0);
+    if (listo || intentos++ > 30) cargar(); else setTimeout(esperar, 400);
+  })();
+})();
 
 </script>
 </body>

@@ -2000,5 +2000,208 @@ function renderTareas(){
 }
 
 </script>
+<script>
+/* ── PEDIDOS DE CLIENTES (Salón) ──
+   Toma de pedido completa, aviso a cada sector, seguimiento y entrega con descuento de stock. */
+(function () {
+  var SB = 'https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
+  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+  var productos = [], pedidos = [], carrito = [];
+  var SECT = { panaderia: '🍞 Panadería', pasteleria: '🍰 Pastelería', cocina: '🍳 Cocina' };
+  function api(path, opt) { return fetch(SB + path, Object.assign({ headers: H }, opt || {})).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Error'); return j; }); }); }
+  function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function plata(n) { return '$' + Math.round(+n || 0).toLocaleString('es-AR'); }
+  function ymd(off) { var d = new Date(); d.setDate(d.getDate() + (off || 0)); return d.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }); }
+  function cuando(f, h) { var t = f === ymd(0) ? 'HOY' : f === ymd(1) ? 'Mañana' : (f < ymd(0) ? 'ATRASADO ' : '') + new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }); return t + (h ? ' ' + h : ''); }
+  function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function aviso(m) { if (typeof showToast === 'function') showToast(m); else alert(m); }
+
+  var css = document.createElement('style');
+  css.textContent = '#pcs-pill{position:fixed;top:4px;right:4px;z-index:99998;border:0;border-radius:16px;padding:6px 12px;font:700 13px system-ui,sans-serif;color:#fff;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);display:none;background:#6A1B9A}' +
+    '#pcs-pill.r{background:#C62828;animation:pcspulse 1.2s infinite}@keyframes pcspulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}' +
+    '.pcs-in{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px;margin:3px 0 9px;font-family:inherit}' +
+    '.pcs-lb{font-size:12px;color:#555;font-weight:600}.pcs-card{background:#fff;border:1px solid #eee;border-radius:12px;padding:12px;margin-bottom:10px}' +
+    '.pcs-card.r{border-color:#ef9a9a;background:#fff5f5}.pcs-card.ok{border-color:#a5d6a7;background:#f3fbf3}' +
+    '.pcs-b{border:0;border-radius:8px;padding:10px 12px;font:700 13px system-ui,sans-serif;cursor:pointer;color:#fff;background:#6A1B9A}' +
+    '.pcs-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}' +
+    '.pcs-prod{display:flex;justify-content:space-between;gap:8px;padding:9px 6px;border-bottom:1px solid #f1f1f1;cursor:pointer}.pcs-prod:hover{background:#faf5ff}' +
+    '#pcs-ov{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:14px 8px}' +
+    '#pcs-box{background:#fff;border-radius:14px;max-width:600px;width:100%;padding:16px;font-family:system-ui,sans-serif;color:#222}';
+  document.head.appendChild(css);
+
+  function montar() {
+    var tabs = document.getElementById('tabs');
+    if (tabs && !document.getElementById('tab-clientes')) {
+      var t = document.createElement('button'); t.className = 'tab'; t.id = 'tab-clientes'; t.style.position = 'relative';
+      t.innerHTML = '<i class="ti ti-clipboard-list"></i>Clientes'; t.onclick = function () { switchTab('clientes'); };
+      tabs.insertBefore(t, tabs.children[2] || null);
+    }
+    var ref = document.getElementById('panel-comanda');
+    if (ref && !document.getElementById('panel-clientes')) {
+      var p = document.createElement('div'); p.className = 'panel'; p.id = 'panel-clientes';
+      p.innerHTML = '<div style="padding:14px;overflow-y:auto;flex:1;"><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><div id="pcs-lista"></div></div>';
+      ref.parentNode.insertBefore(p, ref);
+    }
+    if (!document.getElementById('pcs-pill')) {
+      var pill = document.createElement('button'); pill.id = 'pcs-pill'; pill.onclick = function () { switchTab('clientes'); }; document.body.appendChild(pill);
+      var ov = document.createElement('div'); ov.id = 'pcs-ov'; ov.innerHTML = '<div id="pcs-box"></div>'; document.body.appendChild(ov);
+    }
+  }
+  // switchTab del Salón no conoce la nueva pestaña: la sumamos
+  var _sw = window.switchTab;
+  window.switchTab = function (name) {
+    if (name === 'clientes') {
+      document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+      document.getElementById('tab-clientes').classList.add('active');
+      document.getElementById('panel-clientes').classList.add('active');
+      cargarPedidos();
+      return;
+    }
+    return _sw.apply(this, arguments);
+  };
+
+  function cargarProductos() {
+    return api('recetas?select=id,nombre,sector,precio_venta,tipo,unidad_venta&tipo=neq.BASE&order=nombre').then(function (r) { productos = r || []; }).catch(function () {});
+  }
+  function cargarPedidos() {
+    return api('pedidos_clientes?select=*,pedidos_clientes_items(*)&estado=in.(pendiente,en_produccion,listo)&order=fecha_retiro,hora_retiro')
+      .then(function (r) { pedidos = r || []; pintarLista(); pintarPill(); }).catch(function () {});
+  }
+  function pintarPill() {
+    var pill = document.getElementById('pcs-pill'); if (!pill) return;
+    var hoy = pedidos.filter(function (p) { return p.fecha_retiro <= ymd(0); });
+    var listos = pedidos.filter(function (p) { return p.estado === 'listo'; });
+    if (!pedidos.length) { pill.style.display = 'none'; return; }
+    pill.style.display = 'block'; pill.className = hoy.length ? 'r' : '';
+    pill.textContent = hoy.length ? '🔔 ' + hoy.length + ' pedido' + (hoy.length > 1 ? 's' : '') + ' para hoy' : '🧾 ' + pedidos.length + ' pedido' + (pedidos.length > 1 ? 's' : '') + (listos.length ? ' · ' + listos.length + ' listo' + (listos.length > 1 ? 's' : '') : '');
+    var tab = document.getElementById('tab-clientes');
+    if (tab) { var b = tab.querySelector('.pcs-badge'); if (!b) { b = document.createElement('span'); b.className = 'pcs-badge'; b.style.cssText = 'position:absolute;top:2px;right:4px;background:#E24B4A;color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;'; tab.appendChild(b); } b.textContent = pedidos.length; }
+  }
+  function estadoItem(i) { return i.estado === 'despachado' ? ['✅ despachado', '#dcfce7', '#166534'] : i.estado === 'recibido' ? ['👨‍🍳 en preparación', '#dbeafe', '#1e40af'] : i.estado === 'cancelado' ? ['cancelado', '#eee', '#666'] : ['⏳ sin ver', '#fef9c3', '#92400e']; }
+  function pintarLista() {
+    var el = document.getElementById('pcs-lista'); if (!el) return;
+    if (!pedidos.length) { el.innerHTML = '<div style="text-align:center;color:#aaa;padding:24px;font-size:13px;">No hay pedidos de clientes pendientes.</div>'; return; }
+    el.innerHTML = pedidos.map(function (p) {
+      var its = p.pedidos_clientes_items || [], saldo = (+p.total || 0) - (+p.sena || 0), listo = p.estado === 'listo';
+      var tel = (p.telefono || '').replace(/\D/g, '');
+      return '<div class="pcs-card ' + (listo ? 'ok' : p.fecha_retiro <= ymd(0) ? 'r' : '') + '">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:15px">#' + p.numero + ' · ' + esc(p.cliente) + '</b><b style="color:' + (p.fecha_retiro <= ymd(0) ? '#C62828' : '#6A1B9A') + '">' + cuando(p.fecha_retiro, p.hora_retiro) + '</b></div>' +
+        '<div style="font-size:12px;color:#555;margin:4px 0">' + (p.telefono ? '📞 ' + esc(p.telefono) + (tel ? ' · <a href="https://wa.me/' + (tel.length <= 10 ? '549' + tel : tel) + '" target="_blank">WhatsApp</a>' : '') + ' · ' : '') + (p.envio ? '🛵 Envío: ' + esc(p.direccion) : '🏪 Retira en el local') + '</div>' +
+        '<div style="font-size:12px;color:#555;margin-bottom:6px">Total ' + plata(p.total) + ' · Seña ' + plata(p.sena) + (p.sena_medio ? ' (' + esc(p.sena_medio) + ')' : '') + ' · <b>Saldo ' + plata(saldo) + '</b>' + (p.notas ? '<br>📝 ' + esc(p.notas) : '') + '</div>' +
+        its.map(function (i) { var e = estadoItem(i); return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed #eee;font-size:14px"><span>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + ' <span style="color:#999;font-size:11px">' + (SECT[i.sector] || i.sector) + '</span></span><span class="pcs-chip" style="background:' + e[1] + ';color:' + e[2] + '">' + e[0] + '</span></div>'; }).join('') +
+        '<div style="display:flex;gap:8px;margin-top:10px"><button class="pcs-b" style="flex:1;background:' + (listo ? '#2E7D32' : '#9E9E9E') + '" onclick="pcsEntregar(' + p.id + ')">📦 Entregado al cliente</button><button class="pcs-b" style="background:#fff;color:#C62828;border:1px solid #ef9a9a" onclick="pcsCancelar(' + p.id + ')">Cancelar</button></div></div>';
+    }).join('');
+  }
+
+  // ── Formulario de pedido nuevo ──
+  window.pcsNuevo = function () {
+    carrito = [];
+    var box = document.getElementById('pcs-box');
+    box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">🧾 Nuevo pedido de cliente</b><button onclick="pcsCerrar()" style="border:0;background:none;font-size:24px;cursor:pointer">×</button></div>' +
+      '<div class="pcs-lb" style="margin-top:8px">Nombre del cliente *</div><input id="pcs-cli" class="pcs-in" autocomplete="off">' +
+      '<div class="pcs-lb">Teléfono</div><input id="pcs-tel" class="pcs-in" type="tel" inputmode="tel" placeholder="11 2345-6789">' +
+      '<div style="display:flex;gap:8px"><div style="flex:1"><div class="pcs-lb">Día que retira / se entrega *</div><input id="pcs-fec" class="pcs-in" type="date" value="' + ymd(1) + '" min="' + ymd(0) + '"></div><div style="width:110px"><div class="pcs-lb">Hora</div><input id="pcs-hora" class="pcs-in" type="time"></div></div>' +
+      '<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:2px 0 8px"><input type="checkbox" id="pcs-env" onchange="document.getElementById(\'pcs-dirw\').style.display=this.checked?\'block\':\'none\'"> 🛵 Hay que entregarlo (envío)</label>' +
+      '<div id="pcs-dirw" style="display:none"><div class="pcs-lb">Dirección de entrega *</div><input id="pcs-dir" class="pcs-in" placeholder="Calle, número, piso/depto, barrio"></div>' +
+      '<div class="pcs-lb">Productos *</div><input id="pcs-bus" class="pcs-in" placeholder="🔎 Buscar producto (ej: torta, medialunas, empanadas)" oninput="pcsBuscar()" autocomplete="off">' +
+      '<div id="pcs-res" style="max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:8px;display:none;margin:-4px 0 8px"></div>' +
+      '<div id="pcs-car"></div>' +
+      '<div style="display:flex;gap:8px;margin-top:8px"><div style="flex:1"><div class="pcs-lb">Seña</div><input id="pcs-sena" class="pcs-in" type="number" inputmode="decimal" placeholder="0" oninput="pcsTotales()"></div><div style="flex:1"><div class="pcs-lb">Pagó la seña con</div><select id="pcs-medio" class="pcs-in"><option value="">—</option><option>Efectivo</option><option>Mercado Pago / QR</option><option>Transferencia</option><option>Tarjeta</option></select></div></div>' +
+      '<div class="pcs-lb">Notas (dedicatoria, sin TACC, decoración…)</div><input id="pcs-not" class="pcs-in">' +
+      '<div id="pcs-tot" style="background:#faf5ff;border-radius:10px;padding:10px;margin:6px 0 12px;font-size:14px"></div>' +
+      '<button id="pcs-ok" class="pcs-b" style="width:100%;padding:14px;font-size:15px" onclick="pcsGuardar()">✅ Guardar y avisar a los sectores</button>';
+    document.getElementById('pcs-ov').style.display = 'flex';
+    pcsPintarCarrito();
+    if (!productos.length) cargarProductos();
+  };
+  window.pcsCerrar = function () { document.getElementById('pcs-ov').style.display = 'none'; };
+  window.pcsBuscar = function () {
+    var q = norm(document.getElementById('pcs-bus').value), res = document.getElementById('pcs-res');
+    if (q.length < 2) { res.style.display = 'none'; return; }
+    var palabras = q.split(/\s+/);
+    var hits = productos.filter(function (p) { var n = norm(p.nombre); return palabras.every(function (w) { return n.indexOf(w) >= 0; }); }).slice(0, 30);
+    res.style.display = 'block';
+    res.innerHTML = hits.length ? hits.map(function (p) { return '<div class="pcs-prod" onclick="pcsAgregar(\'' + p.id + '\')"><span>' + esc(p.nombre) + ' <span style="color:#999;font-size:11px">' + (SECT[p.sector] || '') + '</span></span><b>' + (+p.precio_venta ? plata(p.precio_venta) : '') + '</b></div>'; }).join('') : '<div style="padding:10px;color:#999;font-size:13px">No encontré ese producto. Si es nuevo, pedile a Poly que lo cargue en Gestión.</div>';
+  };
+  window.pcsAgregar = function (id) {
+    var p = productos.find(function (x) { return x.id === id; }); if (!p) return;
+    var ya = carrito.find(function (c) { return c.receta_id === id; });
+    if (ya) ya.cantidad += 1; else carrito.push({ receta_id: p.id, producto: p.nombre, sector: p.sector || 'panaderia', cantidad: 1, unidad: p.unidad_venta || 'u', precio: +p.precio_venta || 0 });
+    document.getElementById('pcs-bus').value = ''; document.getElementById('pcs-res').style.display = 'none';
+    pcsPintarCarrito();
+  };
+  window.pcsCant = function (k, v) { carrito[k].cantidad = Math.max(0, +v || 0); pcsTotales(); };
+  window.pcsQuitar = function (k) { carrito.splice(k, 1); pcsPintarCarrito(); };
+  window.pcsPintarCarrito = function () {
+    var el = document.getElementById('pcs-car');
+    el.innerHTML = carrito.length ? carrito.map(function (c, k) {
+      return '<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid #f1f1f1"><div style="flex:1;font-size:14px">' + esc(c.producto) + '<div style="font-size:11px;color:#999">' + (SECT[c.sector] || '') + (c.precio ? ' · ' + plata(c.precio) + ' c/u' : '') + '</div></div>' +
+        '<button class="pcs-b" style="padding:6px 11px;background:#eee;color:#333" onclick="pcsCant(' + k + ',' + (c.cantidad - 1) + ');pcsPintarCarrito()">−</button>' +
+        '<input type="number" inputmode="decimal" value="' + c.cantidad + '" onchange="pcsCant(' + k + ',this.value)" style="width:56px;padding:6px;border:1px solid #ddd;border-radius:6px;text-align:center;font-size:15px">' +
+        '<button class="pcs-b" style="padding:6px 11px" onclick="pcsCant(' + k + ',' + (c.cantidad + 1) + ');pcsPintarCarrito()">+</button>' +
+        '<button onclick="pcsQuitar(' + k + ')" style="border:0;background:none;color:#C62828;font-size:18px;cursor:pointer">×</button></div>';
+    }).join('') : '<div style="font-size:13px;color:#999;padding:4px 0 8px">Todavía no agregaste productos.</div>';
+    pcsTotales();
+  };
+  window.pcsTotales = function () {
+    var t = carrito.reduce(function (a, c) { return a + c.cantidad * c.precio; }, 0), s = +((document.getElementById('pcs-sena') || {}).value) || 0;
+    var el = document.getElementById('pcs-tot'); if (el) el.innerHTML = 'Total <b>' + plata(t) + '</b> · Seña ' + plata(s) + ' · Saldo a cobrar <b>' + plata(t - s) + '</b>';
+  };
+  window.pcsGuardar = function () {
+    var v = function (id) { return (document.getElementById(id).value || '').trim(); };
+    var items = carrito.filter(function (c) { return c.cantidad > 0; });
+    if (!v('pcs-cli')) return aviso('Falta el nombre del cliente');
+    if (!v('pcs-fec')) return aviso('Falta el día de retiro');
+    if (document.getElementById('pcs-env').checked && !v('pcs-dir')) return aviso('Falta la dirección de entrega');
+    if (!items.length) return aviso('Agregá al menos un producto');
+    var b = document.getElementById('pcs-ok'); b.disabled = true; b.textContent = 'Guardando…';
+    var u = window.POLY_USUARIO || {};
+    var body = { cliente: v('pcs-cli'), telefono: v('pcs-tel'), fecha_retiro: v('pcs-fec'), hora_retiro: v('pcs-hora'), envio: document.getElementById('pcs-env').checked, direccion: v('pcs-dir'),
+      sena: v('pcs-sena') || 0, sena_medio: v('pcs-medio'), notas: v('pcs-not'), creado_por: u.usuario || 'salon', items: items };
+    api('rpc/crear_pedido_cliente', { method: 'POST', body: JSON.stringify({ p: body }) }).then(function (r) {
+      pcsCerrar(); aviso('✅ Pedido #' + r.numero + ' guardado. Se avisó a ' + Array.from(new Set(items.map(function (i) { return (SECT[i.sector] || i.sector); }))).join(', '));
+      if (typeof addToLog === 'function') addToLog('🧾 Pedido de cliente #' + r.numero + ' — ' + body.cliente);
+      cargarPedidos();
+    }).catch(function (e) { b.disabled = false; b.textContent = '✅ Guardar y avisar a los sectores'; aviso('⚠️ ' + e.message); });
+  };
+
+  // ── Entregar: confirma la recepción pendiente y descuenta del stock del Salón ──
+  window.pcsEntregar = function (id) {
+    var p = pedidos.find(function (x) { return x.id === id; }); if (!p) return;
+    var its = (p.pedidos_clientes_items || []).filter(function (i) { return i.estado !== 'cancelado'; });
+    var faltan = its.filter(function (i) { return i.estado !== 'despachado'; });
+    if (faltan.length && !confirm('Todavía no se despachó: ' + faltan.map(function (i) { return i.producto; }).join(', ') + '.\n¿Lo entregás igual? (se descuenta del stock del salón)')) return;
+    if (!faltan.length && !confirm('¿Entregar el pedido #' + p.numero + ' a ' + p.cliente + '? Saldo a cobrar: ' + plata((+p.total || 0) - (+p.sena || 0)))) return;
+    var conf = Promise.resolve();
+    if (typeof loadDespachosPendientes === 'function') conf = loadDespachosPendientes().then(function () {
+      var pend = (window.despachosPend || (typeof despachosPend !== 'undefined' ? despachosPend : [])).filter(function (r) { return String(r.pedido_id) === String(p.id); });
+      return pend.reduce(function (pr, r) { return pr.then(function () { return confirmarDespacho(r.id); }); }, Promise.resolve());
+    });
+    conf.then(function () {
+      its.forEach(function (i) {
+        var pid = (typeof resolverProductoSalon === 'function') ? resolverProductoSalon(i.receta_id || i.producto, i.producto) : null;
+        if (pid && typeof stockState !== 'undefined') stockState[pid] = Math.max(0, Math.round(((stockState[pid] || 0) - (+i.cantidad || 0)) * 100) / 100);
+      });
+      if (typeof saveStock === 'function') saveStock();
+      if (typeof renderStock === 'function') renderStock();
+      return api('rpc/pedido_cliente_estado', { method: 'POST', body: JSON.stringify({ p_pedido: id, p_estado: 'entregado' }) });
+    }).then(function () {
+      if (typeof addToLog === 'function') addToLog('📦 Pedido #' + p.numero + ' entregado a ' + p.cliente);
+      aviso('📦 Pedido #' + p.numero + ' entregado. Stock descontado.'); cargarPedidos();
+    }).catch(function (e) { aviso('⚠️ ' + e.message); });
+  };
+  window.pcsCancelar = function (id) {
+    var p = pedidos.find(function (x) { return x.id === id; });
+    if (!p || !confirm('¿Cancelar el pedido #' + p.numero + ' de ' + p.cliente + '?')) return;
+    api('rpc/pedido_cliente_estado', { method: 'POST', body: JSON.stringify({ p_pedido: id, p_estado: 'cancelado' }) }).then(function () { aviso('Pedido cancelado'); cargarPedidos(); });
+  };
+
+  function iniciar() { montar(); cargarProductos(); cargarPedidos(); setInterval(cargarPedidos, 45000); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+})();
+
+</script>
 </body>
 </html>
