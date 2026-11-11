@@ -1,6 +1,77 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>
+/* Poly Artesanal — control de acceso
+   Cada módulo incluye este archivo. Verifica la sesión y deja entrar solo:
+   - al administrador (rol admin) a todo
+   - a cada usuario de sector, únicamente a su módulo
+*/
+(function () {
+  var SB_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var ARCHIVO = { cocina: 'asistente_cocina.html', panaderia: 'asistente_panaderia.html', pasteleria: 'asistente_pasteleria.html',
+                  madrugada: 'asistente_madrugada.html', salon: 'asistente_salon.html', deposito: 'asistente_deposito.html' };
+  var pagina = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+  var requerido = null; // módulo que exige esta página; 'admin' = solo Poly
+  Object.keys(ARCHIVO).forEach(function (m) { if (ARCHIVO[m] === pagina) requerido = m; });
+  if (pagina === 'gestion.html' || pagina === 'central.html') requerido = 'admin';
+
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function borrar() { try { localStorage.removeItem('poly_sesion'); localStorage.removeItem('poly_usuario'); } catch (e) {} }
+  function irA(p) { location.replace(p); }
+  function mostrar() { document.documentElement.style.visibility = ''; }
+
+  window.polyRPC = function (fn, body) {
+    return fetch(SB_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}) }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j && j.message || 'Error'); return j; }); });
+  };
+  window.polyToken = function () { return leer('poly_sesion'); };
+  window.polySalir = function () {
+    var t = leer('poly_sesion'); borrar();
+    var fin = function () { location.href = 'index.html'; };
+    if (t) window.polyRPC('cerrar_sesion', { p_token: t }).then(fin, fin); else fin();
+  };
+
+  function permitido(u) { return u.rol === 'admin' || (requerido && requerido !== 'admin' && u.modulo === requerido); }
+  function destino(u) { return u.rol === 'admin' ? 'index.html' : (ARCHIVO[u.modulo] || 'index.html'); }
+
+  function barra(u) {
+    var b = document.createElement('div');
+    b.id = 'poly-sesion';
+    b.style.cssText = 'position:fixed;top:4px;left:4px;z-index:99999;font:11px system-ui,sans-serif;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:3px 4px 3px 9px;display:flex;gap:6px;align-items:center;';
+    b.innerHTML = '<span>👤 ' + (u.nombre || u.usuario) + '</span>' +
+      (u.rol === 'admin' ? '<a href="index.html" style="color:#fff;text-decoration:none;background:rgba(255,255,255,.18);border-radius:10px;padding:2px 7px;">Menú</a>' : '') +
+      '<button type="button" style="border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:10px;padding:2px 7px;font:inherit;cursor:pointer;">Salir</button>';
+    b.querySelector('button').onclick = window.polySalir;
+    document.body.appendChild(b);
+  }
+
+  if (pagina === 'index.html' || pagina === '') return; // el index maneja su propio login
+  document.documentElement.style.visibility = 'hidden';
+  var token = leer('poly_sesion');
+  if (!token) { irA('index.html'); return; }
+
+  var guardado = null; try { guardado = JSON.parse(leer('poly_usuario') || 'null'); } catch (e) {}
+  window.polyRPC('verificar_sesion', { p_token: token }).then(function (u) {
+    if (!u || !u.ok) { borrar(); irA('index.html'); return; }
+    try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
+    if (!permitido(u)) { irA(destino(u)); return; }
+    window.POLY_USUARIO = u;
+    var listo = function () { barra(u); mostrar(); };
+    if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
+  }, function () {
+    // sin internet: si ya había entrado en este dispositivo, lo dejamos trabajar
+    if (guardado && permitido(guardado)) {
+      window.POLY_USUARIO = guardado;
+      var listo = function () { barra(guardado); mostrar(); };
+      if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
+    } else { irA('index.html'); }
+  });
+})();
+
+</script>
 <meta charset="UTF-8" />
 <meta name="theme-color" content="#880E4F"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>

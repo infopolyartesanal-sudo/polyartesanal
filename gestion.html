@@ -1,6 +1,77 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>
+/* Poly Artesanal — control de acceso
+   Cada módulo incluye este archivo. Verifica la sesión y deja entrar solo:
+   - al administrador (rol admin) a todo
+   - a cada usuario de sector, únicamente a su módulo
+*/
+(function () {
+  var SB_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var ARCHIVO = { cocina: 'asistente_cocina.html', panaderia: 'asistente_panaderia.html', pasteleria: 'asistente_pasteleria.html',
+                  madrugada: 'asistente_madrugada.html', salon: 'asistente_salon.html', deposito: 'asistente_deposito.html' };
+  var pagina = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+  var requerido = null; // módulo que exige esta página; 'admin' = solo Poly
+  Object.keys(ARCHIVO).forEach(function (m) { if (ARCHIVO[m] === pagina) requerido = m; });
+  if (pagina === 'gestion.html' || pagina === 'central.html') requerido = 'admin';
+
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function borrar() { try { localStorage.removeItem('poly_sesion'); localStorage.removeItem('poly_usuario'); } catch (e) {} }
+  function irA(p) { location.replace(p); }
+  function mostrar() { document.documentElement.style.visibility = ''; }
+
+  window.polyRPC = function (fn, body) {
+    return fetch(SB_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}) }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j && j.message || 'Error'); return j; }); });
+  };
+  window.polyToken = function () { return leer('poly_sesion'); };
+  window.polySalir = function () {
+    var t = leer('poly_sesion'); borrar();
+    var fin = function () { location.href = 'index.html'; };
+    if (t) window.polyRPC('cerrar_sesion', { p_token: t }).then(fin, fin); else fin();
+  };
+
+  function permitido(u) { return u.rol === 'admin' || (requerido && requerido !== 'admin' && u.modulo === requerido); }
+  function destino(u) { return u.rol === 'admin' ? 'index.html' : (ARCHIVO[u.modulo] || 'index.html'); }
+
+  function barra(u) {
+    var b = document.createElement('div');
+    b.id = 'poly-sesion';
+    b.style.cssText = 'position:fixed;top:4px;left:4px;z-index:99999;font:11px system-ui,sans-serif;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:3px 4px 3px 9px;display:flex;gap:6px;align-items:center;';
+    b.innerHTML = '<span>👤 ' + (u.nombre || u.usuario) + '</span>' +
+      (u.rol === 'admin' ? '<a href="index.html" style="color:#fff;text-decoration:none;background:rgba(255,255,255,.18);border-radius:10px;padding:2px 7px;">Menú</a>' : '') +
+      '<button type="button" style="border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:10px;padding:2px 7px;font:inherit;cursor:pointer;">Salir</button>';
+    b.querySelector('button').onclick = window.polySalir;
+    document.body.appendChild(b);
+  }
+
+  if (pagina === 'index.html' || pagina === '') return; // el index maneja su propio login
+  document.documentElement.style.visibility = 'hidden';
+  var token = leer('poly_sesion');
+  if (!token) { irA('index.html'); return; }
+
+  var guardado = null; try { guardado = JSON.parse(leer('poly_usuario') || 'null'); } catch (e) {}
+  window.polyRPC('verificar_sesion', { p_token: token }).then(function (u) {
+    if (!u || !u.ok) { borrar(); irA('index.html'); return; }
+    try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
+    if (!permitido(u)) { irA(destino(u)); return; }
+    window.POLY_USUARIO = u;
+    var listo = function () { barra(u); mostrar(); };
+    if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
+  }, function () {
+    // sin internet: si ya había entrado en este dispositivo, lo dejamos trabajar
+    if (guardado && permitido(guardado)) {
+      window.POLY_USUARIO = guardado;
+      var listo = function () { barra(guardado); mostrar(); };
+      if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
+    } else { irA('index.html'); }
+  });
+})();
+
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Poly Artesanal · Gestión</title>
@@ -80,6 +151,7 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#rrhh">👥 RRHH</a>
+  <a href="#usuarios">🔐 Usuarios</a>
 </nav>
 <main id="app"><div class="cargando">Cargando datos…</div></main>
 <div id="modal"><div class="caja"><button class="cerrar" onclick="cerrarModal()">×</button><div id="modalc"></div></div></div>
@@ -216,7 +288,7 @@ const PROMPT_TICKET=`Leé este cierre/reporte de caja de una panadería y devolv
 Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -517,7 +589,7 @@ function vInventario(){
   const valor=D.insumos.reduce((a,i)=>a+Math.max(0,+i.stock||0)*(+i.costo_unitario||0),0);
   $('#app').innerHTML=`<h2>📦 Inventario de insumos</h2>
   <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Insumos</div><div class="val">${D.insumos.length}</div></div><div class="card kpi"><div class="lbl">Valor del stock</div><div class="val">${$$(valor)}</div></div><div class="card kpi"><div class="lbl">Críticos</div><div class="val" style="color:var(--rojo)">${criticos().length}</div></div><div class="card kpi"><div class="lbl">Sin mínimo configurado</div><div class="val">${D.insumos.filter(i=>!(+i.stock_minimo>0)).length}</div><div class="sub muted">sin mínimo no hay alertas ni sugerencias de compra</div></div></div>
-  <div class="acciones"><button class="btn" onclick="editarInsumo()">➕ Nuevo insumo</button><input placeholder="Buscar…" style="max-width:220px" value="${esc(fInv.q)}" onchange="fInv.q=this.value;vInventario()">
+  <div class="acciones"><button class="btn" onclick="editarInsumo()">➕ Nuevo insumo</button><button class="btn rojo" onclick="confirmar('¿Poner en 0 el stock de TODOS los sectores (insumos, depósito, salón, freezer, cámara, pastelería y cocina)? Se guarda un respaldo antes.',resetStock)">0️⃣ Poner todo en 0</button><input placeholder="Buscar…" style="max-width:220px" value="${esc(fInv.q)}" onchange="fInv.q=this.value;vInventario()">
   <select style="max-width:180px" onchange="fInv.cat=this.value;vInventario()"><option value="">Todas las categorías</option>${cats.map(c=>`<option ${c===fInv.cat?'selected':''}>${esc(c)}</option>`).join('')}</select>
   <select style="max-width:180px" onchange="fInv.solo=this.value;vInventario()"><option value="">Todos</option><option value="crit" ${fInv.solo==='crit'?'selected':''}>Solo críticos</option><option value="sinmin" ${fInv.solo==='sinmin'?'selected':''}>Sin mínimo</option></select></div>
   <p class="muted">Podés corregir el stock, el mínimo y el óptimo directamente en la tabla: se guarda al salir de la casilla.</p>
@@ -748,6 +820,33 @@ function editarEmpleado(id){const e=id?D.empleados.find(x=>x.id===id):{activo:tr
   <div class="acciones" style="margin-top:10px"><button class="btn" id="bGE">💾 Guardar</button></div>`);
   $('#bGE').onclick=async()=>{const row={nombre:$('#eN').value.trim(),apellido:$('#eA').value.trim(),rol:$('#eR').value.trim(),sector:$('#eS').value||null,fecha_ingreso:$('#eF').value||null,pin:$('#eP').value.trim()||null,activo:$('#eE').value==='1'};if(!row.nombre)return;
     if(id){const [x]=await sbUpd('empleados','id=eq.'+id,row);Object.assign(e,x)}else{const [x]=await sbIns('empleados',[row]);D.empleados.push(x)}cerrarModal();vRRHH()}}
+
+// ================= USUARIOS =================
+const MODULOS={cocina:'🍳 Cocina',panaderia:'🍞 Panadería',pasteleria:'🍰 Pastelería',madrugada:'🌅 Madrugada',salon:'🏪 Salón',deposito:'📦 Depósito'};
+async function resetStock(){try{const r=await polyRPC('admin_reset_stock',{p_token:polyToken()});D.insumos.forEach(i=>i.stock=0);toast('Stock en 0 ✅ (respaldo #'+r.respaldo+')',5000);vInventario()}catch(e){toast('⚠️ '+e.message,6000)}}
+async function vUsuarios(){
+  $('#app').innerHTML='<div class="cargando">Cargando usuarios…</div>';
+  let us=[];try{us=await polyRPC('admin_usuarios',{p_token:polyToken()})}catch(e){$('#app').innerHTML='<div class="card">'+esc(e.message)+'</div>';return}
+  window._us=us;
+  $('#app').innerHTML=`<h2>🔐 Usuarios y claves</h2>
+  <p class="muted">Vos (administradora) entrás a todo. Cada sector entra solo a su módulo con su usuario y clave. Si cambiás una clave o das de baja a alguien, se le cierra la sesión en todos los dispositivos.</p>
+  <div class="acciones"><button class="btn" onclick="editarUsuario()">➕ Nuevo usuario</button></div>
+  <div class="card scroll"><table><tr><th>Usuario</th><th>Nombre</th><th>Acceso</th><th>Último ingreso</th><th>Estado</th><th></th></tr>
+  ${us.map((u,k)=>`<tr><td><b>${esc(u.usuario)}</b></td><td>${esc(u.nombre||'')}</td><td>${u.rol==='admin'?'<span class="chip ok">Todo (admin)</span>':esc(MODULOS[u.modulo]||u.modulo)}</td><td class="muted">${u.ultimo_ingreso?new Date(u.ultimo_ingreso).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'nunca'}</td><td><span class="chip ${u.activo?'ok':'neu'}">${u.activo?'activo':'de baja'}</span></td><td><button class="btn sec peq" onclick="editarUsuario(${k})">Editar / cambiar clave</button></td></tr>`).join('')}</table></div>`;
+}
+function editarUsuario(k){const u=k!=null?window._us[k]:{usuario:'',nombre:'',rol:'sector',modulo:'cocina',activo:true};const nuevo=k==null;
+  const yo=window.POLY_USUARIO&&window.POLY_USUARIO.usuario===u.usuario;
+  modal(`<h3>${nuevo?'Nuevo usuario':'Editar '+esc(u.usuario)}</h3>
+  <div class="fila"><div><label>Usuario (para entrar)</label><input id="uU" value="${esc(u.usuario)}" ${nuevo?'':'disabled'} autocapitalize="none" placeholder="ej: cocina2"></div><div><label>Nombre</label><input id="uN" value="${esc(u.nombre||'')}"></div></div>
+  <div class="fila"><div><label>Acceso</label><select id="uR" ${yo?'disabled':''} onchange="$('#uMw').style.display=this.value==='admin'?'none':''"><option value="sector">Un módulo</option><option value="admin" ${u.rol==='admin'?'selected':''}>Todo (administrador)</option></select></div>
+  <div id="uMw" style="${u.rol==='admin'?'display:none':''}"><label>Módulo</label><select id="uM">${Object.entries(MODULOS).map(([m,n])=>`<option value="${m}" ${u.modulo===m?'selected':''}>${n}</option>`).join('')}</select></div></div>
+  <label>${nuevo?'Clave':'Clave nueva (dejala vacía para no cambiarla)'}</label><input id="uC" type="text" autocomplete="new-password" placeholder="mínimo 6 caracteres">
+  <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="uA" ${u.activo?'checked':''} ${yo?'disabled':''} style="width:auto"> Activo (si lo desmarcás, no puede entrar más)</label>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="bGU">💾 Guardar</button></div>`);
+  $('#bGU').onclick=async()=>{const rol=$('#uR').value;const clave=$('#uC').value.trim()||null;
+    try{await polyRPC('admin_guardar_usuario',{p_token:polyToken(),p_usuario:$('#uU').value,p_nombre:$('#uN').value.trim(),p_rol:rol,p_modulo:rol==='admin'?null:$('#uM').value,p_activo:$('#uA').checked,p_clave:clave});
+      cerrarModal();toast(clave?'Guardado ✅ Anotá la clave: '+clave:'Guardado ✅',clave?9000:2500);vUsuarios()}catch(e){toast('⚠️ '+e.message,6000)}};
+}
 
 // ================= ARRANQUE =================
 cargarTodo().then(ir).catch(e=>{$('#app').innerHTML='<div class="card"><h3>No pude conectar con la base de datos</h3><p>'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Reintentar</button></div>'});
