@@ -523,7 +523,7 @@ function switchTab(name){
 // ── A HORNEAR ──────────────────────────────────────────────
 async function loadLeudando(){
   setStatus('Cargando…');
-  const rows = await sbSelect('cocina_leudado', '?estado=eq.leudando&order=created_at.asc');
+  const rows = await sbSelect('cocina_leudado', '?estado=eq.leudando&created_at=gte.' + encodeURIComponent(new Date(Date.now() - 36*3600*1000).toISOString()) + '&order=created_at.asc');
   leudando = rows || [];
   renderLeudando();
   setStatus('Listo');

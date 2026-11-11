@@ -541,8 +541,8 @@
   <!-- FREEZER → LEUDADO -->
   <div class="panel" id="panel-leudado">
     <div style="flex:1;overflow-y:auto;">
-      <div id="conector-panaderia" style="padding:12px 12px 0;"></div>
       <div id="leudado-panel" style="padding:12px;"></div>
+      <div id="conector-panaderia" style="padding:0 12px 12px;"></div>
     </div>
   </div>
 
@@ -1135,8 +1135,21 @@ function adjustLeudadoCantidad(id, delta) {
   const def = items.find(x => x.id === id);
   if (!def) return;
   const item = getLeudadoItem(id, def.cantidad);
+  if (item.sacado) return;
   item.cantidad = Math.max(0, item.cantidad + delta);
   saveLeudado(); renderLeudado();
+}
+
+function setLeudadoCantidad(id, valor) {
+  const items = LEUDADO_SEMANAL[getDayKeyLeudado()] || [];
+  const def = items.find(x => x.id === id);
+  if (!def) return;
+  const item = getLeudadoItem(id, def.cantidad);
+  if (item.sacado) { renderLeudado(); return; }
+  const n = parseInt(valor, 10);
+  item.cantidad = isNaN(n) ? def.cantidad : Math.max(0, n);
+  saveLeudado(); renderLeudado();
+  if (item.cantidad !== def.cantidad && typeof addToLog === 'function') addToLog('✏️ Leudado ajustado por pedido del local: ' + def.nombre + ' → ' + item.cantidad + ' (habitual ' + def.cantidad + ')', 'leudado');
 }
 
 function requestNotifPermission() {
@@ -1311,10 +1324,10 @@ function renderLeudado() {
         <div class="leudado-nombre">${def.nombre}</div>
         <div class="leudado-sugerido">Sugerido: ${def.sugerido}</div>
         <div class="leudado-qty-row">
-          <button class="leudado-qty-btn" onclick="adjustLeudadoCantidad('${def.id}',-1)">−</button>
-          <span class="leudado-qty-val">${item.cantidad}</span>
-          <button class="leudado-qty-btn plus" onclick="adjustLeudadoCantidad('${def.id}',1)">+</button>
-          <span class="leudado-unit">cantidad a sacar</span>
+          <button class="leudado-qty-btn" onclick="adjustLeudadoCantidad('${def.id}',-1)" ${item.sacado ? 'disabled' : ''}>−</button>
+          <input class="leudado-qty-val" type="number" inputmode="numeric" min="0" value="${item.cantidad}" onchange="setLeudadoCantidad('${def.id}', this.value)" onclick="this.select()" style="width:64px;border:1px solid #FFAB91;border-radius:6px;padding:4px;background:#fff;" ${item.sacado ? 'disabled' : ''}>
+          <button class="leudado-qty-btn plus" onclick="adjustLeudadoCantidad('${def.id}',1)" ${item.sacado ? 'disabled' : ''}>+</button>
+          <span class="leudado-unit">${item.cantidad !== def.cantidad ? '<b style="color:#E64A19">ajustado</b> (habitual ' + def.cantidad + ')' : 'cantidad a sacar'}</span>
         </div>
       </div>
     </div>`;
@@ -2188,7 +2201,7 @@ let conectorLeudando = [];
 async function loadConectorPanaderia() {
   try { conectorCamara = await sbSelect('camara_panaderia', '?order=nombre.asc') || []; } catch(e){ conectorCamara = []; }
   try { conectorFreezer = await sbSelect('freezer_panaderia', '') || []; } catch(e){ conectorFreezer = []; }
-  try { conectorLeudando = await sbSelect('cocina_leudado', '?estado=eq.leudando&order=created_at.asc') || []; } catch(e){ conectorLeudando = []; }
+  try { const desde = new Date(Date.now() - 36*3600*1000).toISOString(); conectorLeudando = await sbSelect('cocina_leudado', '?estado=eq.leudando&created_at=gte.' + encodeURIComponent(desde) + '&order=created_at.asc') || []; } catch(e){ conectorLeudando = []; }
   renderConectorPanaderia();
 }
 
