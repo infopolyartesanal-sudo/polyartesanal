@@ -316,255 +316,153 @@ let apiKey = '';
 let stockState = {};
 let facturasHistory = [];
 
-// ── MATERIAS PRIMAS CATALOG ──────────────────────────
-// consumoSemanal: kg o unidades por semana según producción real
-// stockMinimo: nivel de alerta crítica
-// unidad: kg, u, lt, cc
-// sector: qué sectores usan este insumo
-// proveedor: referencia
+// ── MATERIAS PRIMAS = INVENTARIO ÚNICO (tabla insumos, la misma de Gestión) ──
+// La producción de los sectores descuenta de acá y las compras de Gestión suman acá.
+// Cada cambio se guarda al instante en Supabase con un movimiento de stock.
+let MP_CATALOG = [];
+let stockCargado = false;
 
-const MP_CATALOG = [
-  // ── HARINAS ──
-  { id:'harina_0000', nombre:'Harina 0000', unidad:'kg', sector:'panaderia', consumoSemanal:150, stockMinimo:50, proveedor:'Molinero' },
-  { id:'harina_000', nombre:'Harina 000', unidad:'kg', sector:'panaderia', consumoSemanal:50, stockMinimo:25, proveedor:'Molinero' },
-  { id:'harina_integral', nombre:'Harina Integral', unidad:'kg', sector:'panaderia', consumoSemanal:25, stockMinimo:10, proveedor:'Molinero' },
-  { id:'harina_espelta', nombre:'Harina de Espelta', unidad:'kg', sector:'pasteleria+panaderia', consumoSemanal:10, stockMinimo:5, proveedor:'Dietética' },
-  { id:'harina_centeno', nombre:'Harina de Centeno', unidad:'kg', sector:'panaderia', consumoSemanal:10, stockMinimo:5, proveedor:'Dietética' },
-  { id:'harina_almendras', nombre:'Harina de Almendras', unidad:'kg', sector:'pasteleria', consumoSemanal:5, stockMinimo:2, proveedor:'Dietética' },
-  { id:'harina_coco', nombre:'Harina de Coco', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
-  // ── GRASAS Y ACEITES ──
-  { id:'manteca', nombre:'Manteca', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:30, stockMinimo:10, proveedor:'Lácteos' },
-  { id:'margarina', nombre:'Margarina (empaste)', unidad:'kg', sector:'panaderia', consumoSemanal:40, stockMinimo:15, proveedor:'Lácteos' },
-  { id:'grasa', nombre:'Grasa vacuna', unidad:'kg', sector:'panaderia', consumoSemanal:5, stockMinimo:3, proveedor:'Carnicería' },
-  { id:'aceite_girasol', nombre:'Aceite de girasol', unidad:'lt', sector:'todos', consumoSemanal:15, stockMinimo:5, proveedor:'Mayorista' },
-  // ── LÁCTEOS ──
-  { id:'leche', nombre:'Leche', unidad:'lt', sector:'panaderia+pasteleria', consumoSemanal:20, stockMinimo:8, proveedor:'Lácteos' },
-  { id:'queso_crema', nombre:'Queso crema', unidad:'kg', sector:'cocina', consumoSemanal:3, stockMinimo:1, proveedor:'Lácteos' },
-  { id:'muzzarella', nombre:'Muzzarella', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Lácteos' },
-  { id:'queso_maquina', nombre:'Queso de máquina (fetas)', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Fiambrería' },
-  { id:'ricota', nombre:'Ricota', unidad:'kg', sector:'cocina', consumoSemanal:1, stockMinimo:0.5, proveedor:'Lácteos' },
-  // ── AZÚCARES Y DULCES ──
-  { id:'azucar_a', nombre:'Azúcar A', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:25, stockMinimo:10, proveedor:'Mayorista' },
-  { id:'azucar_impalpable', nombre:'Azúcar impalpable', unidad:'kg', sector:'pasteleria', consumoSemanal:8, stockMinimo:3, proveedor:'Mayorista' },
-  { id:'eritritol', nombre:'Eritritol', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
-  { id:'miel', nombre:'Miel', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:2, stockMinimo:1, proveedor:'Dietética' },
-  { id:'dulce_leche', nombre:'Dulce de leche', unidad:'kg', sector:'pasteleria', consumoSemanal:10, stockMinimo:4, proveedor:'Lácteos' },
-  { id:'membrillo', nombre:'Dulce de membrillo', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:5, stockMinimo:2, proveedor:'Mayorista' },
-  // ── LEVADURA Y ADITIVOS ──
-  { id:'levadura', nombre:'Levadura fresca', unidad:'kg', sector:'panaderia', consumoSemanal:1.5, stockMinimo:0.5, proveedor:'Panadería insumos' },
-  { id:'aditivo', nombre:'Aditivo panadero', unidad:'kg', sector:'panaderia', consumoSemanal:0.5, stockMinimo:0.2, proveedor:'Panadería insumos' },
-  { id:'frescura', nombre:'Frescura', unidad:'u', sector:'panaderia', consumoSemanal:2, stockMinimo:1, proveedor:'Panadería insumos' },
-  { id:'almidon_maiz', nombre:'Almidón de maíz', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Mayorista' },
-  { id:'goma_xantica', nombre:'Goma xántica', unidad:'kg', sector:'pasteleria', consumoSemanal:0.2, stockMinimo:0.1, proveedor:'Dietética' },
-  // ── HUEVOS ──
-  { id:'huevos', nombre:'Huevos', unidad:'u', sector:'pasteleria+cocina', consumoSemanal:120, stockMinimo:48, proveedor:'Granja' },
-  // ── CACAO Y CHOCOLATE ──
-  { id:'cacao', nombre:'Cacao amargo', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
-  { id:'chocolate', nombre:'Chocolate semiamargo', unidad:'kg', sector:'pasteleria', consumoSemanal:2, stockMinimo:1, proveedor:'Dietética' },
-  { id:'algarroba', nombre:'Harina de algarroba', unidad:'kg', sector:'panaderia+pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
-  // ── ESPECIAS Y SABORIZANTES ──
-  { id:'vainilla', nombre:'Esencia de vainilla', unidad:'lt', sector:'panaderia+pasteleria', consumoSemanal:0.3, stockMinimo:0.1, proveedor:'Dietética' },
-  { id:'canela', nombre:'Canela en polvo', unidad:'kg', sector:'pasteleria', consumoSemanal:0.3, stockMinimo:0.1, proveedor:'Mayorista' },
-  { id:'sal', nombre:'Sal fina', unidad:'kg', sector:'todos', consumoSemanal:3, stockMinimo:2, proveedor:'Mayorista' },
-  // ── FRUTAS Y VERDURAS ──
-  { id:'manzana', nombre:'Manzana', unidad:'kg', sector:'pasteleria', consumoSemanal:8, stockMinimo:3, proveedor:'Verdulería' },
-  { id:'zanahoria', nombre:'Zanahoria', unidad:'kg', sector:'pasteleria', consumoSemanal:6, stockMinimo:2, proveedor:'Verdulería' },
-  { id:'cebolla', nombre:'Cebolla', unidad:'kg', sector:'cocina', consumoSemanal:20, stockMinimo:8, proveedor:'Verdulería' },
-  { id:'morron', nombre:'Morrón rojo', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Verdulería' },
-  { id:'papa', nombre:'Papa', unidad:'kg', sector:'cocina', consumoSemanal:5, stockMinimo:2, proveedor:'Verdulería' },
-  { id:'rucula', nombre:'Rúcula', unidad:'u', sector:'cocina', consumoSemanal:3, stockMinimo:1, proveedor:'Verdulería' },
-  // ── CARNES Y FIAMBRES ──
-  { id:'carne_picada', nombre:'Carne picada', unidad:'kg', sector:'cocina', consumoSemanal:14, stockMinimo:7, proveedor:'Carnicería' },
-  { id:'pollo', nombre:'Pollo crudo', unidad:'kg', sector:'cocina', consumoSemanal:10, stockMinimo:5, proveedor:'Carnicería' },
-  { id:'cerdo', nombre:'Cerdo crudo', unidad:'kg', sector:'cocina', consumoSemanal:10, stockMinimo:5, proveedor:'Carnicería' },
-  { id:'nalga', nombre:'Nalga (milanesas)', unidad:'kg', sector:'cocina', consumoSemanal:8, stockMinimo:4, proveedor:'Carnicería' },
-  { id:'jamon_cocido', nombre:'Jamón cocido (fetas)', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Fiambrería' },
-  { id:'jamon_crudo', nombre:'Jamón crudo (fetas)', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Fiambrería' },
-  // ── VERDURAS PREP / CONSERVAS ──
-  { id:'choclo', nombre:'Choclo en grano', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Verdulería' },
-  { id:'portobelo', nombre:'Portobelos', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Verdulería' },
-  { id:'zapallito', nombre:'Zapallito verde', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Verdulería' },
-  { id:'calabaza', nombre:'Calabaza', unidad:'kg', sector:'cocina', consumoSemanal:4, stockMinimo:2, proveedor:'Verdulería' },
-  { id:'berenjena_escabeche', nombre:'Berenjena al escabeche', unidad:'u', sector:'cocina', consumoSemanal:3, stockMinimo:1, proveedor:'Mayorista' },
-  { id:'aceitunas', nombre:'Aceitunas fileteadas', unidad:'kg', sector:'cocina', consumoSemanal:1, stockMinimo:0.5, proveedor:'Mayorista' },
-  // ── PANIFICACIÓN ESPECIAL ──
-  { id:'premezcla_budin', nombre:'Premezcla budín integral', unidad:'kg', sector:'pasteleria', consumoSemanal:15, stockMinimo:6, proveedor:'Dietética' },
-  { id:'premezcla_alfajor', nombre:'Premezcla alfajor maicena', unidad:'kg', sector:'pasteleria', consumoSemanal:3, stockMinimo:1, proveedor:'Dietética' },
-  { id:'premezcla_sg', nombre:'Premezcla sin gluten', unidad:'kg', sector:'pasteleria', consumoSemanal:5, stockMinimo:2, proveedor:'Dietética' },
-  { id:'nuez', nombre:'Nueces', unidad:'kg', sector:'pasteleria', consumoSemanal:4, stockMinimo:2, proveedor:'Dietética' },
-  { id:'coco_rallado', nombre:'Coco rallado', unidad:'kg', sector:'pasteleria', consumoSemanal:2, stockMinimo:1, proveedor:'Dietética' },
-  // ── CONDIMENTOS ──
-  { id:'adobe_pizza', nombre:'Adobo para pizza', unidad:'kg', sector:'cocina', consumoSemanal:0.3, stockMinimo:0.2, proveedor:'Mayorista' },
-  { id:'pimenton', nombre:'Pimentón', unidad:'kg', sector:'cocina', consumoSemanal:0.2, stockMinimo:0.1, proveedor:'Mayorista' },
-  { id:'demiglas', nombre:'Demiglás', unidad:'kg', sector:'cocina', consumoSemanal:0.5, stockMinimo:0.2, proveedor:'Mayorista' },
-  { id:'barbacoa', nombre:'Salsa barbacoa', unidad:'u', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Mayorista' },
-  { id:'mayonesa', nombre:'Mayonesa', unidad:'kg', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Mayorista' },
-  // ── INSUMOS DE COCINA ──
-  { id:'miga_pan', nombre:'Pan de miga (paquete 48u)', unidad:'u', sector:'cocina', consumoSemanal:2, stockMinimo:1, proveedor:'Panadería' },
-  { id:'folex', nombre:'Folex (papel antiadherente)', unidad:'u', sector:'todos', consumoSemanal:3, stockMinimo:2, proveedor:'Insumos' },
-  { id:'polenta', nombre:'Polenta', unidad:'kg', sector:'panaderia', consumoSemanal:5, stockMinimo:2, proveedor:'Mayorista' },
-  { id:'pasta_mani', nombre:'Pasta de maní', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietética' },
-  { id:'mani', nombre:'Maní tostado', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietética' },
-  { id:'agua_hielo', nombre:'Bolsas de hielo', unidad:'u', sector:'panaderia', consumoSemanal:14, stockMinimo:5, proveedor:'Hielo' },
-  { id:'polenta', nombre:'Polenta', unidad:'kg', sector:'panaderia', consumoSemanal:5, stockMinimo:2, proveedor:'Mayorista' },
-  { id:'pasta_mani', nombre:'Pasta de mani', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietetica' },
-  { id:'mani_tostado', nombre:'Mani tostado', unidad:'kg', sector:'pasteleria', consumoSemanal:1, stockMinimo:0.5, proveedor:'Dietetica' },
-  // LIMPIEZA
-  { id:'detergente', nombre:'Detergente (bidon)', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'lavandina', nombre:'Lavandina (bidon)', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'desengrasante', nombre:'Desengrasante 1lt', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'esponja_metal', nombre:'Esponja de metal', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'esponja_blanda', nombre:'Esponja blanda', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'bidones_agua', nombre:'Bidones agua potable', unidad:'u', sector:'limpieza', consumoSemanal:1, stockMinimo:2, proveedor:'Agua' },
-  { id:'trapo_rejilla', nombre:'Trapo rejilla', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'trapo_piso', nombre:'Trapo de piso', unidad:'u', sector:'limpieza', consumoSemanal:0.25, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'papel_grande', nombre:'Rollo papel grande', unidad:'u', sector:'limpieza', consumoSemanal:0.5, stockMinimo:2, proveedor:'Limpieza' },
-  // PAPELERIA
-  { id:'papel_higienico', nombre:'Papel higienico (pack x4)', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Limpieza' },
-  { id:'bolsas_freezer', nombre:'Bolsas 50x70 apto freezer (rollo)', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
-  { id:'fibron', nombre:'Fibron indeleble', unidad:'u', sector:'papeleria', consumoSemanal:0.25, stockMinimo:1, proveedor:'Insumos' },
-  { id:'cinta_papel', nombre:'Cinta ancha de papel', unidad:'u', sector:'papeleria', consumoSemanal:0.25, stockMinimo:1, proveedor:'Insumos' },
-  { id:'folex_papeleria', nombre:'Folex (paquete)', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:2, proveedor:'Insumos' },
-  { id:'bandejas_viandas', nombre:'Bandejas para viandas x50', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
-  { id:'potes_bisagra', nombre:'Potes bisagra altos x10', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
-  { id:'bandejas_despacho', nombre:'Bandejas despacho carton N5', unidad:'u', sector:'papeleria', consumoSemanal:0.5, stockMinimo:1, proveedor:'Insumos' },
-];
+function fmtCant(v) {
+  const n = Math.round((+v || 0) * 1000) / 1000;
+  return n.toLocaleString('es-AR', { maximumFractionDigits: 3 });
+}
 
-// ── STATE ──────────────────────────────────────────
+function pasoDe(mp) {
+  const u = (mp.unidad || '').toLowerCase();
+  return (u === 'g' || u === 'gr' || u === 'cc' || u === 'ml') ? 100 : 1;
+}
+
 async function initStockFromCatalog() {
   try {
-    const rows = await sbSelect('deposito_stock', '?order=sector,nombre');
-    if (rows && rows.length > 0) {
-      // Supabase es la fuente de verdad — reconstruir catálogo desde ahí
-      rows.forEach(r => {
-        stockState[r.id] = parseFloat(r.cantidad) || 0;
-        // Actualizar o agregar al catálogo local
-        const existing = MP_CATALOG.find(m => m.id === r.id);
-        if (existing) {
-          // Actualizar datos del catálogo con los de Supabase
-          existing.nombre = r.nombre || existing.nombre;
-          existing.sector = r.sector || existing.sector;
-          existing.stockMinimo = parseFloat(r.stock_minimo) || existing.stockMinimo;
-          existing.consumoSemanal = parseFloat(r.consumo_semanal) || existing.consumoSemanal;
-          existing.proveedor = r.proveedor || existing.proveedor;
-          existing.unidad = r.unidad || existing.unidad;
-        } else {
-          // Item nuevo en Supabase que no está en el catálogo — agregar
-          MP_CATALOG.push({
-            id: r.id,
-            nombre: r.nombre || r.id,
-            unidad: r.unidad || 'u',
-            sector: r.sector || 'todos',
-            consumoSemanal: parseFloat(r.consumo_semanal) || 1,
-            stockMinimo: parseFloat(r.stock_minimo) || 0,
-            proveedor: r.proveedor || '—'
-          });
-        }
-      });
-      console.log('✓ Stock y catálogo cargados desde Supabase:', rows.length, 'items');
-    } else {
-      console.log('ℹ️ Supabase vacío — usando catálogo base');
-      for (const mp of MP_CATALOG) {
-        if (stockState[mp.id] === undefined) stockState[mp.id] = 0;
-      }
-    }
-  } catch(e) {
-    console.warn('⚠️ Error Supabase, usando catálogo local:', e);
-    for (const mp of MP_CATALOG) {
-      if (stockState[mp.id] === undefined) stockState[mp.id] = 0;
-    }
+    const rows = await sbSelect('insumos', '?select=id,nombre,unidad,categoria,proveedor,stock,stock_minimo,stock_optimo,activo&activo=not.is.false&or=(categoria.is.null,categoria.not.in.(LUZ,GAS))&order=nombre.asc');
+    if (!rows) throw new Error('sin respuesta');
+    MP_CATALOG = rows.map(r => ({
+      id: r.id,
+      nombre: r.nombre || '(sin nombre)',
+      unidad: r.unidad || 'u',
+      sector: (r.categoria || 'OTROS').toLowerCase(),
+      stockMinimo: parseFloat(r.stock_minimo) || 0,
+      stockOptimo: parseFloat(r.stock_optimo) || 0,
+      proveedor: r.proveedor || '—'
+    }));
+    stockState = {};
+    rows.forEach(r => { stockState[r.id] = parseFloat(r.stock) || 0; });
+    stockCargado = true;
+    return true;
+  } catch (e) {
+    console.warn('⚠️ No se pudo leer el inventario:', e);
+    const el = document.getElementById('stock-list');
+    if (el && !stockCargado) el.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px;">No se pudo conectar con el inventario. Revisá internet y recargá la página.</div>';
+    return false;
   }
 }
 
-function saveStock() {
-  localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
-  const rows = MP_CATALOG.map(mp => ({
-    id: mp.id, nombre: mp.nombre, cantidad: stockState[mp.id]||0,
-    unidad: mp.unidad, sector: mp.sector, stock_minimo: mp.stockMinimo,
-    consumo_semanal: mp.consumoSemanal, proveedor: mp.proveedor
-  }));
-  sbUpsert('deposito_stock', rows).catch(()=>{});
+// Suma o resta stock de un insumo (delta) y lo guarda en Supabase.
+async function guardarDelta(id, delta, motivo, referencia) {
+  const r = await sbFetch('POST', 'rpc/ajustar_stock_insumo', {
+    p_insumo_id: id, p_delta: delta, p_motivo: motivo || 'ajuste_deposito', p_referencia: referencia || 'Depósito'
+  });
+  if (r && r.ok) { stockState[id] = parseFloat(r.stock) || 0; return true; }
+  return false;
 }
 
-function adjustStock(id, delta) {
-  stockState[id] = Math.max(0, Math.round(((stockState[id] || 0) + delta) * 10) / 10);
-  saveStock();
-  renderStock();
+async function adjustStock(id, delta) {
+  const antes = stockState[id] || 0;
+  stockState[id] = Math.round((antes + delta) * 1000) / 1000;
+  renderStock(document.getElementById('search-stock')?.value);
+  const ok = await guardarDelta(id, delta, 'ajuste_deposito');
+  if (!ok) { stockState[id] = antes; alert('No se pudo guardar. Revisá la conexión e intentá de nuevo.'); }
+  renderStock(document.getElementById('search-stock')?.value);
   checkAlerts();
+  setTimeout(publishStockToCentral_deposito, 400);
+}
+
+// Conteo: se escribe la cantidad real que hay y se ajusta la diferencia
+async function setStockExacto(id) {
+  const mp = MP_CATALOG.find(m => m.id === id);
+  if (!mp) return;
+  const actual = stockState[id] || 0;
+  const txt = prompt(`Conteo de ${mp.nombre}\n¿Cuánto hay en total? (${mp.unidad})`, String(actual));
+  if (txt === null) return;
+  const nuevo = parseFloat(String(txt).replace(',', '.'));
+  if (isNaN(nuevo) || nuevo < 0) { alert('Cantidad no válida'); return; }
+  const delta = Math.round((nuevo - actual) * 1000) / 1000;
+  if (delta === 0) return;
+  stockState[id] = nuevo;
+  renderStock(document.getElementById('search-stock')?.value);
+  const ok = await guardarDelta(id, delta, 'conteo_deposito', 'Conteo en depósito');
+  if (!ok) { stockState[id] = actual; alert('No se pudo guardar. Revisá la conexión e intentá de nuevo.'); }
+  renderStock(document.getElementById('search-stock')?.value);
+  checkAlerts();
+  setTimeout(publishStockToCentral_deposito, 400);
 }
 
 // ── RENDER STOCK ──────────────────────────────────
 function getStatus(mp) {
   const v = stockState[mp.id] || 0;
-  if (v <= mp.stockMinimo) return 'critical';
-  if (v <= mp.stockMinimo * 1.5) return 'warn';
+  if (v < 0) return 'neg';
+  if (mp.stockMinimo > 0 && v <= mp.stockMinimo) return 'critical';
+  if (mp.stockMinimo > 0 && v <= mp.stockMinimo * 1.5) return 'warn';
   return 'ok';
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 function renderStock(filterQ) {
   filterQ = (filterQ || '').toLowerCase().trim();
   const el = document.getElementById('stock-list');
   if (!el) return;
-
-  // Build sectors dynamically from catalog
-  const allSectors = new Set();
-  MP_CATALOG.forEach(mp => {
-    // Handle combined sectors like 'panaderia+pasteleria'
-    (mp.sector || 'otros').split('+').forEach(s => allSectors.add(s.trim()));
-  });
+  if (!stockCargado) { el.innerHTML = '<div style="text-align:center;color:#aaa;padding:24px;">Cargando inventario...</div>'; return; }
 
   const SECTOR_META = {
-    'panaderia': '🍞 Panadería',
-    'pasteleria': '🍰 Pastelería',
-    'cocina': '🍳 Cocina',
-    'todos': '🏭 Todos los sectores',
-    'limpieza': '🧴 Limpieza',
-    'papeleria': '📦 Papelería',
-    'harinas_secos': '🌾 Harinas y Secos',
-    'lacteos': '🥛 Lácteos',
+    'alimentos': '🌾 Alimentos',
+    'descartables': '📦 Descartables',
+    'bebidas': '🥤 Bebidas',
+    'luz': '💡 Luz',
+    'gas': '🔥 Gas',
+    'general': '📋 General',
     'otros': '📋 Otros',
   };
+  const sectors = [...new Set(MP_CATALOG.map(mp => mp.sector))].map(key => ({
+    key, label: SECTOR_META[key] || ('📦 ' + key.charAt(0).toUpperCase() + key.slice(1))
+  })).sort((a, b) => a.label.localeCompare(b.label));
 
-  const sectors = [...allSectors].map(key => ({
-    key,
-    label: SECTOR_META[key] || ('📦 ' + key.charAt(0).toUpperCase() + key.slice(1))
-  })).sort((a,b) => a.label.localeCompare(b.label));
-
-  let html = '';
+  const conStock = MP_CATALOG.filter(mp => (stockState[mp.id] || 0) !== 0).length;
+  let html = `<div style="font-size:12px;color:#888;padding:4px 2px 8px;">Inventario único (el mismo de Gestión) · ${MP_CATALOG.length} insumos · ${conStock} con stock cargado. Tocá la cantidad para cargar un conteo.</div>`;
   for (const sec of sectors) {
-    const items = MP_CATALOG.filter(mp => {
-      const secs = (mp.sector || '').split('+').map(s => s.trim());
-      const inSector = secs.includes(sec.key);
-      const matchQ = !filterQ || mp.nombre.toLowerCase().includes(filterQ) || (mp.proveedor||'').toLowerCase().includes(filterQ);
-      return inSector && matchQ;
-    });
+    const items = MP_CATALOG.filter(mp => mp.sector === sec.key &&
+      (!filterQ || mp.nombre.toLowerCase().includes(filterQ) || (mp.proveedor || '').toLowerCase().includes(filterQ)));
     if (!items.length) continue;
-
     html += `<div class="sector-title">${sec.label}</div>`;
     for (const mp of items) {
       const v = stockState[mp.id] || 0;
       const status = getStatus(mp);
-      const pct = Math.min(100, Math.round(v / (mp.consumoSemanal * 2) * 100));
-      const semanas = (v / mp.consumoSemanal).toFixed(1);
-
-      html += `<div class="mp-card ${status}" id="mp-${mp.id}">
+      const cls = status === 'neg' ? 'critical' : status;
+      const ref = mp.stockOptimo || mp.stockMinimo * 2;
+      const pct = ref > 0 ? Math.max(0, Math.min(100, Math.round(v / ref * 100))) : (v > 0 ? 100 : 0);
+      const paso = pasoDe(mp);
+      const badge = status === 'neg' ? '⚠️ Negativo: contar' : status === 'critical' ? '🚨 Crítico' : status === 'warn' ? '⚠️ Bajo' : '✓ OK';
+      const minTxt = mp.stockMinimo > 0 ? `mín ${fmtCant(mp.stockMinimo)} ${escHtml(mp.unidad)}` : 'sin mínimo cargado';
+      html += `<div class="mp-card ${cls}" id="mp-${mp.id}">
         <div class="mp-header">
-          <span class="mp-name">${mp.nombre}</span>
-          <span class="mp-badge ${status}">${status === 'critical' ? '🚨 Crítico' : status === 'warn' ? '⚠️ Bajo' : '✓ OK'}</span>
+          <span class="mp-name">${escHtml(mp.nombre)}</span>
+          <span class="mp-badge ${cls}">${badge}</span>
         </div>
         <div class="mp-body">
           <div class="mp-row">
             <span class="mp-label">Stock actual</span>
             <div class="mp-adj">
-              <button class="mp-btn minus" onclick="adjustStock('${mp.id}',-${mp.consumoSemanal >= 10 ? 1 : 0.5})">−</button>
-              <span class="mp-val" style="min-width:48px;text-align:center;">${v}</span>
-              <span class="mp-unit">${mp.unidad}</span>
-              <button class="mp-btn plus" onclick="adjustStock('${mp.id}',${mp.consumoSemanal >= 10 ? 1 : 0.5})">+</button>
+              <button class="mp-btn minus" onclick="adjustStock('${mp.id}',-${paso})">−</button>
+              <span class="mp-val" style="min-width:48px;text-align:center;cursor:pointer;text-decoration:underline dotted;" onclick="setStockExacto('${mp.id}')" title="Tocá para cargar el conteo">${fmtCant(v)}</span>
+              <span class="mp-unit">${escHtml(mp.unidad)}</span>
+              <button class="mp-btn plus" onclick="adjustStock('${mp.id}',${paso})">+</button>
             </div>
           </div>
           <div class="mp-row" style="margin-top:6px;">
-            <div class="mp-progress-bar"><div class="mp-progress-fill ${status}" style="width:${pct}%"></div></div>
-            <span class="mp-min-label" style="margin-left:8px;">${semanas}sem · mín ${mp.stockMinimo}${mp.unidad}</span>
+            <div class="mp-progress-bar"><div class="mp-progress-fill ${cls}" style="width:${pct}%"></div></div>
+            <span class="mp-min-label" style="margin-left:8px;">${minTxt}</span>
           </div>
         </div>
       </div>`;
@@ -622,7 +520,8 @@ function renderPedidos() {
   const byProv = {};
   const addToProv = (mp, urgente) => {
     if (!byProv[mp.proveedor]) byProv[mp.proveedor] = { urgente: [], normal: [] };
-    const necesita = Math.ceil((mp.consumoSemanal * 2) - (stockState[mp.id] || 0));
+    const objetivo = mp.stockOptimo || mp.stockMinimo * 2;
+    const necesita = fmtCant(Math.max(0, Math.ceil(objetivo - (stockState[mp.id] || 0))));
     byProv[mp.proveedor][urgente ? 'urgente' : 'normal'].push(`${mp.nombre}: ${necesita} ${mp.unidad}`);
   };
   criticos.forEach(mp => addToProv(mp, true));
@@ -660,7 +559,7 @@ function processFactura(input) {
     const isPdf = file.type === 'application/pdf';
 
     try {
-      const mpList = MP_CATALOG.map(mp => `${mp.nombre} (${mp.unidad})`).join(', ');
+      const mpList = MP_CATALOG.map(mp => `[${mp.id}] ${mp.nombre} (${mp.unidad})`).join('\n');
       const messages = [{
         role: 'user',
         content: [
@@ -668,7 +567,9 @@ function processFactura(input) {
             ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
             : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
           { type: 'text', text: `Esta es una factura de proveedor. Extraé los productos y cantidades que aparecen. 
-Nuestras materias primas son: ${mpList}.
+Nuestras materias primas son (formato [id] nombre (unidad)):
+${mpList}
+En materia_prima_id poné exactamente el id que figura entre corchetes, y convertí la cantidad a la unidad de nuestra materia prima (por ejemplo, 2 bolsas de 25 kg = 50 kg).
 Para cada item de la factura, identificá si coincide con alguna de nuestras materias primas.
 Respondé SOLO con un JSON válido sin ningún texto adicional, con este formato exacto:
 {"proveedor":"nombre del proveedor si aparece","fecha":"fecha si aparece","items":[{"nombre_factura":"nombre como aparece en la factura","cantidad":123,"unidad":"kg/lt/u","materia_prima_id":"id de nuestra MP si coincide o null","materia_prima_nombre":"nombre de nuestra MP si coincide o null","es_nuevo":false,"sector_sugerido":"panaderia/pasteleria/cocina/limpieza/papeleria/todos","min_sugerido":1}]}
@@ -704,104 +605,88 @@ function renderFacturaResult(data, filename) {
     el.innerHTML = '<div style="color:#888;font-size:13px;padding:12px;">No se encontraron items en la factura.</div>';
     return;
   }
-
+  // Solo se aceptan ids que existan en el inventario
+  data.items.forEach(i => { if (i.materia_prima_id && !MP_CATALOG.find(m => m.id === i.materia_prima_id)) i.materia_prima_id = null; });
   const conocidos = data.items.filter(i => i.materia_prima_id);
   const nuevos = data.items.filter(i => !i.materia_prima_id);
+  const cats = [...new Set(MP_CATALOG.map(m => m.sector))].sort();
+  if (!cats.includes('alimentos')) cats.unshift('alimentos');
 
   let html = `<div class="factura-result">
-    <h4>📄 ${data.proveedor || filename} ${data.fecha ? '· ' + data.fecha : ''}</h4>`;
-
-  // Known items
+    <h4>📄 ${escHtml(data.proveedor || filename)} ${data.fecha ? '· ' + escHtml(data.fecha) : ''}</h4>`;
   for (const item of conocidos) {
+    const mp = MP_CATALOG.find(m => m.id === item.materia_prima_id);
     html += `<div class="factura-item">
-      <span class="factura-item-name">${item.nombre_factura}</span>
-      <span class="factura-item-qty">${item.cantidad} ${item.unidad}</span>
-      <span class="factura-item-match">→ ${item.materia_prima_nombre}</span>
+      <span class="factura-item-name">${escHtml(item.nombre_factura)}</span>
+      <span class="factura-item-qty">${fmtCant(item.cantidad)} ${escHtml(item.unidad || '')}</span>
+      <span class="factura-item-match">→ ${escHtml(mp ? mp.nombre + ' (' + mp.unidad + ')' : item.materia_prima_nombre)}</span>
     </div>`;
   }
-
-  // New items — show with form to add to catalog
   if (nuevos.length > 0) {
     html += `<div class="factura-new-section">
-      <div class="factura-new-title">➕ ${nuevos.length} producto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''} — ¿agregar al catálogo?</div>`;
+      <div class="factura-new-title">➕ ${nuevos.length} producto${nuevos.length>1?'s':''} nuevo${nuevos.length>1?'s':''}: ¿agregar al inventario?</div>`;
     for (let i = 0; i < nuevos.length; i++) {
       const item = nuevos[i];
       html += `<div class="factura-new-item">
         <input type="checkbox" class="chk" id="new-chk-${i}" checked />
-        <span style="flex:1;font-weight:500;">${item.nombre_factura} (${item.cantidad} ${item.unidad})</span>
-        <select id="new-sector-${i}">
-          <option value="panaderia" ${item.sector_sugerido==='panaderia'?'selected':''}>🍞 Pan</option>
-          <option value="pasteleria" ${item.sector_sugerido==='pasteleria'?'selected':''}>🍰 Past</option>
-          <option value="cocina" ${item.sector_sugerido==='cocina'?'selected':''}>🍳 Coc</option>
-          <option value="limpieza" ${item.sector_sugerido==='limpieza'?'selected':''}>🧴 Limp</option>
-          <option value="papeleria" ${item.sector_sugerido==='papeleria'?'selected':''}>📦 Papel</option>
-          <option value="todos" ${item.sector_sugerido==='todos'?'selected':''}>🏭 Todos</option>
-        </select>
-        <input type="number" id="new-min-${i}" value="${item.min_sugerido || 1}" style="width:52px;" placeholder="mín" />
+        <span style="flex:1;font-weight:500;">${escHtml(item.nombre_factura)} (${fmtCant(item.cantidad)} ${escHtml(item.unidad || '')})</span>
+        <select id="new-sector-${i}">${cats.map(c => `<option value="${escHtml(c)}">${escHtml(c.charAt(0).toUpperCase() + c.slice(1))}</option>`).join('')}</select>
+        <input type="number" id="new-min-${i}" value="${item.min_sugerido || 0}" style="width:52px;" placeholder="mín" />
       </div>`;
     }
     html += `</div>`;
   }
-
-  const dataStr = JSON.stringify(data).replace(/"/g,'&quot;');
-  html += `<button class="factura-confirm-btn" onclick="confirmFactura(${dataStr}, ${nuevos.length})">✅ Confirmar y actualizar stock</button>
+  window._facturaPendiente = data;
+  html += `<button class="factura-confirm-btn" id="btn-confirmar-factura" onclick="confirmFactura(window._facturaPendiente)">✅ Confirmar y actualizar stock</button>
   </div>`;
   el.innerHTML = html;
 }
 
-function confirmFactura(data, nuevoCount) {
-  let actualizados = 0;
-  let agregados = 0;
+async function confirmFactura(data) {
+  if (!data) return;
+  const btn = document.getElementById('btn-confirmar-factura');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+  let actualizados = 0, agregados = 0, fallidos = 0;
+  const ref = 'Factura ' + (data.proveedor || '') + (data.fecha ? ' ' + data.fecha : '');
   const nuevos = (data.items || []).filter(i => !i.materia_prima_id);
 
-  // Process known items
   for (const item of data.items) {
-    if (item.materia_prima_id && item.cantidad > 0) {
-      stockState[item.materia_prima_id] = Math.round(((stockState[item.materia_prima_id] || 0) + item.cantidad) * 10) / 10;
-      actualizados++;
+    const q = parseFloat(item.cantidad) || 0;
+    if (item.materia_prima_id && q > 0) {
+      (await guardarDelta(item.materia_prima_id, q, 'compra', ref)) ? actualizados++ : fallidos++;
     }
   }
-
-  // Process new items from checkboxes
   for (let i = 0; i < nuevos.length; i++) {
     const chk = document.getElementById('new-chk-' + i);
     if (!chk || !chk.checked) continue;
     const item = nuevos[i];
-    const sector = document.getElementById('new-sector-' + i)?.value || 'todos';
-    const min = parseFloat(document.getElementById('new-min-' + i)?.value) || 1;
-    const proveedor = data.proveedor || 'Proveedor';
-
-    // Generate ID from name
-    const id = 'mp_' + item.nombre_factura.toLowerCase().replace(/[^a-z0-9]/g,'_').replace(/_+/g,'_').slice(0,30);
-    const nombre = item.nombre_factura.charAt(0).toUpperCase() + item.nombre_factura.slice(1).toLowerCase();
-
-    // Add to catalog dynamically
-    const exists = MP_CATALOG.find(mp => mp.id === id);
-    if (!exists) {
-      MP_CATALOG.push({ id, nombre, unidad: item.unidad || 'u', sector, consumoSemanal: item.cantidad / 4, stockMinimo: min, proveedor });
-      agregados++;
+    const q = parseFloat(item.cantidad) || 0;
+    const categoria = (document.getElementById('new-sector-' + i)?.value || 'alimentos').toUpperCase();
+    const min = parseFloat(document.getElementById('new-min-' + i)?.value) || 0;
+    const nombre = String(item.nombre_factura || '').trim();
+    if (!nombre) continue;
+    let mp = MP_CATALOG.find(m => m.nombre.toLowerCase() === nombre.toLowerCase());
+    if (!mp) {
+      const ins = await sbUpsert('insumos', { nombre, unidad: item.unidad || 'u', categoria, proveedor: data.proveedor || null, stock: 0, stock_minimo: min, costo_unitario: 0 });
+      if (!ins || !ins[0]) { fallidos++; continue; }
+      mp = { id: ins[0].id, nombre, unidad: item.unidad || 'u', sector: categoria.toLowerCase(), stockMinimo: min, stockOptimo: 0, proveedor: data.proveedor || '—' };
+      MP_CATALOG.push(mp); MP_CATALOG.sort((a, b) => a.nombre.localeCompare(b.nombre));
+      stockState[mp.id] = 0; agregados++;
     }
-    // Add to stock
-    stockState[id] = Math.round(((stockState[id] || 0) + item.cantidad) * 10) / 10;
-    actualizados++;
+    if (q > 0) { (await guardarDelta(mp.id, q, 'compra', ref)) ? actualizados++ : fallidos++; }
   }
 
-  // Save dynamic catalog additions
-  const dynKey = 'deposito_catalog_dynamic';
-  const existing = JSON.parse(localStorage.getItem(dynKey) || '[]');
-  const newEntries = MP_CATALOG.filter(mp => mp.id.startsWith('mp_'));
-  localStorage.setItem(dynKey, JSON.stringify(newEntries));
-
-  saveStock();
+  await initStockFromCatalog();
   checkAlerts();
   renderStock();
+  setTimeout(publishStockToCentral_deposito, 400);
 
-  facturasHistory.unshift({ ...data, fecha_carga: new Date().toLocaleDateString('es-AR'), actualizados });
-  localStorage.setItem(FACTURAS_KEY, JSON.stringify(facturasHistory));
+  facturasHistory.unshift({ proveedor: data.proveedor, fecha: data.fecha, fecha_carga: new Date().toLocaleDateString('es-AR'), actualizados });
+  localStorage.setItem(FACTURAS_KEY, JSON.stringify(facturasHistory.slice(0, 30)));
   renderFacturasHistory();
 
-  document.getElementById('factura-result-area').innerHTML = `<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:12px;font-size:13px;color:#16a34a;">
-    ✅ Stock actualizado con ${actualizados} item${actualizados!==1?'s':''}${agregados>0?' · '+agregados+' producto'+( agregados!==1?'s':'')+' nuevo'+( agregados!==1?'s':'')+' agregado'+(agregados!==1?'s':'')+' al catálogo':''}.
+  document.getElementById('factura-result-area').innerHTML = `<div style="background:${fallidos ? '#fef9c3' : '#dcfce7'};border:1px solid ${fallidos ? '#fde047' : '#86efac'};border-radius:8px;padding:12px;font-size:13px;color:${fallidos ? '#92400e' : '#16a34a'};">
+    ${fallidos ? '⚠️' : '✅'} Stock actualizado con ${actualizados} item${actualizados!==1?'s':''}${agregados>0?' · '+agregados+' producto'+(agregados!==1?'s':'')+' nuevo'+(agregados!==1?'s':'')+' en el inventario':''}${fallidos?' · '+fallidos+' no se pudieron guardar (revisá la conexión)':''}.
   </div>`;
 }
 
@@ -893,18 +778,13 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   if (apiKey) document.getElementById('api-key-section').style.display = 'none';
 
-  // Load dynamic catalog additions from previous sessions
-  try {
-    const dynCat = JSON.parse(localStorage.getItem('deposito_catalog_dynamic') || '[]');
-    for (const mp of dynCat) {
-      if (!MP_CATALOG.find(x => x.id === mp.id)) MP_CATALOG.push(mp);
-    }
-  } catch(e){}
-  initStockFromCatalog();
+  renderStock();
+  await initStockFromCatalog();
   try { facturasHistory = JSON.parse(localStorage.getItem(FACTURAS_KEY) || '[]'); } catch(e){}
   renderStock();
   checkAlerts();
   renderFacturasHistory();
+  if (typeof loadPedidos_deposito === 'function') loadPedidos_deposito();
 
   document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 });
@@ -925,25 +805,21 @@ async function publishStockToCentral_deposito() {
 }
 
 async function checkAndPublishAlerts_deposito() {
-
   try {
+    // Solo insumos con mínimo cargado (los demás no generan alerta)
     const alertas = [];
-    if (typeof MP_CATALOG !== 'undefined' && typeof stockState !== 'undefined') {
-      for (const mp of MP_CATALOG) {
-        const qty = stockState[mp.id] || 0;
-        if (qty <= 0) {
-          alertas.push({ sector: 'deposito', tipo: 'sin_stock', mensaje: `Sin stock: ${mp.nombre} (${mp.unidad})`, producto_id: mp.id });
-        } else if (qty <= mp.stockMinimo) {
-          alertas.push({ sector: 'deposito', tipo: 'stock_bajo', mensaje: `Stock bajo (${qty}${mp.unidad}): ${mp.nombre}`, producto_id: mp.id });
-        }
+    for (const mp of MP_CATALOG) {
+      if (!(mp.stockMinimo > 0)) continue;
+      const qty = stockState[mp.id] || 0;
+      if (qty <= 0) {
+        alertas.push({ sector: 'deposito', tipo: 'sin_stock', mensaje: `Sin stock: ${mp.nombre} (${mp.unidad})`, producto_id: mp.id });
+      } else if (qty <= mp.stockMinimo) {
+        alertas.push({ sector: 'deposito', tipo: 'stock_bajo', mensaje: `Stock bajo (${fmtCant(qty)} ${mp.unidad}): ${mp.nombre}`, producto_id: mp.id });
       }
     }
-    if (alertas.length > 0) {
-      await sbFetch('DELETE', 'alertas_sistema', null, '?sector=eq.deposito&leida=eq.false');
-      await sbUpsert('alertas_sistema', alertas);
-    }
+    await sbFetch('DELETE', 'alertas_sistema', null, '?sector=eq.deposito&leida=eq.false&tipo=in.(sin_stock,stock_bajo)');
+    if (alertas.length > 0) await sbUpsert('alertas_sistema', alertas);
   } catch(e) { console.warn('checkAlerts error:', e); }
-
 }
 
 async function loadPedidos_deposito() {
@@ -1024,19 +900,12 @@ function updatePedidosBadge_deposito() {
 setInterval(loadPedidos_deposito, 60000);
 
 
-// Hook: al guardar stock publicar alertas al central
-const _orig_deposito_save = saveStock;
-saveStock = function(...args) {
-  _orig_deposito_save(...args);
-  setTimeout(publishStockToCentral_deposito, 400);
-};
-
-const _orig_deposito_adj = adjustStock;
-adjustStock = function(...args) {
-  _orig_deposito_adj(...args);
-  setTimeout(publishStockToCentral_deposito, 400);
-};
-
+// Refresco automático: así se ve lo que descuenta la producción de los sectores
+setInterval(async () => {
+  if (document.hidden) return;
+  const q = document.getElementById('search-stock')?.value;
+  if (await initStockFromCatalog()) { renderStock(q); checkAlerts(); }
+}, 60000);
 
 </script>
 </body>
