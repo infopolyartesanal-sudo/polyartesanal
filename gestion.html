@@ -148,6 +148,7 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#facturas">🧾 Facturas</a>
   <a href="#produccion">🏭 Producción</a>
   <a href="#inventario">📦 Inventario</a>
+  <a href="#venta">🏷️ Productos de venta</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#rrhh">👥 RRHH</a>
@@ -288,7 +289,7 @@ const PROMPT_TICKET=`Leé este cierre/reporte de caja de una panadería y devolv
 Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,venta:vVenta,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -592,6 +593,88 @@ async function aplicarPendientes(){const pend=D.produccion.filter(p=>p.estado===
     const x=await rpcProduccion(p.sector,p.producto,+p.tandas||1,p.unidades!=null?+p.unidades:null,null);
     if(x&&x.ok){ok++;await sbDel('produccion','id=eq.'+p.id)}else{no++;if(x&&x.id)await sbDel('produccion','id=eq.'+x.id)}}
   await recargarProduccion();toast(`Aplicadas ${ok}. ${no?no+' siguen sin receta.':''}`,5000);vProduccion()}
+
+// ================= PRODUCTOS DE VENTA =================
+// Lista de productos que se venden en el local (mismos códigos que la caja) y
+// vínculo entre el nombre con que llega cada producto de los sectores y el producto de venta.
+// El Salón usa esta lista para el Control diario.
+const normV=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+let PV={prods:[],alias:[],llegadas:[],cargado:false},tabPV='vinc',fPV='';
+async function cargarPV(){
+  const [p,a,r,m]=await Promise.all([sbGet('productos_venta','order=nombre'),sbGet('productos_venta_alias','order=alias'),
+    sb('salon_recepciones?select=producto_nombre,sector_origen,created_at&created_at=gte.'+sumaDias(hoy(),-120)+'&order=created_at.desc&limit=3000'),
+    sbGet('produccion_mapeo','order=sector,producto')]);
+  const ll={};
+  (r||[]).forEach(x=>{const k=normV(x.producto_nombre);if(!k)return;if(!ll[k])ll[k]={k,nombre:x.producto_nombre,sectores:new Set(),veces:0,ultima:x.created_at};ll[k].veces++;ll[k].sectores.add(x.sector_origen||'')});
+  (m||[]).forEach(x=>{const k=normV(x.producto);if(!k)return;if(!ll[k])ll[k]={k,nombre:x.producto,sectores:new Set(),veces:0,ultima:null};ll[k].sectores.add(x.sector)});
+  PV={prods:p||[],alias:a||[],llegadas:Object.values(ll),cargado:true};
+}
+function pvPorCod(c){return PV.prods.find(p=>p.codigo===c)}
+function pvAliasDe(k){return PV.alias.find(a=>a.alias===k)}
+function pvOpciones(){return `<datalist id="dlPV">${PV.prods.filter(p=>p.activo).map(p=>`<option value="${esc(p.codigo+' · '+p.nombre)}">`).join('')}</datalist>`}
+function pvLeer(v){v=(v||'').trim();if(!v)return null;const c=v.split('·')[0].trim();return pvPorCod(c)||PV.prods.find(p=>norm(p.nombre)===norm(v))||null}
+
+async function vVenta(){
+  if(!PV.cargado){$('#app').innerHTML='<div class="cargando">Cargando productos de venta…</div>';try{await cargarPV()}catch(e){$('#app').innerHTML='<div class="card">No se pudo cargar: '+esc(e.message)+'</div>';return}}
+  const pvSinV=l=>!pvAliasDe(l.k)&&!PV.prods.some(p=>normV(p.nombre)===l.k);
+  const sinV=PV.llegadas.filter(l=>l.veces>0&&pvSinV(l));
+  const t=tabPV;
+  let html=`<h2>🏷️ Productos de venta</h2><p class="muted">La lista de lo que se vende en el local, con los mismos códigos y precios que la caja. Acá vinculás el nombre con que cada sector manda un producto al Salón con el producto de venta, así el Control diario del Salón suma solo los ingresos.</p>
+  <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Productos de venta</div><div class="val">${PV.prods.filter(p=>p.activo).length}</div></div>
+  <div class="card kpi"><div class="lbl">Nombres vinculados</div><div class="val">${PV.alias.length}</div></div>
+  <div class="card kpi"><div class="lbl">Llegan al Salón sin vincular</div><div class="val" style="color:${sinV.length?'var(--rojo)':'var(--verde)'}">${sinV.length}</div><div class="sub muted">no suman en el Control</div></div></div>
+  <div class="tabs2">${[['vinc','Vincular'+(sinV.length?' ('+sinV.length+')':'')],['prods','Lista de productos']].map(([k,n])=>`<button class="${t===k?'on':''}" onclick="tabPV='${k}';vVenta()">${n}</button>`).join('')}</div>`;
+  if(t==='vinc'){
+    const rk=l=>l.veces>0?(pvSinV(l)?0:1):2;
+    const filas=[...PV.llegadas].sort((a,b)=>(rk(a)-rk(b))||(b.veces-a.veces)||a.nombre.localeCompare(b.nombre));
+    html+=`${pvOpciones()}<p class="muted">Estos son los nombres con que los sectores mandaron productos al Salón (últimos 4 meses) y los productos que registran en producción. Elegí a qué producto de venta corresponde cada uno. Si un nombre agrupa varios productos (ej. "Vigilantes + Medialuna grasa"), elegí el que se cobra en la caja.</p>
+    <div class="card scroll"><table><tr><th>Nombre que llega</th><th>Sector</th><th class="num">Veces</th><th>Producto de venta</th><th></th></tr>
+    ${filas.map((l,k)=>{const sep=(l.veces===0&&(k===0||filas[k-1].veces>0))?`<tr><td colspan="5" style="background:#f6f6f6;font-weight:700">Productos de los sectores que todavía no llegaron al Salón (opcional vincularlos ya)</td></tr>`:'';const a=pvAliasDe(l.k);const dir=!a&&PV.prods.find(p=>normV(p.nombre)===l.k);const p=a?pvPorCod(a.codigo):dir;
+      return sep+`<tr><td><b>${esc(l.nombre)}</b></td><td>${esc([...l.sectores].filter(Boolean).join(', '))}</td><td class="num">${l.veces||'—'}</td>
+      <td><input id="pva${k}" list="dlPV" value="${p?esc(p.codigo+' · '+p.nombre):''}" placeholder="Elegí el producto…" style="min-width:240px;${p||!l.veces?'':'border-color:var(--rojo)'}">${dir?'<div class="muted" style="font-size:11px">coincide por nombre</div>':''}</td>
+      <td style="white-space:nowrap"><button class="btn peq" onclick="pvGuardarVinc(${k})">Guardar</button>${a?` <button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}')">Quitar</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="5" class="muted">Todavía no llegó nada al Salón.</td></tr>'}
+    </table></div>
+    <div class="card" style="max-width:640px;margin-top:12px"><h3>Vincular otro nombre</h3><p class="muted">Para un producto que todavía no se mandó nunca.</p>
+    <div class="fila"><div><label>Nombre como lo manda el sector</label><input id="pvNn" placeholder="Ej: Medialunas de manteca"></div><div><label>Producto de venta</label><input id="pvNp" list="dlPV"></div></div>
+    <div class="acciones" style="margin-top:10px"><button class="btn" onclick="pvVincularNuevo()">Vincular</button></div></div>`;
+    PV._filas=filas;
+  }
+  if(t==='prods'){
+    const q=norm(fPV);const lista=PV.prods.filter(p=>!q||norm(p.nombre).includes(q)||p.codigo===fPV.trim());
+    html+=`<div class="acciones" style="margin-bottom:10px"><input placeholder="Buscar por nombre o código…" value="${esc(fPV)}" oninput="fPV=this.value;clearTimeout(window._tpv);window._tpv=setTimeout(()=>{vVenta();const i=document.querySelector('#app input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" style="max-width:320px"><button class="btn" onclick="pvEditar(null)">➕ Nuevo producto</button></div>
+    <div class="card scroll"><table><tr><th>Código</th><th>Producto</th><th>Tipo</th><th class="num">Mayorista</th><th class="num">Local (LPU)</th><th class="num">PedidosYa</th><th class="num">Nombres vinculados</th><th>Estado</th></tr>
+    ${lista.map(p=>{const n=PV.alias.filter(a=>a.codigo===p.codigo).length;return `<tr class="click" onclick="pvEditar('${esc(p.codigo)}')" style="${p.activo?'':'opacity:.5'}"><td>${esc(p.codigo)}</td><td><b>${esc(p.nombre)}</b></td><td>${esc(p.tipo||'')}</td>
+      <td class="num">${p.precio_may!=null?$$(p.precio_may):'—'}</td><td class="num">${p.precio_lpu!=null?$$(p.precio_lpu):'—'}</td><td class="num">${p.precio_pey!=null?$$(p.precio_pey):'—'}</td><td class="num">${n||'—'}</td><td>${p.activo?'<span class="chip ok">activo</span>':'<span class="chip neu">de baja</span>'}</td></tr>`}).join('')}
+    </table></div>`;
+  }
+  $('#app').innerHTML=html;
+}
+async function pvGuardarVinc(k){const l=PV._filas[k];const v=$('#pva'+k).value;const p=pvLeer(v);
+  if(v.trim()&&!p)return toast('No encontré ese producto. Elegilo de la lista.');
+  if(!p){const a=pvAliasDe(l.k);if(a)return pvQuitarVinc(a.alias);return toast('Elegí un producto de venta');}
+  const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:l.k,codigo:p.codigo}],true);
+  PV.alias=PV.alias.filter(a=>a.alias!==l.k).concat([x]);toast('Vinculado ✅ '+l.nombre+' → '+p.nombre);vVenta()}
+async function pvQuitarVinc(alias){await sbDel('productos_venta_alias','alias=eq.'+encodeURIComponent(alias));PV.alias=PV.alias.filter(a=>a.alias!==alias);toast('Vínculo quitado');vVenta()}
+async function pvVincularNuevo(){const n=normV($('#pvNn').value);const p=pvLeer($('#pvNp').value);if(!n)return toast('Escribí el nombre');if(!p)return toast('Elegí el producto de venta de la lista');
+  const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:n,codigo:p.codigo}],true);PV.alias=PV.alias.filter(a=>a.alias!==n).concat([x]);
+  if(!PV.llegadas.find(l=>l.k===n))PV.llegadas.push({k:n,nombre:$('#pvNn').value.trim(),sectores:new Set(),veces:0});toast('Vinculado ✅');vVenta()}
+function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Artículo',precio_may:null,precio_lpu:null,precio_pey:null,activo:true};
+  const al=cod?PV.alias.filter(a=>a.codigo===cod):[];
+  const nv=v=>v==null?'':v;
+  modal(`<h3>${cod?'Editar producto de venta':'Nuevo producto de venta'}</h3>
+  <div class="fila"><div><label>Código (el de la caja)</label><input id="pvC" value="${esc(p.codigo)}" ${cod?'disabled':''}></div><div><label>Tipo</label><select id="pvT">${['Artículo','Combo'].map(x=>`<option ${x===p.tipo?'selected':''}>${x}</option>`).join('')}</select></div></div>
+  <label>Nombre</label><input id="pvN" value="${esc(p.nombre)}">
+  <div class="fila"><div><label>Precio mayorista</label><input id="pvM" type="number" step="any" value="${nv(p.precio_may)}"></div><div><label>Precio local (LPU)</label><input id="pvL" type="number" step="any" value="${nv(p.precio_lpu)}"></div><div><label>Precio PedidosYa</label><input id="pvP" type="number" step="any" value="${nv(p.precio_pey)}"></div></div>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvA" ${p.activo?'checked':''} style="width:auto"> Activo (se vende y aparece en el Control del Salón)</label>
+  ${cod?`<h4 style="margin-top:14px">Nombres vinculados</h4>${al.length?al.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #eee"><span>${esc(a.alias)}</span><button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button></div>`).join(''):'<p class="muted">Ninguno todavía. Se vinculan desde la pestaña "Vincular".</p>'}`:''}
+  <div class="acciones" style="margin-top:14px"><button class="btn" id="bPV">💾 Guardar</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  $('#bPV').onclick=async()=>{const num=id=>$(id).value===''?null:+$(id).value;
+    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),activo:$('#pvA').checked,updated_at:new Date().toISOString()};
+    if(!row.codigo||!row.nombre)return toast('Completá código y nombre');
+    if(!cod&&pvPorCod(row.codigo))return toast('Ya existe un producto con el código '+row.codigo);
+    const [x]=cod?await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),row):await sbIns('productos_venta',[row]);
+    PV.prods=PV.prods.filter(q=>q.codigo!==x.codigo).concat([x]).sort((a,b)=>a.nombre.localeCompare(b.nombre));cerrarModal();toast('Guardado ✅');vVenta()};
+}
 
 // ================= INVENTARIO =================
 let fInv={q:'',cat:'',solo:''};

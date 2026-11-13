@@ -271,24 +271,7 @@
   <!-- RECEPCIÓN -->
   <div class="panel active" id="panel-recepcion">
     <div id="despachos-pendientes-wrap" style="padding:12px 12px 0;"></div>
-    <div class="recepcion-form">
-      <div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:8px;">📦 Registrar mercadería recibida</div>
-      <div class="recepcion-row">
-        <select class="recepcion-select" id="rec-producto">
-          <option value="">— Seleccioná producto —</option>
-        </select>
-      </div>
-      <div class="recepcion-row">
-        <select class="recepcion-select" id="rec-sector" style="flex:1;">
-          <option value="panaderia">🍞 Panadería</option>
-          <option value="pasteleria">🍰 Pastelería</option>
-          <option value="cocina">🍳 Cocina</option>
-          <option value="deposito">🏭 Depósito</option>
-        </select>
-        <input type="number" class="recepcion-input" id="rec-cantidad" placeholder="Cant." min="1" />
-        <button class="recepcion-btn" onclick="registrarRecepcion()">+ Recibir</button>
-      </div>
-    </div>
+    <div style="margin:0 12px;padding:10px 12px;background:#F3E5F5;border-radius:10px;font-size:12px;color:#4A148C;">📦 La mercadería entra sola cuando Madrugada, Panadería, Pastelería o Cocina la mandan por sistema. Acá solo confirmás que llegó.</div>
     <div class="recepcion-history" id="recepcion-history"></div>
   </div>
 
@@ -347,10 +330,10 @@
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <select id="egr-tipo" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;">
-          <option value="desperdicio">🗑 Desperdicio / baja</option>
+          <option value="degustacion">🍽 Degustación</option>
+          <option value="desperdicio">🗑 Remanente vencido (se tira)</option>
           <option value="consumo_empleado">👤 Consumo empleado</option>
           <option value="devolucion">↩ Devolución al sector</option>
-          <option value="otro">📋 Otro motivo</option>
         </select>
         <input type="number" id="egr-cantidad" placeholder="Cant." min="1" style="width:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;text-align:center;outline:none;" />
         <button onclick="registrarEgreso()" style="padding:9px 14px;background:var(--danger);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;">Registrar</button>
@@ -745,6 +728,7 @@ function adjustStock(id, delta) {
 }
 
 function getItemName(id) {
+  if (typeof id === 'string' && id.startsWith('pv:')) { const p = CONTROL_CATALOGO.find(x => x.c === id.slice(3)); return p ? p.n : id; }
   return [...PRODUCTOS_LOCAL, ...INSUMOS_LOCAL].find(i => i.id === id)?.nombre || id;
 }
 
@@ -775,6 +759,7 @@ function checkAlerts() {
 // ── RECEPCIÓN ─────────────────────────────────────
 function initRecepcionSelect() {
   const sel = document.getElementById('rec-producto');
+  if (!sel) return; // la carga manual de ingresos se sacó: los ingresos entran por sistema
   sel.innerHTML = '<option value="">— Seleccioná producto —</option>';
   const groups = [
     { label:'🍞 Panadería', items:PRODUCTOS_LOCAL.filter(p=>p.sector==='panaderia') },
@@ -796,6 +781,7 @@ function initRecepcionSelect() {
 }
 
 function registrarRecepcion() {
+  if (!document.getElementById('rec-producto')) return;
   const prodId = document.getElementById('rec-producto').value;
   const sector = document.getElementById('rec-sector').value;
   const cantidad = parseInt(document.getElementById('rec-cantidad').value);
@@ -981,6 +967,18 @@ function initEgresosSelect() {
   const sel = document.getElementById('egr-producto');
   if (!sel) return;
   sel.innerHTML = '<option value="">— Seleccioná producto —</option>';
+  if (CATALOGO_VENTA_DB) {
+    // Lista oficial de productos de venta (Gestión → Productos de venta)
+    const og = document.createElement('optgroup'); og.label = '🏷️ Productos de venta';
+    for (const p of [...CONTROL_CATALOGO].sort((a,b)=>a.n.localeCompare(b.n))) {
+      const opt = document.createElement('option'); opt.value = 'pv:' + p.c; opt.textContent = p.n; og.appendChild(opt);
+    }
+    sel.appendChild(og);
+    const og2 = document.createElement('optgroup'); og2.label = '🧴 Insumos del local';
+    for (const item of INSUMOS_LOCAL) { const opt = document.createElement('option'); opt.value = item.id; opt.textContent = item.nombre; og2.appendChild(opt); }
+    sel.appendChild(og2);
+    return;
+  }
   const allProds = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL];
   for (const item of allProds) {
     const opt = document.createElement('option');
@@ -1021,7 +1019,7 @@ async function registrarEgreso() {
   stockState[prodId] = Math.max(0, (stockState[prodId] || 0) - cantidad);
   saveStock();
   const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
-  const tipoLabels = { desperdicio:'🗑 Desperdicio', consumo_empleado:'👤 Consumo empleado', devolucion:'↩ Devolución', otro:'📋 Otro' };
+  const tipoLabels = { degustacion:'🍽 Degustación', desperdicio:'🗑 Remanente vencido', consumo_empleado:'👤 Consumo empleado', devolucion:'↩ Devolución', otro:'📋 Otro' };
   egresos.unshift({ prodId, nombre, cantidad, tipo, tipoLabel: tipoLabels[tipo], time: now, foto_url: fotoUrl });
   localStorage.setItem(EGRESOS_KEY, JSON.stringify(egresos));
   sbUpsert('salon_egresos', { producto_id: prodId, producto_nombre: nombre, cantidad, tipo, foto_url: fotoUrl }).catch(()=>{});
@@ -1189,6 +1187,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initStock();
   initRecepcionSelect();
   initEgresosSelect();
+  cargarCatalogoVenta();
   renderStock();
   renderInsumosPanel();
   renderRecepcionHistory();
@@ -1475,7 +1474,7 @@ setInterval(function(){ const p=document.getElementById('panel-recepcion'); if(p
 // ══════════════════════════════════════════════════════
 // CONTROL DE STOCK DIARIO POR TURNO
 // ══════════════════════════════════════════════════════
-const CONTROL_CATALOGO = [
+let CONTROL_CATALOGO = [
   {c:'44',n:"Biscochitos grasa clasico",p:18000},
   {c:'25',n:"Libritos CLASICOS CRIOLLITOS",p:18000},
   {c:'43',n:"Palitos de QUESO",p:18000},
@@ -1625,7 +1624,32 @@ function ctrlInitInputs(){
   const f=document.getElementById('ctrl-fecha'); if(f && !f.value) f.value=fechaHoyISO();
 }
 
+
+// ── Lista de productos de venta y vínculos: vienen de Gestión → Productos de venta ──
+// Si no hay conexión, queda la lista fija de arriba como respaldo.
+let CATALOGO_VENTA_DB = false, _catVentaProm = null;
+function cargarCatalogoVenta(forzar){
+  if (_catVentaProm && !forzar) return _catVentaProm;
+  _catVentaProm = (async () => {
+    try {
+      const [prods, alias] = await Promise.all([
+        sbSelect('productos_venta', '?select=codigo,nombre,precio_lpu&activo=eq.true&order=nombre.asc'),
+        sbSelect('productos_venta_alias', '?select=alias,codigo')
+      ]);
+      if (prods && prods.length) {
+        CONTROL_CATALOGO = prods.map(r => ({ c: String(r.codigo), n: r.nombre, p: Number(r.precio_lpu) || 0 }));
+        const a = {}; (alias || []).forEach(r => { a[normCtrl(r.alias)] = String(r.codigo); });
+        ALIAS_INGRESO = a;
+        CATALOGO_VENTA_DB = true;
+        initEgresosSelect();
+      }
+    } catch (e) { console.warn('cargarCatalogoVenta', e); _catVentaProm = null; }
+  })();
+  return _catVentaProm;
+}
+
 async function loadControl(){
+  await cargarCatalogoVenta();
   ctrlInitInputs();
   const fecha=document.getElementById('ctrl-fecha').value || fechaHoyISO();
   const turno=document.getElementById('ctrl-turno').value;
@@ -1649,7 +1673,7 @@ async function loadControl(){
     CONTROL_CATALOGO.forEach(p=>{ itemsMap[p.c]={i:inicialMap[p.c]||0,g:0,e:0,f:0}; });
     controlState={ id:null, fecha, turno, responsable:'', hora_apertura:'', hora_cierre:'', estado:'abierto',
       remanentes:'', devoluciones:'', consumo_interno:'', items:itemsMap };
-    await traerIngresos(true); // pre-cargar ingresos del turno desde los despachos (editable)
+    await traerIngresos(true); // ingresos del turno desde los despachos (no editable)
     await traerEgresos(true); // pre-cargar egresos del turno (editable)
   }
   // reflejar encabezado
@@ -1683,7 +1707,7 @@ async function calcularInicialArrastre(fecha,turno){
 
 // Trae ingresos de los despachos confirmados de la fecha (match por nombre). silent=true no avisa.
 // PUENTE: nombre con que despacha cada sector  ->  código del producto en la planilla
-const ALIAS_INGRESO = {
+let ALIAS_INGRESO = {
   'budin carrot zanahoria y nuez':'101',
   'canastita calabaza':'136',
   'cremona comun':'24', 'cremona membrillo':'24', 'cremona jamon y queso':'24', 'cremona jyq':'24',
@@ -1707,9 +1731,9 @@ async function traerIngresos(silent){
   // ventana del turno: mañana hasta las 14hs, tarde de 14hs en adelante (evita duplicar entre turnos)
   let params;
   if(controlState.turno==='manana'){
-    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T00:00:00&created_at=lt.'+fecha+'T14:00:00';
+    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T00:00:00-03:00&created_at=lt.'+fecha+'T14:00:00-03:00';
   } else {
-    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T14:00:00&created_at=lte.'+fecha+'T23:59:59';
+    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T14:00:00-03:00&created_at=lte.'+fecha+'T23:59:59-03:00';
   }
   let recs=[];
   try{ recs=await sbSelect('salon_recepciones',params) || []; }
@@ -1751,9 +1775,9 @@ async function traerEgresos(silent){
   const fecha=controlState.fecha;
   let params;
   if(controlState.turno==='manana'){
-    params='?created_at=gte.'+fecha+'T00:00:00&created_at=lt.'+fecha+'T14:00:00';
+    params='?created_at=gte.'+fecha+'T00:00:00-03:00&created_at=lt.'+fecha+'T14:00:00-03:00';
   } else {
-    params='?created_at=gte.'+fecha+'T14:00:00&created_at=lte.'+fecha+'T23:59:59';
+    params='?created_at=gte.'+fecha+'T14:00:00-03:00&created_at=lte.'+fecha+'T23:59:59-03:00';
   }
   let recs=[];
   try{ recs=await sbSelect('salon_egresos',params) || []; }catch(e){ console.warn('traerEgresos',e); }
@@ -1761,7 +1785,8 @@ async function traerEgresos(silent){
   const acum={}; let sinMatch=0;
   recs.forEach(r=>{
     const key=normCtrl(r.producto_nombre);
-    const cod = ALIAS_EGRESO_ID[r.producto_id] || ALIAS_INGRESO[key] || idx[key];
+    const pid = String(r.producto_id||'');
+    const cod = (pid.startsWith('pv:') ? pid.slice(3) : null) || ALIAS_EGRESO_ID[pid] || ALIAS_INGRESO[key] || idx[key];
     if(cod){ acum[cod]=(acum[cod]||0)+(Number(r.cantidad)||0); } else { sinMatch++; }
   });
   let aplicados=0;
@@ -1803,7 +1828,7 @@ function renderControlTabla(){
     h+='<tr style="border-bottom:1px solid #f0f0f0;">'
       +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
-      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cg-'+p.c+'" value="'+(it.g||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
+      +'<td style="text-align:center;"><input readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores" type="number" id="cg-'+p.c+'" value="'+(it.g||0)+'" style="'+inp+'background:#EEEEEE;color:#555;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ce-'+p.c+'" value="'+(it.e||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
       +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+v+'</td>'
@@ -2032,16 +2057,17 @@ function renderTareas(){
 
   function montar() {
     var tabs = document.getElementById('tabs');
-    if (tabs && !document.getElementById('tab-clientes')) {
+    if (false && tabs && !document.getElementById('tab-clientes')) {
       var t = document.createElement('button'); t.className = 'tab'; t.id = 'tab-clientes'; t.style.position = 'relative';
       t.innerHTML = '<i class="ti ti-clipboard-list"></i>Clientes'; t.onclick = function () { switchTab('clientes'); };
       tabs.insertBefore(t, tabs.children[2] || null);
     }
     var ref = document.getElementById('panel-comanda');
-    if (ref && !document.getElementById('panel-clientes')) {
-      var p = document.createElement('div'); p.className = 'panel'; p.id = 'panel-clientes';
-      p.innerHTML = '<div style="padding:14px;overflow-y:auto;flex:1;"><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><div id="pcs-lista"></div></div>';
-      ref.parentNode.insertBefore(p, ref);
+    if (ref && !document.getElementById('pcs-seccion')) {
+      // Sección de pedidos de clientes arriba de todo, en la misma solapa "Pedidos"
+      var p = document.createElement('div'); p.id = 'pcs-seccion';
+      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><div id="pcs-lista"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
+      ref.insertBefore(p, ref.firstChild);
     }
     if (!document.getElementById('pcs-pill')) {
       var pill = document.createElement('button'); pill.id = 'pcs-pill'; pill.onclick = function () { switchTab('clientes'); }; document.body.appendChild(pill);
@@ -2051,15 +2077,10 @@ function renderTareas(){
   // switchTab del Salón no conoce la nueva pestaña: la sumamos
   var _sw = window.switchTab;
   window.switchTab = function (name) {
-    if (name === 'clientes') {
-      document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
-      document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
-      document.getElementById('tab-clientes').classList.add('active');
-      document.getElementById('panel-clientes').classList.add('active');
-      cargarPedidos();
-      return;
-    }
-    return _sw.apply(this, arguments);
+    if (name === 'clientes') name = 'comanda';
+    var r = _sw.call(this, name);
+    if (name === 'comanda') cargarPedidos();
+    return r;
   };
 
   function cargarProductos() {
@@ -2076,7 +2097,7 @@ function renderTareas(){
     if (!pedidos.length) { pill.style.display = 'none'; return; }
     pill.style.display = 'block'; pill.className = hoy.length ? 'r' : '';
     pill.textContent = hoy.length ? '🔔 ' + hoy.length + ' pedido' + (hoy.length > 1 ? 's' : '') + ' para hoy' : '🧾 ' + pedidos.length + ' pedido' + (pedidos.length > 1 ? 's' : '') + (listos.length ? ' · ' + listos.length + ' listo' + (listos.length > 1 ? 's' : '') : '');
-    var tab = document.getElementById('tab-clientes');
+    var tab = document.getElementById('tab-comanda');
     if (tab) { var b = tab.querySelector('.pcs-badge'); if (!b) { b = document.createElement('span'); b.className = 'pcs-badge'; b.style.cssText = 'position:absolute;top:2px;right:4px;background:#E24B4A;color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;'; tab.appendChild(b); } b.textContent = pedidos.length; }
   }
   function estadoItem(i) { return i.estado === 'despachado' ? ['✅ despachado', '#dcfce7', '#166534'] : i.estado === 'recibido' ? ['👨‍🍳 en preparación', '#dbeafe', '#1e40af'] : i.estado === 'cancelado' ? ['cancelado', '#eee', '#666'] : ['⏳ sin ver', '#fef9c3', '#92400e']; }
