@@ -407,7 +407,7 @@ function verReceta(id){
     return `<tr><td>${sub?'📋 ':''}${esc(i.nombre)}${!ref&&!sub?' <span class="chip mal">sin vincular</span>':''}</td><td class="num">${fnum(i.cantidad,4)} ${esc(i.unidad||'')}</td><td class="num">${i.merma?fnum(i.merma)+'%':''}</td><td class="num">${ref?$$(ref.costo_unitario):sub?$$(costoUnit(sub)):'—'}</td><td class="num">${$$(st)}</td><td class="num">${c?fnum(st/c*100,1)+'%':''}</td></tr>`}).join('')}
   <tr><td colspan="4"><b>Total receta</b></td><td class="num"><b>${$$(c)}</b></td><td></td></tr></table></div>
   ${(r.pasos||[]).length?`<h3 style="margin-top:14px">Pasos</h3><ol>${r.pasos.map(s=>`<li>${esc(s)}</li>`).join('')}</ol>`:''}
-  <div class="acciones" style="margin-top:14px"><button class="btn" onclick="editarReceta('${r.id}')">✏️ Editar</button><button class="btn sec" onclick="editarReceta('${r.id}',true)">📄 Duplicar</button></div>`);
+  <div class="acciones" style="margin-top:14px"><button class="btn" onclick="editarReceta('${r.id}')">✏️ Editar</button><button class="btn sec" onclick="editarReceta('${r.id}',true)">📄 Duplicar</button><button class="btn sec" onclick="verNutricion('${r.id}')">🏷️ Tabla nutricional</button></div>`);
 }
 function opcionesIngredientes(){return '<datalist id="dlIng">'+D.insumos.map(i=>`<option value="${esc(i.nombre)}">insumo · ${esc(i.unidad)} · ${$$(i.costo_unitario)}</option>`).join('')+D.recetas.map(r=>`<option value="📋 ${esc(r.nombre)}">receta / masa</option>`).join('')+'</datalist>'}
 function filaIng(i={}){const n=i.receta_id&&recMap[i.receta_id]?'📋 '+recMap[i.receta_id].nombre:(i.insumo_id&&insMap[i.insumo_id]?insMap[i.insumo_id].nombre:(i.nombre||''));
@@ -593,6 +593,141 @@ async function aplicarPendientes(){const pend=D.produccion.filter(p=>p.estado===
     const x=await rpcProduccion(p.sector,p.producto,+p.tandas||1,p.unidades!=null?+p.unidades:null,null);
     if(x&&x.ok){ok++;await sbDel('produccion','id=eq.'+p.id)}else{no++;if(x&&x.id)await sbDel('produccion','id=eq.'+x.id)}}
   await recargarProduccion();toast(`Aplicadas ${ok}. ${no?no+' siguen sin receta.':''}`,5000);vProduccion()}
+
+// ================= TABLA NUTRICIONAL =================
+// Se calcula con los ingredientes de la receta (incluye sub-recetas) y los valores cada 100 g de cada insumo
+// (tabla nutricion_insumo). Son valores ESTIMADOS: no reemplazan un análisis de laboratorio.
+let NUT=null;
+const NUT_CAMPOS=[['kcal','Valor energético','kcal'],['hc','Carbohidratos','g'],['azucares','  de los cuales azúcares','g'],['proteinas','Proteínas','g'],['grasas','Grasas totales','g'],['grasas_sat','Grasas saturadas','g'],['grasas_trans','Grasas trans','g'],['fibra','Fibra alimentaria','g'],['sodio_mg','Sodio','mg']];
+const NUT_VD={kcal:2000,hc:300,proteinas:75,grasas:55,grasas_sat:22,fibra:25,sodio_mg:2400};
+const ALERG_TXT={gluten:'gluten (TACC)',leche:'leche',huevo:'huevo',soja:'soja',mani:'maní',frutos_secos:'frutos secos',sesamo:'sésamo',pescado:'pescado',crustaceos:'crustáceos'};
+async function cargarNut(){const rows=await sbGet('nutricion_insumo');NUT={};rows.forEach(n=>NUT[n.insumo_id]=n);return NUT}
+function explotarNut(r,factor,prof,out){if(!r||prof>6)return out;const rend=+r.rendimiento||1;
+  for(const i of (r.ingredientes||[])){const q=(+i.cantidad||0)*(1+(+i.merma||0)/100)*factor/rend;
+    if(i.insumo_id)out.push({id:i.insumo_id,q,nombre:i.nombre});
+    else if(i.receta_id&&recMap[i.receta_id])explotarNut(recMap[i.receta_id],q,prof+1,out);
+    else out.push({id:null,q,nombre:i.nombre})}
+  return out}
+function calcNut(r){
+  const partes=explotarNut(r,1,0,[]);const tot={};NUT_CAMPOS.forEach(([k])=>tot[k]=0);
+  let gramos=0;const faltan={},alerg=new Set();
+  for(const p of partes){
+    if(!p.q)continue;
+    const n=p.id?NUT[p.id]:null;
+    if(!n){const k=p.id||('x:'+p.nombre);faltan[k]={id:p.id,nombre:p.id&&insMap[p.id]?insMap[p.id].nombre:p.nombre};continue}
+    if(!n.es_alimento)continue;
+    if(n.kcal==null||!n.g_por_unidad){faltan[p.id]={id:p.id,nombre:insMap[p.id]?.nombre||p.nombre};continue}
+    const g=p.q*n.g_por_unidad;gramos+=g;
+    NUT_CAMPOS.forEach(([k])=>tot[k]+=g/100*(+n[k]||0));
+    (n.alergenos||[]).forEach(a=>alerg.add(a));
+  }
+  const pesoU=+r.peso_unidad_g||0;const base=pesoU||gramos;
+  const c100={};NUT_CAMPOS.forEach(([k])=>c100[k]=base?tot[k]/base*100:0);
+  const porG=+r.porcion_g||pesoU||0;
+  const porc=porG?Object.fromEntries(NUT_CAMPOS.map(([k])=>[k,c100[k]*porG/100])):null;
+  return {c100,porc,porG,pesoU,gramosCrudo:gramos,faltan:Object.values(faltan),alerg:[...alerg]};
+}
+function fmtNut(v,k){if(v==null)return '—';if(k==='kcal'||k==='sodio_mg')return Math.round(v).toLocaleString('es-AR');return (v<10?Math.round(v*10)/10:Math.round(v)).toLocaleString('es-AR')}
+function vdNut(v,k){return NUT_VD[k]?Math.round(v/NUT_VD[k]*100)+'%':'—'}
+
+async function verNutricion(id){
+  const r=recMap[id];if(!r)return;
+  if(!NUT){modal('<p class="cargando">Calculando…</p>');try{await cargarNut()}catch(e){return}}
+  const n=calcNut(r);
+  const desc=r.porcion_desc||'1 unidad';
+  modal(`<h2>🏷️ Tabla nutricional · ${esc(r.nombre)}</h2>
+  <p class="muted">Valores <b>estimados</b> a partir de la receta. ${n.pesoU?'':'<b style="color:var(--rojo)">Todavía no cargaste el peso de 1 unidad horneada:</b> mientras tanto, "cada 100 g" se calcula sobre la masa cruda y no se muestra la porción.'}</p>
+  <div class="fila"><div><label>Peso de 1 unidad ya horneada (g)</label><input id="nuP" type="number" step="any" value="${r.peso_unidad_g??''}" placeholder="ej: 60"></div>
+  <div><label>Porción para la etiqueta (g, opcional)</label><input id="nuPg" type="number" step="any" value="${r.porcion_g??''}" placeholder="igual a 1 unidad"></div>
+  <div><label>Cómo se llama la porción</label><input id="nuPd" value="${esc(r.porcion_desc||'')}" placeholder="ej: 1 medialuna, 1 porción"></div></div>
+  <div class="acciones" style="margin:8px 0 12px"><button class="btn sec" id="nuG">💾 Guardar peso y porción</button></div>
+  <div class="scroll"><table><tr><th>Cantidad por ${n.porG?esc(desc)+' ('+fmtNut(n.porG)+' g)':'porción'}</th><th class="num">Por porción</th><th class="num">%VD (*)</th><th class="num">Cada 100 g</th></tr>
+  ${NUT_CAMPOS.map(([k,l,u])=>`<tr><td>${l.trim()===l?esc(l):'&nbsp;&nbsp;'+esc(l.trim())}</td><td class="num">${n.porc?fmtNut(n.porc[k],k)+' '+u:'—'}</td><td class="num">${n.porc?vdNut(n.porc[k],k):'—'}</td><td class="num">${fmtNut(n.c100[k],k)} ${u}</td></tr>`).join('')}
+  </table></div>
+  <p><b>Alérgenos:</b> ${n.alerg.length?esc(n.alerg.map(a=>ALERG_TXT[a]||a).join(', ')):'ninguno detectado en los ingredientes'}</p>
+  ${n.faltan.length?`<div class="card" style="border-left:4px solid var(--rojo)"><b>⚠️ ${n.faltan.length} ingrediente${n.faltan.length>1?'s':''} sin valores nutricionales</b> (no se suman todavía):
+    <ul>${n.faltan.map(f=>`<li>${esc(f.nombre)} ${f.id?`<button class="btn peq sec" onclick="editarNutInsumo('${f.id}','${id}')">Cargar valores</button>`:'<span class="muted">(no está vinculado a un insumo del inventario)</span>'}</li>`).join('')}</ul></div>`:''}
+  <h3 style="margin-top:14px">Etiqueta para WhatsApp</h3>
+  <canvas id="nuCanvas" width="1080" height="1350" style="width:100%;max-width:420px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.15)"></canvas>
+  <div class="acciones" style="margin-top:10px"><button class="btn" onclick="nutDescargar('${id}')">⬇️ Descargar imagen</button><button class="btn sec" onclick="nutCompartir('${id}')">📤 Compartir</button></div>
+  <p class="muted" style="font-size:12px">Los valores de cada ingrediente se pueden revisar y corregir con el botón de abajo, por ejemplo con el rótulo de la marca que usan.</p>
+  <div class="acciones"><button class="btn sec peq" onclick="verIngredientesNut('${id}')">🔎 Ver valores de cada ingrediente</button></div>`);
+  $('#nuG').onclick=async()=>{const num=s=>$(s).value===''?null:+$(s).value;
+    const patch={peso_unidad_g:num('#nuP'),porcion_g:num('#nuPg'),porcion_desc:$('#nuPd').value.trim()||null};
+    const [x]=await sbUpd('recetas','id=eq.'+id,patch);Object.assign(r,x||patch);toast('Guardado ✅');verNutricion(id)};
+  await dibujarEtiqueta(r,n);
+}
+async function verIngredientesNut(id){const r=recMap[id];const partes=explotarNut(r,1,0,[]);const vistos={};
+  const filas=partes.filter(p=>p.id&&!vistos[p.id]&&(vistos[p.id]=1));
+  modal(`<h2>Valores por ingrediente · ${esc(r.nombre)}</h2><p class="muted">Cada 100 g. "Estimado" = valor de tabla de referencia; conviene corregir los que dicen "revisar rótulo" con el envase de la marca.</p>
+  <div class="scroll"><table><tr><th>Ingrediente</th><th class="num">kcal</th><th class="num">HC</th><th class="num">Prot.</th><th class="num">Grasas</th><th class="num">Sodio mg</th><th>Fuente</th><th></th></tr>
+  ${filas.map(p=>{const n=NUT[p.id];return `<tr><td>${esc(insMap[p.id]?.nombre||p.nombre)}</td><td class="num">${n?.kcal??'—'}</td><td class="num">${n?.hc??'—'}</td><td class="num">${n?.proteinas??'—'}</td><td class="num">${n?.grasas??'—'}</td><td class="num">${n?.sodio_mg??'—'}</td><td class="muted" style="font-size:12px">${esc(n?.fuente||'sin datos')}</td><td><button class="btn peq sec" onclick="editarNutInsumo('${p.id}','${id}')">Editar</button></td></tr>`}).join('')}
+  </table></div><div class="acciones" style="margin-top:12px"><button class="btn" onclick="verNutricion('${id}')">← Volver a la etiqueta</button></div>`)}
+function editarNutInsumo(insId,volverA){const i=insMap[insId]||{nombre:'?',unidad:''};const n=NUT[insId]||{es_alimento:true,alergenos:[]};
+  const u=(i.unidad||'').toLowerCase();const gpuDef=n.g_por_unidad??(u.startsWith('kg')?1000:u.startsWith('l')?1000:'');
+  modal(`<h3>Valores nutricionales · ${esc(i.nombre)}</h3><p class="muted">Todo cada 100 g (como en el rótulo del envase).</p>
+  <div class="fila">${NUT_CAMPOS.map(([k,l,un])=>`<div><label>${esc(l.trim())} (${un})</label><input id="nv_${k}" type="number" step="any" value="${n[k]??''}"></div>`).join('')}</div>
+  <label>Cuántos gramos pesa 1 "${esc(i.unidad)}" de este insumo</label><input id="nv_gpu" type="number" step="any" value="${gpuDef}" placeholder="1 kg = 1000 · 1 litro de leche = 1030 · 1 huevo = 50">
+  <label style="margin-top:8px">Alérgenos</label><div style="display:flex;flex-wrap:wrap;gap:10px">${Object.entries(ALERG_TXT).map(([k,t])=>`<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" class="nvA" value="${k}" ${(n.alergenos||[]).includes(k)?'checked':''} style="width:auto">${esc(t)}</label>`).join('')}</div>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="nv_noal" ${n.es_alimento===false?'checked':''} style="width:auto"> No es un alimento (no suma en la tabla)</label>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="nvG">💾 Guardar</button><button class="btn sec" onclick="verNutricion('${volverA}')">Cancelar</button></div>`);
+  $('#nvG').onclick=async()=>{const row={insumo_id:insId,es_alimento:!$('#nv_noal').checked,g_por_unidad:$('#nv_gpu').value===''?null:+$('#nv_gpu').value,
+      alergenos:[...document.querySelectorAll('.nvA:checked')].map(x=>x.value),fuente:'Cargado a mano',updated_at:new Date().toISOString()};
+    NUT_CAMPOS.forEach(([k])=>{const v=$('#nv_'+k).value;row[k]=v===''?null:+v});
+    if(row.es_alimento&&(row.kcal==null||!row.g_por_unidad))return toast('Completá al menos las kcal y los gramos por unidad');
+    const [x]=await sbIns('nutricion_insumo?on_conflict=insumo_id',[row],true);NUT[insId]=x||row;toast('Guardado ✅');verNutricion(volverA)};
+}
+async function dibujarEtiqueta(r,n){
+  const cv=$('#nuCanvas');if(!cv)return;const c=cv.getContext('2d');
+  try{await Promise.all([document.fonts.load('700 60px "Playfair Display"'),document.fonts.load('400 30px Lato'),document.fonts.load('700 30px Lato')])}catch(e){}
+  const W=1080,H=1350,V='#0C461F',V2='#186B34',CR='#F5F0E9',OR='#C9A84C';
+  c.fillStyle=CR;c.fillRect(0,0,W,H);
+  c.fillStyle=V;c.fillRect(0,0,W,190);c.fillStyle=OR;c.fillRect(0,190,W,8);
+  c.textAlign='center';c.fillStyle=CR;c.font='700 70px "Playfair Display", serif';c.fillText('Poly',W/2-150,118);
+  c.fillStyle=OR;c.font='italic 700 70px "Playfair Display", serif';c.fillText('Artesanal',W/2+105,118);
+  c.fillStyle=CR;c.font='400 26px Lato, sans-serif';c.fillText('PANADERÍA DE AUTOR',W/2,165);
+  c.fillStyle=V;c.font='700 54px "Playfair Display", serif';
+  const lineas=partirTexto(c,r.nombre,W-120).slice(0,2);let y=275;lineas.forEach(l=>{c.fillText(l,W/2,y);y+=62});
+  c.fillStyle=V2;c.font='700 30px Lato, sans-serif';c.fillText('INFORMACIÓN NUTRICIONAL',W/2,y+10);
+  const desc=r.porcion_desc||'1 unidad';
+  c.font='400 26px Lato, sans-serif';c.fillStyle='#333';
+  c.fillText(n.porG?`Porción: ${desc} (${fmtNut(n.porG)} g)`:'Valores cada 100 g',W/2,y+50);
+  const x0=70,x1=W-70;let ty=y+80;const conP=!!n.porc;
+  const cols=conP?[[x0+20,'left'],[x0+560,'right'],[x0+735,'right'],[x1-20,'right']]:[[x0+20,'left'],[x1-20,'right']];
+  c.fillStyle=V;c.fillRect(x0,ty,x1-x0,56);c.fillStyle=CR;c.font='700 26px Lato, sans-serif';
+  const heads=conP?['','Por porción','%VD (*)','Cada 100 g']:['','Cada 100 g'];
+  heads.forEach((h,i)=>{c.textAlign=cols[i][1];c.fillText(h,cols[i][0],ty+38)});ty+=56;
+  NUT_CAMPOS.forEach(([k,l,u],idx)=>{const rowH=k==='kcal'?84:60;
+    c.fillStyle=idx%2?'#FFFFFF':'#EDE6DA';c.fillRect(x0,ty,x1-x0,rowH);
+    c.fillStyle='#222';const sub=l!==l.trim();c.font=(sub?'400 ':'700 ')+'27px Lato, sans-serif';
+    c.textAlign='left';c.fillText(sub?'   '+l.trim():l,cols[0][0],ty+40);
+    c.font='400 27px Lato, sans-serif';
+    const v100=fmtNut(n.c100[k],k)+' '+u;
+    const kj=v=>Math.round(v*4.184).toLocaleString('es-AR')+' kJ';
+    const sub2=(txt,x)=>{if(k!=='kcal')return;c.save();c.font='400 21px Lato, sans-serif';c.fillStyle='#555';c.fillText(txt,x,ty+70);c.restore()};
+    c.textAlign='right';
+    if(conP){c.fillText(fmtNut(n.porc[k],k)+' '+u,cols[1][0],ty+40);sub2(kj(n.porc[k]),cols[1][0]);c.fillText(vdNut(n.porc[k],k),cols[2][0],ty+40);c.fillText(v100,cols[3][0],ty+40);sub2(kj(n.c100[k]),cols[3][0])}
+    else{c.fillText(v100,cols[1][0],ty+40);sub2(kj(n.c100[k]),cols[1][0])}
+    ty+=rowH});
+  c.strokeStyle=V;c.lineWidth=3;c.strokeRect(x0,y+80,x1-x0,ty-(y+80));
+  ty+=50;c.textAlign='left';c.fillStyle=V;c.font='700 28px Lato, sans-serif';c.fillText('Contiene:',x0,ty);
+  c.fillStyle='#222';c.font='400 28px Lato, sans-serif';
+  const al=n.alerg.length?n.alerg.map(a=>ALERG_TXT[a]||a).join(', ')+'.':'sin alérgenos principales en sus ingredientes.';
+  const alL=partirTexto(c,al,x1-x0-140);alL.forEach((l,i)=>c.fillText(l,x0+140,ty+i*36));ty+=36*Math.max(1,alL.length)+10;
+  c.font='italic 400 23px Lato, sans-serif';c.fillStyle='#555';
+  partirTexto(c,'Elaborado en una cocina donde también se usan trigo, leche, huevo, soja, frutos secos y sésamo.',x1-x0).forEach(l=>{c.fillText(l,x0,ty);ty+=30});
+  c.font='400 20px Lato, sans-serif';c.fillStyle='#555';ty=H-150;
+  const pie=(n.porc?'(*) % Valores Diarios con base a una dieta de 2.000 kcal u 8.400 kJ. Sus valores diarios pueden ser mayores o menores dependiendo de sus necesidades energéticas. ':'')+'Valores estimados a partir de la receta; no reemplazan un análisis de laboratorio.';
+  partirTexto(c,pie,x1-x0).forEach(l=>{c.fillText(l,x0,ty);ty+=26});
+  c.fillStyle=V;c.fillRect(0,H-60,W,60);c.fillStyle=CR;c.textAlign='center';c.font='700 24px Lato, sans-serif';
+  c.fillText('@polyartesanal  ·  Galván 3512, Villa Urquiza',W/2,H-22);
+}
+function partirTexto(c,t,maxW){const ws=String(t||'').split(/\s+/);const out=[];let l='';for(const w of ws){const p=l?l+' '+w:w;if(c.measureText(p).width>maxW&&l){out.push(l);l=w}else l=p}if(l)out.push(l);return out}
+function nutArchivo(id){return 'tabla-nutricional-'+norm(recMap[id]?.nombre||'producto').replace(/\s+/g,'-')+'.png'}
+function nutDescargar(id){const a=document.createElement('a');a.href=$('#nuCanvas').toDataURL('image/png');a.download=nutArchivo(id);a.click()}
+function nutCompartir(id){$('#nuCanvas').toBlob(async b=>{const f=new File([b],nutArchivo(id),{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:recMap[id]?.nombre})}catch(e){}}
+  else{nutDescargar(id);toast('Tu navegador no permite compartir directo: se descargó la imagen para que la mandes por WhatsApp')}},'image/png')}
 
 // ================= PRODUCTOS DE VENTA =================
 // Lista de productos que se venden en el local (mismos códigos que la caja) y
