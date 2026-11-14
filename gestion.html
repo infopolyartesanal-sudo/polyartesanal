@@ -278,36 +278,82 @@ async function abrirZip(buf){
     if(f.met===0)return td.decode(data);
     return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text()}};
 }
-async function xlsxATexto(buf){
+// Devuelve las hojas como [{nombre, filas:[[celda,...],...]}]. Los números quedan como número.
+async function xlsxAHojas(buf){
   const z=await abrirZip(buf),dp=new DOMParser(),X=t=>dp.parseFromString(t,'application/xml');
   const ss=[];const sst=await z.leer('xl/sharedStrings.xml');
   if(sst)[...X(sst).getElementsByTagName('si')].forEach(si=>ss.push([...si.getElementsByTagName('t')].map(t=>t.textContent).join('')));
-  // nombres y orden de las hojas
   const wb=X(await z.leer('xl/workbook.xml')||'<x/>'),rels=X(await z.leer('xl/_rels/workbook.xml.rels')||'<x/>');const rmap={};
   [...rels.getElementsByTagName('Relationship')].forEach(r=>rmap[r.getAttribute('Id')]=r.getAttribute('Target'));
   let hojas=[...wb.getElementsByTagName('sheet')].map(h=>{let t=rmap[h.getAttribute('r:id')]||'';t=t.replace(/^\/?(xl\/)?/,'');return {nombre:h.getAttribute('name'),archivo:'xl/'+t}});
   if(!hojas.length)hojas=z.nombres.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort().map((a,i)=>({nombre:'Hoja '+(i+1),archivo:a}));
   const colN=ref=>{let n=0;for(const ch of ref.replace(/\d+/g,''))n=n*26+ch.charCodeAt(0)-64;return n-1};
-  const partes=[];
+  const out=[];
   for(const h of hojas){const xml=await z.leer(h.archivo);if(!xml)continue;const filas=[];
     for(const row of X(xml).getElementsByTagName('row')){const f=[];
       for(const c of row.getElementsByTagName('c')){const t=c.getAttribute('t'),v=c.getElementsByTagName('v')[0];let val='';
-        if(t==='s')val=ss[+(v?.textContent)]??'';else if(t==='inlineStr')val=[...c.getElementsByTagName('t')].map(x=>x.textContent).join('');else val=v?v.textContent:'';
-        f[colN(c.getAttribute('r')||'A1')]=String(val).replace(/[\t\n\r]+/g,' ')}
-      if(f.some(x=>x&&x.trim()))filas.push([...f].map(x=>x??'').join('\t'))}
-    if(filas.length)partes.push('### Hoja: '+h.nombre+'\n'+filas.join('\n'))}
-  return partes.join('\n\n');
+        if(t==='s')val=ss[+(v?.textContent)]??'';else if(t==='inlineStr')val=[...c.getElementsByTagName('t')].map(x=>x.textContent).join('');
+        else if(t==='str'||t==='b'||t==='e')val=v?v.textContent:'';else val=v&&v.textContent!==''?+v.textContent:'';
+        f[colN(c.getAttribute('r')||'A1')]=val}
+      for(let i=0;i<f.length;i++)if(f[i]===undefined)f[i]='';
+      if(f.some(x=>String(x).trim()))filas.push(f)}
+    out.push({nombre:h.nombre,filas})}
+  return out;
 }
 function cargarSheetJS(){return window.XLSX?Promise.resolve(window.XLSX):new Promise((ok,err)=>{const sc=document.createElement('script');sc.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';sc.onload=()=>ok(window.XLSX);sc.onerror=()=>err(new Error('No se pudo abrir el Excel .xls. Guardalo como .xlsx o .csv y probá de nuevo'));document.head.appendChild(sc)})}
+function csvAFilas(txt){const sep=(txt.split('\n')[0].match(/;/g)||[]).length>=(txt.split('\n')[0].match(/,/g)||[]).length?';':',';
+  return txt.split(/\r?\n/).filter(l=>l.trim()).map(l=>{const out=[];let cur='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];
+    if(q){if(ch==='"'&&l[i+1]==='"'){cur+='"';i++}else if(ch==='"')q=false;else cur+=ch}else if(ch==='"')q=true;else if(ch===sep){out.push(cur);cur=''}else cur+=ch}
+    out.push(cur);return out})}
+async function planillaAHojas(file){
+  const buf=await file.arrayBuffer();
+  if(/\.(csv|txt)$/i.test(file.name)||/csv/i.test(file.type)){let txt=new TextDecoder('utf-8').decode(buf);if(txt.includes('�'))txt=new TextDecoder('windows-1252').decode(buf);return [{nombre:file.name,filas:csvAFilas(txt)}]}
+  const z=new Uint8Array(buf,0,2);
+  if(z[0]===0x50&&z[1]===0x4b){try{const h=await xlsxAHojas(buf);if(h.some(x=>x.filas.length))return h}catch(e){console.warn(e)}}
+  const XL=await cargarSheetJS();const wb=XL.read(buf,{type:'array'});
+  return wb.SheetNames.map(n=>({nombre:n,filas:XL.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:''})}));
+}
 async function planillaATexto(file){
-  const buf=await file.arrayBuffer();let txt='';
-  if(/\.(csv|txt)$/i.test(file.name)||/csv/i.test(file.type)){txt=new TextDecoder('utf-8').decode(buf);if(txt.includes('�'))txt=new TextDecoder('windows-1252').decode(buf)}
-  else{const zip=new Uint8Array(buf,0,2);
-    if(zip[0]===0x50&&zip[1]===0x4b){try{txt=await xlsxATexto(buf)}catch(e){console.warn(e)}}
-    if(!txt){const XL=await cargarSheetJS();const wb=XL.read(buf,{type:'array'});txt=wb.SheetNames.map(n=>'### Hoja: '+n+'\n'+XL.utils.sheet_to_csv(wb.Sheets[n],{FS:'\t',blankrows:false})).join('\n\n')}}
-  txt=txt.trim();if(!txt)throw new Error('La planilla está vacía');
+  const hojas=await planillaAHojas(file);
+  let txt=hojas.filter(h=>h.filas.length).map(h=>'### Hoja: '+h.nombre+'\n'+h.filas.map(f=>f.map(x=>String(x).replace(/[\t\n\r]+/g,' ')).join('\t')).join('\n')).join('\n\n').trim();
+  if(!txt)throw new Error('La planilla está vacía');
   if(txt.length>150000)txt=txt.slice(0,150000)+'\n[… recortado]';
   return txt;
+}
+// Fecha/hora de Excel (número de serie) o texto → Date en hora local
+function fechaExcel(v){if(v instanceof Date)return v;if(typeof v==='number'&&v>20000){const ms=Math.round((v-25569)*864e5);const d=new Date(ms);return new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),d.getUTCHours(),d.getUTCMinutes(),d.getUTCSeconds())}
+  const m=String(v||'').match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);if(!m)return null;
+  let [_,a,b,c,h,mi,se]=m;let y,mo,d;if(a.length===4){y=+a;mo=+b;d=+c}else{d=+a;mo=+b;y=+c<100?2000+ +c:+c}
+  return new Date(y,mo-1,d,+h||0,+mi||0,+se||0)}
+const numAR=v=>typeof v==='number'?v:+String(v||'').replace(/\$|\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.')||0;
+// Lee el "Control de artículos" de Ayres: una fila por artículo vendido, con hora, código, cantidad y subtotal.
+// Devuelve null si el archivo no tiene ese formato.
+async function leerAyresArticulos(file){
+  const hojas=await planillaAHojas(file);
+  for(const h of hojas){
+    const hi=h.filas.findIndex(f=>{const n=f.map(x=>norm(String(x)));return n.includes('codigo')&&n.includes('cantidad')&&n.some(x=>x==='subtotal'||x==='importe'||x==='total')});
+    if(hi<0)continue;
+    const H=h.filas[hi].map(x=>norm(String(x)));const col=(...ks)=>H.findIndex(x=>ks.includes(x));
+    const cE=col('e','estado'),cH=col('hora','fecha','fecha y hora'),cCod=col('codigo'),cArt=col('articulo','producto','descripcion'),cCant=col('cantidad'),cSub=col('subtotal','importe','total');
+    const cTipo=H.findIndex((x,i)=>i!==cArt&&i>cCod&&h.filas.slice(hi+1,hi+30).some(f=>/^(articulo|combo|descuento|recargo|cupon|ajuste|adelanto|observacion)$/.test(norm(String(f[i]||'')))));
+    const prods={},horas=new Set();let total=0,anuladas=0,desde=null,hasta=null,descuentos=0;
+    for(const f of h.filas.slice(hi+1)){
+      const est=cE>=0?norm(String(f[cE]||'')):'cobrada';
+      if(!est&&!f[cCod]&&!f[cSub])continue;
+      if(/anulad|proceso/.test(est)){anuladas++;continue}
+      const sub=numAR(f[cSub]),cant=numAR(f[cCant]);const tipo=cTipo>=0?norm(String(f[cTipo]||'')):'articulo';
+      total+=sub;
+      const fh=cH>=0?fechaExcel(f[cH]):null;if(fh){horas.add(fh.getTime());if(!desde||fh<desde)desde=fh;if(!hasta||fh>hasta)hasta=fh}
+      const cod=String(f[cCod]??'').trim();
+      if(!cod||!/articulo|combo/.test(tipo)){if(sub<0)descuentos+=sub;continue}
+      const k=cod;const nom=String(f[cArt]||'').trim();
+      const x=prods[k]||(prods[k]={codigo:cod,producto:nom,cantidad:0,total:0,fracc:false});
+      x.cantidad+=cant;x.total+=sub;if(Math.abs(cant-Math.round(cant))>1e-6)x.fracc=true}
+    const items=Object.values(prods).sort((a,b)=>b.total-a.total).map(x=>({codigo:x.codigo,producto:x.producto,unidad:x.fracc?'kg':'un',cantidad:Math.round(x.cantidad*1000)/1000,total:Math.round(x.total*100)/100}));
+    if(!items.length)continue;
+    return {items,total:Math.round(total*100)/100,tickets:horas.size||null,desde,hasta,anuladas,descuentos};
+  }
+  return null;
 }
 async function leerConIA(file,prompt){
   const key=apiKey();if(!key){abrirAjustes();throw new Error('Falta la API key')}
@@ -332,9 +378,15 @@ Reglas:
 - "total_linea" es el importe final de la línea con IVA incluido si la factura lo discrimina por línea; si no, el importe de la línea.
 - Los números sin separador de miles, con punto decimal.`;
 const PROMPT_TICKET=`Leé este cierre/reporte de caja de una panadería y devolvé SOLO un JSON:
-{"fecha":"YYYY-MM-DD","turno":"","total":0,"formas_pago":{"efectivo":0,"tarjeta":0,"mercadopago":0,"transferencia":0,"otros":0},
+{"fecha":"YYYY-MM-DD","turno":"","total":0,"tickets":0,"formas_pago":{"Efectivo":0,"Visa Electron":0,"Mercado Pago QR":0},
 "items":[{"producto":"nombre","unidad":"un|kg","cantidad":0,"total":0}]}
-Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
+Reglas:
+- En "formas_pago" poné cada medio de pago con el nombre tal cual figura (Efectivo, Visa Electron, Mercado Pago QR, MODO, Depósitos/Transferencia, Crédito, etc.).
+- Usá el importe VENDIDO con cada medio (en Ayres es la columna "VENTA" del "Resumen por tipo de valor"). NO uses la columna "TOTAL" si descuenta retiros, propinas u otros movimientos: el efectivo puede dar 0 en TOTAL por un retiro de caja, pero lo vendido es lo de VENTA.
+- No sumes propinas, retiros de caja, importación/exportación de saldo ni arqueos: no son ventas.
+- "tickets" es la cantidad de ventas/comprobantes (en Ayres, la suma de la columna C.M.V.). Si no figura, 0.
+- "items" solo si el reporte detalla productos; si no, dejalo vacío.
+- Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
 // ================= RUTEO =================
 const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,venta:vVenta,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
@@ -999,12 +1051,18 @@ function editarComisiones(){const c=comisiones();
   <table>${CANALES.filter(k=>k!=='Efectivo').map(k=>`<tr><td>${k}</td><td><input class="mini com" data-k="${k}" type="number" step="any" value="${c[k]??''}" placeholder="0"> %</td></tr>`).join('')}</table>
   <div class="acciones" style="margin-top:10px"><button class="btn" id="bCom">💾 Guardar</button></div>`);
   $('#bCom').onclick=async()=>{const v={};document.querySelectorAll('.com').forEach(e=>{if(e.value!=='')v[e.dataset.k]=+e.value});await sbIns('config',[{clave:'comisiones',valor:v}],true);D.config.comisiones=v;cerrarModal();toast('Guardado ✅');vFinanzas()}}
-function filaVenta(i={}){return `<tr><td><input class="vP" list="dlRec" value="${esc(i.producto||'')}"></td><td><select class="vU" style="width:70px"><option>un</option><option ${i.unidad==='kg'?'selected':''}>kg</option></select></td><td><input class="vC mini" type="number" step="any" value="${i.cantidad??''}"></td><td><input class="vT mini" type="number" step="any" value="${i.total??''}"></td><td><button class="btn sec peq" onclick="this.closest('tr').remove()">×</button></td></tr>`}
+let VD_ART=null;
+function filaVenta(i={}){return `<tr${i.codigo?` data-cod="${esc(i.codigo)}"`:''}><td><input class="vP" list="dlRec" value="${esc(i.producto||'')}"></td><td><select class="vU" style="width:70px"><option>un</option><option ${i.unidad==='kg'?'selected':''}>kg</option></select></td><td><input class="vC mini" type="number" step="any" value="${i.cantidad??''}"></td><td><input class="vT mini" type="number" step="any" value="${i.total??''}"></td><td><button class="btn sec peq" onclick="this.closest('tr').remove()">×</button></td></tr>`}
 function nuevoCierre(){
   const H=hoy();const ya=D.cierres.filter(c=>diaLocal(c.fecha)===H);
   modal(`<h2>💵 Venta del día</h2><datalist id="dlRec">${D.recetas.map(r=>`<option value="${esc(r.nombre)}">`).join('')}${D.alias.map(a=>`<option value="${esc(a.alias)}">`).join('')}</datalist>
   ${ya.length?`<div class="alerta">Hoy ya hay ${ya.length} carga(s) por ${$$(ya.reduce((a,c)=>a+(+c.total||0),0))}. Si es otro turno, cargalo igual; si es la misma venta, no la repitas.</div>`:''}
-  <div class="drop" onclick="$('#cArch').click()">📥 Opcional: subí el <b>Excel</b>, PDF o una foto del cierre del sistema de caja (Ayres) y lo completo con IA</div><input type="file" id="cArch" accept="image/*,application/pdf,.xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none"><p id="cEst" class="muted"></p>
+  <p class="muted" style="margin:0 0 6px">Subí los dos archivos de Ayres del turno y el sistema los une. También podés completar todo a mano.</p>
+  <div class="fila">
+    <div><div class="drop" onclick="$('#cArt').click()" style="min-height:70px">🧾 <b>1. Artículos vendidos</b><br><span class="muted">Excel "Control de artículos" de Ayres</span></div><input type="file" id="cArt" accept=".xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none"><p id="cEstA" class="muted"></p></div>
+    <div><div class="drop" onclick="$('#cArch').click()" style="min-height:70px">💳 <b>2. Cierre de caja</b><br><span class="muted">Captura, foto, PDF o Excel del resumen por medio de pago</span></div><input type="file" id="cArch" accept="image/*,application/pdf,.xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none"><p id="cEst" class="muted"></p></div>
+  </div>
+  <div class="fila"><div><label>Cantidad de tickets / ventas</label><input id="cTk" type="number" inputmode="numeric" placeholder="sale del Excel de artículos" oninput="sumaCanales()"></div><div></div></div>
   <div class="fila"><div><label>Fecha</label><input id="cF" type="date" value="${H}"></div><div><label>Turno</label><select id="cT"><option>Día completo</option><option>Mañana</option><option>Tarde</option><option>Noche</option></select></div><div><label>Responsable</label><select id="cR"><option value=""></option>${D.empleados.filter(e=>e.activo!==false).map(e=>`<option>${esc(e.nombre)}</option>`).join('')}</select></div></div>
   <h3 style="margin-top:14px">💵 Efectivo</h3><input class="fpg" data-k="Efectivo" type="number" step="any" inputmode="decimal" oninput="sumaCanales()" style="font-size:20px">
   <h3 style="margin-top:14px">📱 Online / digital</h3>
@@ -1015,21 +1073,38 @@ function nuevoCierre(){
   <button class="btn sec peq" onclick="document.querySelector('#tV tbody').insertAdjacentHTML('beforeend',filaVenta())">+ producto</button>
   <p class="muted">El stock de insumos se descuenta cuando los sectores registran la producción, no acá (así no se descuenta dos veces).</p></details>
   <div class="acciones" style="margin-top:12px"><button class="btn" id="bGC">💾 Guardar venta</button></div>`);
-  sumaCanales();
+  VD_ART=null;sumaCanales();
+  const ponerItems=items=>{const tb=document.querySelector('#tV tbody');tb.querySelectorAll('tr').forEach((tr,k)=>k&&tr.remove());items.forEach(i=>tb.insertAdjacentHTML('beforeend',filaVenta(i)));const d=document.querySelector('#modalc details');if(d&&items.length)d.open=true};
+  // 1) Excel de artículos: se lee acá mismo, sin IA
+  $('#cArt').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#cEstA').textContent='Leyendo…';
+    try{const r=await leerAyresArticulos(f);
+      if(!r){$('#cEstA').innerHTML='⚠️ No reconozco este archivo como "Control de artículos" (busco las columnas Código, Cantidad y Subtotal). Si es el cierre de caja, subilo en el recuadro 2.';return}
+      VD_ART=r;ponerItems(r.items);
+      if(r.desde){$('#cF').value=r.desde.toLocaleDateString('sv-SE');const h1=r.desde.getHours(),h2=r.hasta.getHours();$('#cT').value=h2<15?'Mañana':h1>=13?'Tarde':'Día completo'}
+      if(r.tickets)$('#cTk').value=r.tickets;
+      const hh=d=>d?String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'):'';
+      $('#cEstA').innerHTML=`✅ ${r.items.length} productos · ${$$(r.total)}${r.tickets?' · '+r.tickets+' tickets':''}${r.desde?' · de '+hh(r.desde)+' a '+hh(r.hasta):''}${r.anuladas?' · '+r.anuladas+' líneas anuladas sin contar':''}`;
+      sumaCanales()}
+    catch(err){$('#cEstA').textContent='⚠️ '+err.message}};
+  // 2) Cierre de caja: medios de pago (con IA)
   $('#cArch').onchange=async e=>{const f=e.target.files[0];if(!f)return;$('#cEst').textContent='🤖 Leyendo…';
-    try{const j=await leerConIA(f,PROMPT_TICKET);if(j.fecha)$('#cF').value=j.fecha;
+    try{
+      if(esPlanilla(f)){const r=await leerAyresArticulos(f).catch(()=>null);if(r){$('#cEst').innerHTML='⚠️ Este es el Excel de artículos: lo cargué en el recuadro 1.';$('#cArt').dispatchEvent(new Event('change'));VD_ART=r;ponerItems(r.items);if(r.tickets)$('#cTk').value=r.tickets;sumaCanales();return}}
+      const j=await leerConIA(f,PROMPT_TICKET);if(j.fecha&&!VD_ART)$('#cF').value=j.fecha;
       document.querySelectorAll('.fpg').forEach(el=>el.value='');
       const acc={};Object.entries(j.formas_pago||{}).forEach(([k,v])=>{if(+v){const c=canalDe(k);acc[c]=(acc[c]||0)+(+v)}});
       Object.entries(acc).forEach(([c,v])=>{const el=document.querySelector(`.fpg[data-k="${c}"]`);if(el)el.value=Math.round(v)});
-      const tb=document.querySelector('#tV tbody');tb.querySelectorAll('tr').forEach((tr,k)=>k&&tr.remove());(j.items||[]).forEach(i=>tb.insertAdjacentHTML('beforeend',filaVenta(i)));
+      if(+j.tickets&&!$('#cTk').value)$('#cTk').value=+j.tickets;
+      if(!VD_ART&&(j.items||[]).length)ponerItems(j.items);
       sumaCanales();$('#cEst').textContent='✅ Leído. Revisá antes de guardar.'}
     catch(err){$('#cEst').textContent='⚠️ '+err.message}};
   $('#bGC').onclick=async()=>{$('#bGC').disabled=true;try{
     const fp={};let s=0;document.querySelectorAll('.fpg').forEach(e=>{if(+e.value){fp[e.dataset.k]=+e.value;s+=+e.value}});
     if(!s)return toast('Cargá al menos un importe');
-    const items=[];document.querySelectorAll('#tV tr').forEach((tr,k)=>{if(!k)return;const p=tr.querySelector('.vP').value.trim(),c=+tr.querySelector('.vC').value;if(!p||!c)return;items.push({producto:p,unidad:tr.querySelector('.vU').value,cantidad:c,total:+tr.querySelector('.vT').value||0})});
+    if(VD_ART&&Math.abs(VD_ART.total-s)>1&&!confirm('Los medios de pago suman '+$$(s)+' y los artículos vendidos '+$$(VD_ART.total)+' (diferencia '+$$(s-VD_ART.total)+').\n¿Guardar igual?'))return;
+    const items=[];document.querySelectorAll('#tV tr').forEach((tr,k)=>{if(!k)return;const p=tr.querySelector('.vP').value.trim(),c=+tr.querySelector('.vC').value;if(!p||!c)return;const it={producto:p,unidad:tr.querySelector('.vU').value,cantidad:c,total:+tr.querySelector('.vT').value||0};const cod=tr.dataset.cod;if(cod)it.codigo=cod;items.push(it)});
     const t=$('#cT').value,hora=t==='Mañana'?'14:00':t==='Tarde'?'20:00':'23:00';
-    const [c]=await sbIns('cierres_caja',[{fecha:new Date($('#cF').value+'T'+hora+':00-03:00').toISOString(),turno:t,total:s,formas_pago:fp,items,responsable:$('#cR').value||null,estado:'cerrado'}]);D.cierres.unshift(c);
+    const [c]=await sbIns('cierres_caja',[{fecha:new Date($('#cF').value+'T'+hora+':00-03:00').toISOString(),turno:t,total:s,formas_pago:fp,items,tickets:+$('#cTk').value||null,responsable:$('#cR').value||null,estado:'cerrado'}]);D.cierres.unshift(c);
     cerrarModal();toast('Venta guardada ✅ '+$$(s));VISTAS[vistaActual]();
   }finally{const b=$('#bGC');if(b)b.disabled=false}};
 }
@@ -1037,7 +1112,9 @@ function sumaCanales(){let ef=0,on=0;document.querySelectorAll('.fpg').forEach(e
   const com=[...document.querySelectorAll('.fpg')].reduce((a,e)=>a+comisionDe(e.dataset.k,+e.value||0),0);
   $('#cResumen').innerHTML=`<div class="fila" style="align-items:center"><div><div class="muted">Total del día</div><div style="font-size:26px;font-weight:700;color:var(--verde)">${$$(t)}</div></div>
   <div><div class="muted">💵 Efectivo</div><b>${$$(ef)}</b> ${t?`<span class="muted">(${fnum(ef/t*100,0)}%)</span>`:''}</div><div><div class="muted">📱 Online</div><b>${$$(on)}</b> ${t?`<span class="muted">(${fnum(on/t*100,0)}%)</span>`:''}</div>
-  ${com?`<div><div class="muted">Comisiones estimadas</div><b class="down">−${$$(com)}</b></div>`:''}</div>`}
+  ${com?`<div><div class="muted">Comisiones estimadas</div><b class="down">−${$$(com)}</b></div>`:''}</div>
+  ${VD_ART?(()=>{const d=t-VD_ART.total;return Math.abs(d)<=1?`<div style="margin-top:8px;color:var(--verde);font-weight:700">✅ Cierra: medios de pago y artículos vendidos suman lo mismo (${$$(t)})</div>`:`<div style="margin-top:8px;color:var(--rojo);font-weight:700">⚠️ No cierra: artículos ${$$(VD_ART.total)} · medios de pago ${$$(t)} · diferencia ${$$(d)}</div>`})():''}
+  ${+($('#cTk')||{}).value&&t?`<div class="muted" style="margin-top:4px">Ticket promedio: ${$$(t/+$('#cTk').value)}</div>`:''}`}
 function nuevoGasto(){modal(`<h3>➖ Registrar gasto</h3><p class="muted">Para compras a proveedores usá "Cargar factura" (así actualiza stock y costos). Esto es para otros gastos: sueldos, servicios, arreglos, etc.</p>
   <div class="fila"><div><label>Fecha</label><input id="gF" type="date" value="${hoy()}"></div><div><label>Monto</label><input id="gM" type="number" step="any"></div></div>
   <div class="fila"><div><label>Concepto</label><input id="gC"></div><div><label>Categoría</label><select id="gCa"><option>Sueldos</option><option>Servicios</option><option>Alquiler</option><option>Impuestos</option><option>Mantenimiento</option><option>Otros</option></select></div></div>
