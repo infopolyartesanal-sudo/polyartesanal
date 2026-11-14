@@ -264,10 +264,58 @@ async function archivoABase64(file){
   c.getContext('2d').drawImage(img,0,0,c.width,c.height);
   return {tipo:'img',media:'image/jpeg',data:c.toDataURL('image/jpeg',.85).split(',')[1]};
 }
+// ================= LECTURA DE EXCEL / CSV =================
+// .xlsx se lee acá mismo (es un zip con XML). .xls viejo se lee con SheetJS, que se descarga solo si hace falta.
+const esPlanilla=f=>/\.(xlsx|xlsm|xls|csv|txt)$/i.test(f.name)||/sheet|excel|csv/i.test(f.type);
+async function abrirZip(buf){
+  const dv=new DataView(buf),td=new TextDecoder();let e=buf.byteLength-22;
+  while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;if(e<0)throw new Error('El archivo no es un Excel .xlsx válido');
+  const n=dv.getUint16(e+10,true);let q=dv.getUint32(e+16,true);const idx={};
+  for(let i=0;i<n;i++){const met=dv.getUint16(q+10,true),csz=dv.getUint32(q+20,true),nl=dv.getUint16(q+28,true),xl=dv.getUint16(q+30,true),cl=dv.getUint16(q+32,true),off=dv.getUint32(q+42,true);
+    idx[td.decode(new Uint8Array(buf,q+46,nl))]={met,csz,off};q+=46+nl+xl+cl}
+  return {nombres:Object.keys(idx),async leer(nombre){const f=idx[nombre];if(!f)return null;
+    const data=new Uint8Array(buf,f.off+30+dv.getUint16(f.off+26,true)+dv.getUint16(f.off+28,true),f.csz);
+    if(f.met===0)return td.decode(data);
+    return await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text()}};
+}
+async function xlsxATexto(buf){
+  const z=await abrirZip(buf),dp=new DOMParser(),X=t=>dp.parseFromString(t,'application/xml');
+  const ss=[];const sst=await z.leer('xl/sharedStrings.xml');
+  if(sst)[...X(sst).getElementsByTagName('si')].forEach(si=>ss.push([...si.getElementsByTagName('t')].map(t=>t.textContent).join('')));
+  // nombres y orden de las hojas
+  const wb=X(await z.leer('xl/workbook.xml')||'<x/>'),rels=X(await z.leer('xl/_rels/workbook.xml.rels')||'<x/>');const rmap={};
+  [...rels.getElementsByTagName('Relationship')].forEach(r=>rmap[r.getAttribute('Id')]=r.getAttribute('Target'));
+  let hojas=[...wb.getElementsByTagName('sheet')].map(h=>{let t=rmap[h.getAttribute('r:id')]||'';t=t.replace(/^\/?(xl\/)?/,'');return {nombre:h.getAttribute('name'),archivo:'xl/'+t}});
+  if(!hojas.length)hojas=z.nombres.filter(x=>/^xl\/worksheets\/sheet\d+\.xml$/.test(x)).sort().map((a,i)=>({nombre:'Hoja '+(i+1),archivo:a}));
+  const colN=ref=>{let n=0;for(const ch of ref.replace(/\d+/g,''))n=n*26+ch.charCodeAt(0)-64;return n-1};
+  const partes=[];
+  for(const h of hojas){const xml=await z.leer(h.archivo);if(!xml)continue;const filas=[];
+    for(const row of X(xml).getElementsByTagName('row')){const f=[];
+      for(const c of row.getElementsByTagName('c')){const t=c.getAttribute('t'),v=c.getElementsByTagName('v')[0];let val='';
+        if(t==='s')val=ss[+(v?.textContent)]??'';else if(t==='inlineStr')val=[...c.getElementsByTagName('t')].map(x=>x.textContent).join('');else val=v?v.textContent:'';
+        f[colN(c.getAttribute('r')||'A1')]=String(val).replace(/[\t\n\r]+/g,' ')}
+      if(f.some(x=>x&&x.trim()))filas.push([...f].map(x=>x??'').join('\t'))}
+    if(filas.length)partes.push('### Hoja: '+h.nombre+'\n'+filas.join('\n'))}
+  return partes.join('\n\n');
+}
+function cargarSheetJS(){return window.XLSX?Promise.resolve(window.XLSX):new Promise((ok,err)=>{const sc=document.createElement('script');sc.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';sc.onload=()=>ok(window.XLSX);sc.onerror=()=>err(new Error('No se pudo abrir el Excel .xls. Guardalo como .xlsx o .csv y probá de nuevo'));document.head.appendChild(sc)})}
+async function planillaATexto(file){
+  const buf=await file.arrayBuffer();let txt='';
+  if(/\.(csv|txt)$/i.test(file.name)||/csv/i.test(file.type)){txt=new TextDecoder('utf-8').decode(buf);if(txt.includes('�'))txt=new TextDecoder('windows-1252').decode(buf)}
+  else{const zip=new Uint8Array(buf,0,2);
+    if(zip[0]===0x50&&zip[1]===0x4b){try{txt=await xlsxATexto(buf)}catch(e){console.warn(e)}}
+    if(!txt){const XL=await cargarSheetJS();const wb=XL.read(buf,{type:'array'});txt=wb.SheetNames.map(n=>'### Hoja: '+n+'\n'+XL.utils.sheet_to_csv(wb.Sheets[n],{FS:'\t',blankrows:false})).join('\n\n')}}
+  txt=txt.trim();if(!txt)throw new Error('La planilla está vacía');
+  if(txt.length>150000)txt=txt.slice(0,150000)+'\n[… recortado]';
+  return txt;
+}
 async function leerConIA(file,prompt){
   const key=apiKey();if(!key){abrirAjustes();throw new Error('Falta la API key')}
-  const f=await archivoABase64(file);
-  const doc=f.tipo==='pdf'?{type:'document',source:{type:'base64',media_type:f.media,data:f.data}}:{type:'image',source:{type:'base64',media_type:f.media,data:f.data}};
+  let doc;
+  if(esPlanilla(file)){const t=await planillaATexto(file);
+    doc={type:'text',text:'Este es el contenido de una planilla de Excel/CSV exportada del sistema de caja (columnas separadas por tabulación). Las fechas pueden venir como número de serie de Excel (días desde 1899-12-30). Si hay una fila de totales, no la sumes dos veces.\n\n'+t}}
+  else{const f=await archivoABase64(file);
+    doc=f.tipo==='pdf'?{type:'document',source:{type:'base64',media_type:f.media,data:f.data}}:{type:'image',source:{type:'base64',media_type:f.media,data:f.data}}}
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
     body:JSON.stringify({model:MODELO_IA,max_tokens:6000,messages:[{role:'user',content:[doc,{type:'text',text:prompt}]}]})});
   const j=await r.json();if(j.error)throw new Error(j.error.message);
@@ -956,7 +1004,7 @@ function nuevoCierre(){
   const H=hoy();const ya=D.cierres.filter(c=>diaLocal(c.fecha)===H);
   modal(`<h2>💵 Venta del día</h2><datalist id="dlRec">${D.recetas.map(r=>`<option value="${esc(r.nombre)}">`).join('')}${D.alias.map(a=>`<option value="${esc(a.alias)}">`).join('')}</datalist>
   ${ya.length?`<div class="alerta">Hoy ya hay ${ya.length} carga(s) por ${$$(ya.reduce((a,c)=>a+(+c.total||0),0))}. Si es otro turno, cargalo igual; si es la misma venta, no la repitas.</div>`:''}
-  <div class="drop" onclick="$('#cArch').click()">📷 Opcional: foto o PDF del cierre del sistema de caja y lo completo con IA</div><input type="file" id="cArch" accept="image/*,application/pdf" style="display:none"><p id="cEst" class="muted"></p>
+  <div class="drop" onclick="$('#cArch').click()">📥 Opcional: subí el <b>Excel</b>, PDF o una foto del cierre del sistema de caja (Ayres) y lo completo con IA</div><input type="file" id="cArch" accept="image/*,application/pdf,.xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none"><p id="cEst" class="muted"></p>
   <div class="fila"><div><label>Fecha</label><input id="cF" type="date" value="${H}"></div><div><label>Turno</label><select id="cT"><option>Día completo</option><option>Mañana</option><option>Tarde</option><option>Noche</option></select></div><div><label>Responsable</label><select id="cR"><option value=""></option>${D.empleados.filter(e=>e.activo!==false).map(e=>`<option>${esc(e.nombre)}</option>`).join('')}</select></div></div>
   <h3 style="margin-top:14px">💵 Efectivo</h3><input class="fpg" data-k="Efectivo" type="number" step="any" inputmode="decimal" oninput="sumaCanales()" style="font-size:20px">
   <h3 style="margin-top:14px">📱 Online / digital</h3>
