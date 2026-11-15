@@ -820,7 +820,7 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,campanias:vCampanias,contenidos:vContenidos,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -1612,7 +1612,7 @@ function crmWa(tel){const n=telNorm(tel);return n&&n.length===10?'549'+n:null}
 function igNorm(x){return (String(x||'').replace(/[?#].*$/,'').replace(/^\s*@|\s|https?:\/\/(www\.)?instagram\.com\/|\/.*$/g,'').toLowerCase())||null}
 function crmPrimerNombre(c){const base=c.tipo==='mayorista'?(c.contacto||''):(c.contacto||c.nombre||'');const w=base.trim().split(/\s+/)[0]||'';return w?w[0].toUpperCase()+w.slice(1).toLowerCase():''}
 function crmPersonalizar(txt,c){const n=crmPrimerNombre(c);return String(txt||'').replace(/\s?\{nombre\}/g,n?' '+n:'').replace(/\{negocio\}/g,c.nombre||'')}
-function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['comunidad','⭐ Comunidad'],['campanias','📣 Campañas'],['contenidos','📝 Contenidos']].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
+function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['comunidad','⭐ Comunidad'],['campanias','📣 Campañas'],['contenidos','📝 Contenidos'],['instagram','📸 Instagram'+(IG.noLeidos?' ('+IG.noLeidos+')':'')]].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
 
 // ───────── LISTA DE CLIENTES ─────────
 async function vMayoristas(){
@@ -2538,6 +2538,62 @@ async function vRedLocal(){
 async function redGuardar(activo,extra){try{await polyRPC('seguridad_red_guardar',Object.assign({p_token:polyToken(),p_activo:activo},extra||{}));toast(activo?'Activado 🟢':'Guardado ✅');vRedLocal()}catch(x){toast('⚠️ '+x.message,6000)}}
 function redAgregar(ip){if(ip!=='actual'&&!confirm('¿Habilitar la conexión '+ip+' como del local?'))return;redGuardar(!!(window._red&&window._red.activo),{p_agregar_ip:ip,p_nombre:'Panadería'})}
 function redQuitar(ip){if(!confirm('¿Quitar esta conexión? El equipo no va a poder usar el sistema desde ahí.'))return;const queda=(window._red.ips||[]).filter(i=>i.ip!==ip).length;redGuardar(queda?!!window._red.activo:false,{p_quitar_ip:ip})}
+
+// ───────── INSTAGRAM: mensajes privados en el CRM ─────────
+const IG={estado:null,contactos:[],sel:null,msgs:[],noLeidos:0};
+async function igApi(accion,extra){
+  const r=await fetch(SB_URL+'/functions/v1/instagram-api',{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(Object.assign({accion},extra||{}))});
+  const j=await r.json().catch(()=>({error:'Sin respuesta del servicio'}));if(!r.ok||j.error)throw new Error(j.error||'Error');return j}
+async function igCargarContactos(){
+  const c=await sb('ig_contactos?select=*,crm_clientes(id,nombre)&order=ultimo.desc&limit=200');IG.contactos=c||[];
+  IG.noLeidos=IG.contactos.reduce((a,x)=>a+(+x.no_leidos||0),0)}
+async function vInstagram(){
+  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}<div class="cargando">Cargando Instagram…</div>`;
+  try{IG.estado=await igApi('estado')}catch(e){$('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}<div class="card">${esc(e.message)}</div>`;return}
+  const e=IG.estado,admin=window.POLY_USUARIO&&window.POLY_USUARIO.rol==='admin';
+  if(!e.conectado){
+    $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}
+    <div class="card"><h3>📸 Conectar Instagram</h3><p class="muted">Para ver y responder los mensajes privados de Instagram desde acá.</p>
+    ${!admin?'<p>Lo conecta la administradora.</p>':`
+    <ol style="line-height:1.7;padding-left:18px">
+      <li><b>Clave secreta de la app</b> ${e.secreto_cargado?'<span class="chip ok">cargada ✓</span>':''}<br>
+        <span class="muted" style="font-size:13px">En Meta for Developers → Poly CRM → Configuración de la app → Básica → "Clave secreta de la app" → Mostrar. Copiala y pegala acá.</span>
+        <div class="fila"><input id="igSec" type="password" autocomplete="off" placeholder="${e.secreto_cargado?'(ya está cargada; pegá otra para reemplazarla)':'32 letras y números'}"><button class="btn" onclick="igGuardarSecreto()">Guardar</button></div></li>
+      <li style="margin-top:10px"><b>Datos para Meta</b> (los carga Claude en la app de Meta)<br>
+        <span class="muted" style="font-size:13px">URL del webhook:</span><input readonly value="${esc(e.webhook)}" onclick="this.select()"><span class="muted" style="font-size:13px">Código de verificación:</span><input readonly value="${esc(e.verify_token||'')}" onclick="this.select()"></li>
+      <li style="margin-top:10px"><b>Código de acceso</b><br><span class="muted" style="font-size:13px">Se genera en el Explorador de la API de Meta con tu cuenta.</span>
+        <div class="fila"><input id="igTok" type="password" autocomplete="off" placeholder="Pegá el código de acceso"><button class="btn" onclick="igConectar()" ${e.secreto_cargado?'':'disabled'}>Conectar</button></div></li>
+    </ol>`}</div>`;return}
+  await igCargarContactos();
+  igPintar()}
+function igPintar(){
+  const e=IG.estado;
+  const lista=IG.contactos.map(c=>`<div onclick="igAbrir('${esc(c.igsid)}')" style="padding:10px;border-bottom:1px solid var(--borde);cursor:pointer;${IG.sel===c.igsid?'background:rgba(201,168,76,.12)':''}">
+    <b>${esc(c.crm_clientes?c.crm_clientes.nombre:(c.nombre||(c.username?'@'+c.username:'Cliente de Instagram')))}</b>${c.no_leidos?` <span class="chip" style="background:var(--oro);color:#222">${c.no_leidos}</span>`:''}
+    <div class="muted" style="font-size:12px">${c.username?'@'+esc(c.username)+' · ':''}${new Date(c.ultimo).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</div></div>`).join('')||'<p class="muted" style="padding:10px">Todavía no llegaron mensajes.</p>';
+  const c=IG.contactos.find(x=>x.igsid===IG.sel);
+  const chat=!c?'<p class="muted">Elegí una conversación.</p>':`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">${esc(c.crm_clientes?c.crm_clientes.nombre:(c.username?'@'+c.username:'Cliente'))}</h3>${c.cliente_id?`<button class="btn sec peq" onclick="crmFicha(${c.cliente_id})">Ver ficha</button>`:''}</div>
+    <div id="igChat" style="max-height:52vh;overflow:auto;margin:10px 0;display:flex;flex-direction:column;gap:6px">${IG.msgs.map(m=>`<div style="max-width:80%;align-self:${m.de_cliente?'flex-start':'flex-end'};background:${m.de_cliente?'rgba(255,255,255,.08)':'var(--verde2)'};color:${m.de_cliente?'inherit':'#fff'};padding:8px 11px;border-radius:12px;font-size:14px;white-space:pre-wrap">${esc(m.texto||(m.adjuntos?'📎 (foto, audio o archivo: miralo en Instagram)':''))}<div style="font-size:11px;opacity:.65;margin-top:2px">${new Date(m.fecha).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}${!m.de_cliente&&m.enviado_por&&m.enviado_por!=='instagram'?' · '+esc(m.enviado_por):''}</div></div>`).join('')}</div>
+    <textarea id="igTxt" rows="3" placeholder="Escribí tu respuesta…" style="width:100%"></textarea>
+    <div class="acciones" style="margin-top:6px"><button class="btn" onclick="igEnviar()">Enviar</button><button class="btn sec" onclick="igSugerir()">✨ Sugerir respuesta</button></div>
+    <p class="muted" style="font-size:12px">Instagram solo deja responder dentro de los 7 días del último mensaje del cliente.</p>`;
+  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}
+  <p class="muted">Conectado a <b>@${esc(e.ig||'')}</b> (${esc(e.page||'')}). Los mensajes privados llegan solos y cada persona queda en Clientes.</p>
+  <div class="grid" style="grid-template-columns:minmax(220px,1fr) 2fr;gap:12px"><div class="card" style="padding:0;max-height:70vh;overflow:auto">${lista}</div><div class="card">${chat}</div></div>`;
+  const ch=$('#igChat');if(ch)ch.scrollTop=ch.scrollHeight}
+async function igAbrir(id){IG.sel=id;IG.msgs=await sb('ig_mensajes?select=*&igsid=eq.'+encodeURIComponent(id)+'&order=fecha.asc&limit=300')||[];
+  const c=IG.contactos.find(x=>x.igsid===id);if(c&&c.no_leidos){c.no_leidos=0;IG.noLeidos=IG.contactos.reduce((a,x)=>a+(+x.no_leidos||0),0);igApi('leido',{igsid:id}).catch(()=>{})}
+  igPintar()}
+async function igEnviar(){const t=$('#igTxt').value.trim();if(!t)return;try{await igApi('enviar',{igsid:IG.sel,texto:t});toast('Enviado ✅');await igCargarContactos();igAbrir(IG.sel)}catch(e){toast('⚠️ '+e.message,7000)}}
+async function igSugerir(){const key=apiKey();if(!key){toast('Cargá la clave de Anthropic (⚙️) para usar el asistente');return}
+  const ult=IG.msgs.slice(-12).map(m=>(m.de_cliente?'Cliente: ':'Poly: ')+(m.texto||'[adjunto]')).join('\n');
+  $('#igTxt').value='Pensando…';
+  try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:MODELO_IA,max_tokens:400,messages:[{role:'user',content:'Sos quien atiende el Instagram de Poly Artesanal, panadería de autor en Galván 3512, Villa Urquiza (abierta 24 h). Respondé en español rioplatense, cálido y breve (máximo 3 oraciones), sin inventar precios ni promesas. Si piden encargar algo, invitá a hacerlo desde la web de pedidos. Conversación:\n'+ult+'\n\nEscribí solo la respuesta.'}]})});
+    const j=await r.json();if(j.error)throw new Error(j.error.message);$('#igTxt').value=j.content.map(c=>c.text||'').join('').trim()}catch(e){$('#igTxt').value='';toast('⚠️ '+e.message)}}
+async function igGuardarSecreto(){const v=$('#igSec').value.trim();if(!v)return;try{await igApi('guardar_secreto',{secreto:v});toast('Clave guardada 🔒');vInstagram()}catch(e){toast('⚠️ '+e.message,7000)}}
+async function igConectar(){const v=$('#igTok').value.trim();if(!v)return;try{const r=await igApi('conectar',{user_token:v});toast('Instagram conectado: @'+r.ig+' ✅',6000);vInstagram()}catch(e){toast('⚠️ '+e.message,9000)}}
+setInterval(()=>{if(location.hash==='#instagram'&&IG.estado&&IG.estado.conectado){igCargarContactos().then(()=>{if(IG.sel)igAbrir(IG.sel);else igPintar()}).catch(()=>{})}},45000);
 
 // ================= ARRANQUE =================
 cargarTodo().then(ir).catch(e=>{$('#app').innerHTML='<div class="card"><h3>No pude conectar con la base de datos</h3><p>'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Reintentar</button></div>'});
