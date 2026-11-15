@@ -830,9 +830,13 @@ async function descontarRelleno(producto, unidades){
   if (!(unidades > 0)) return '';
   try {
     const r = await polyRPC('madrugada_consumos', { p_producto: producto, p_unidades: unidades, p_usuario: (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null });
-    if (!r || !r.aplicado) return '';
-    await sbLog('madrugada', 'relleno', 'Se usaron ' + r.kg + ' kg de ' + r.insumo + ' (' + r.gramos + ' g × ' + unidades + ' ' + producto + '). Quedan ' + r.quedan + ' kg', r.kg, null, 'kg');
-    return ' · usaste ' + String(r.kg).replace('.', ',') + ' kg de ' + r.insumo.toLowerCase() + (r.quedan < 1 ? ' ⚠️ queda poca (' + String(r.quedan).replace('.', ',') + ' kg)' : '');
+    const items = (r && r.items) || [];
+    if (!items.length) return '';
+    const corto = n => { const x = String(n||'').toLowerCase(); return x.includes('imp') ? 'azúcar impalpable' : x; };
+    const cant = x => x.kg < 1 ? Math.round(x.kg * 1000) + ' g' : String(Math.round(x.kg * 100) / 100).replace('.', ',') + ' kg';
+    await sbLog('madrugada', 'relleno', 'Al hornear ' + unidades + ' ' + producto + ' se usaron: ' + items.map(x => cant(x) + ' de ' + x.insumo + ' (quedan ' + x.quedan + ' kg)').join(' · '), null, null, null);
+    const pocos = items.filter(x => x.destino !== 'deposito' && x.quedan < 1);
+    return ' · usaste ' + items.map(x => cant(x) + ' de ' + corto(x.insumo)).join(', ') + (pocos.length ? ' ⚠️ queda poca ' + pocos.map(x => corto(x.insumo) + ' (' + String(x.quedan).replace('.', ',') + ' kg)').join(' y ') : '');
   } catch (e) { console.warn('relleno', e); return ''; }
 }
 

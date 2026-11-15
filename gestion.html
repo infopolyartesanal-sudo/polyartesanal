@@ -495,7 +495,7 @@ async function vDepositos(){
   <div class="acciones" style="margin:10px 0">
     <input placeholder="Buscar producto…" value="${esc(DEP.f)}" id="depBus" style="max-width:260px" oninput="DEP.f=this.value;clearTimeout(window._tdep);window._tdep=setTimeout(()=>{vDepositos();const i=$('#depBus');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)">
     ${t!=='historial'?`<button class="btn sec" onclick="depCeroTab()">0️⃣ Poner esta pestaña en 0</button>`:''}
-    <button class="btn sec" onclick="rellAbrir()">🥄 Rellenos al hornear</button>
+    <button class="btn sec" onclick="rellAbrir()">🥄 Lo que se usa al hornear</button>
     <button class="btn sec" onclick="pesoAbrir()">⚖️ Productos por kilo</button>
     <button class="btn sec" onclick="if(depCambios().length&&!confirm('Tenés cambios sin guardar. ¿Recargar igual?'))return;DEP.cargado=false;DEP.edit={};vDepositos()">🔄 Recargar</button>
   </div>
@@ -504,20 +504,26 @@ async function vDepositos(){
 }
 
 // Rellenos que Madrugada descuenta del stock de Cocina (heladera, en kg) al hornear: ej. 50 g de crema pastelera por lenguita.
-async function rellAbrir(){let cfg={reglas:[]};try{const c=await sbGet('config','clave=eq.consumos_horneado');cfg=((c||[])[0]||{}).valor||cfg}catch(e){}
-  window._rell=(cfg.reglas||[]).slice();rellPintar()}
-function rellPintar(){const R=window._rell;const cs=(DEP.cocina||[]).map(r=>r.nombre||r.id);
-  modal(`<h2>🥄 Rellenos al hornear</h2>
-  <p class="muted">Cuando Madrugada hornea un producto que contiene la palabra de la izquierda, se descuentan esos gramos por unidad del relleno en la <b>heladera de Cocina</b> (en kilos). Ej.: 30 lenguitas × 50 g = 1,5 kg de crema pastelera.</p>
-  <table><tr><th>Si el producto dice…</th><th>Relleno (stock de Cocina)</th><th class="num">g por unidad</th><th></th></tr>
-  ${R.map((r,i)=>`<tr><td><input id="rlP${i}" value="${esc(r.patron||'')}" placeholder="ej: lenguita"></td><td><input id="rlI${i}" value="${esc(r.insumo||'')}" list="rlL" placeholder="Crema pastelera"></td><td class="num"><input id="rlG${i}" type="number" min="0" value="${+r.gramos||''}" style="max-width:90px;text-align:right"></td><td><button class="btn peq sec" onclick="rellLeer();window._rell.splice(${i},1);rellPintar()">✕</button></td></tr>`).join('')}</table>
-  <datalist id="rlL">${cs.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
-  <p class="muted" style="font-size:12px">"Popurrí + Roll" lleva 24 g de promedio porque de cada 17 unidades, 8 son popurrí con crema y 9 son rolls. Si en un producto aparecen dos palabras, se usa la más larga.</p>
-  <div class="acciones" style="margin-top:8px"><button class="btn sec" onclick="rellLeer();window._rell.push({patron:'',insumo:'Crema pastelera',gramos:50});rellPintar()">➕ Agregar</button><button class="btn" onclick="rellGuardar()">💾 Guardar</button></div>`)}
-function rellLeer(){window._rell=window._rell.map((r,i)=>({patron:($('#rlP'+i)||{}).value?.trim()||'',insumo:($('#rlI'+i)||{}).value?.trim()||'',gramos:+(($('#rlG'+i)||{}).value)||0}))}
-async function rellGuardar(){rellLeer();const reglas=window._rell.filter(r=>r.patron&&r.insumo&&r.gramos>0);
+async function rellAbrir(){let cfg={reglas:[]};try{const [c,ins]=await Promise.all([sbGet('config','clave=eq.consumos_horneado'),sb('insumos?select=id,nombre,unidad,stock&activo=eq.true&order=nombre')]);cfg=((c||[])[0]||{}).valor||cfg;window._rellIns=ins||[]}catch(e){}
+  window._rell=(cfg.reglas||[]).map(r=>({...r}));rellPintar()}
+function rellPintar(){const R=window._rell;const cs=(DEP.cocina||[]).map(r=>r.nombre||r.id),di=(window._rellIns||[]).map(r=>r.nombre);
+  modal(`<h2>🥄 Lo que se usa al hornear</h2>
+  <p class="muted">Cuando Madrugada hornea, se descuentan estos gramos <b>por unidad</b>: de la <b>heladera de Cocina</b> (crema pastelera, almíbar…) o del <b>Depósito</b> (azúcar impalpable…). Ej.: 30 lenguitas × 50 g = 1,5 kg de crema. Si un producto coincide con dos reglas del mismo insumo, se usa la más específica.</p>
+  <div class="scroll"><table><tr><th>Aplica a</th><th>Se descuenta de</th><th>Insumo / relleno</th><th class="num">g por unidad</th><th></th></tr>
+  ${R.map((r,i)=>`<tr><td><select id="rlA${i}" style="width:auto" onchange="rellLeer();rellPintar()"><option value="p" ${r.grupo!=='facturas'?'selected':''}>Productos que dicen…</option><option value="f" ${r.grupo==='facturas'?'selected':''}>Todas las facturas</option></select>${r.grupo!=='facturas'?`<input id="rlP${i}" value="${esc(r.patron||'')}" placeholder="ej: lenguita" style="margin-top:4px">`:''}</td>
+    <td><select id="rlD${i}" style="width:auto" onchange="rellLeer();rellPintar()"><option value="cocina" ${(r.destino||'cocina')==='cocina'?'selected':''}>Heladera de Cocina</option><option value="deposito" ${r.destino==='deposito'?'selected':''}>Depósito</option></select></td>
+    <td><input id="rlI${i}" value="${esc(r.insumo||'')}" list="${r.destino==='deposito'?'rlLD':'rlLC'}" placeholder="${r.destino==='deposito'?'AZUCAR IMP…':'Crema pastelera'}"></td>
+    <td class="num"><input id="rlG${i}" type="number" min="0" step="any" value="${+r.gramos||''}" style="max-width:80px;text-align:right"></td><td><button class="btn peq sec" onclick="rellLeer();window._rell.splice(${i},1);rellPintar()">✕</button></td></tr>`).join('')}</table></div>
+  <datalist id="rlLC">${cs.map(n=>`<option value="${esc(n)}">`).join('')}</datalist><datalist id="rlLD">${di.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+  <p class="muted" style="font-size:12px">"Todas las facturas" = todo lo que en el local se vende como Facturas (medialunas, lenguitas, popurrí, vigilantes, santiagueñas…). "Popurrí + Roll" lleva menos crema e impalpable porque de cada 17 unidades, 9 son rolls. Almíbar: 4 ml ≈ 5 g.</p>
+  <div class="acciones" style="margin-top:8px"><button class="btn sec" onclick="rellLeer();window._rell.push({patron:'',insumo:'',gramos:0,destino:'cocina'});rellPintar()">➕ Agregar</button><button class="btn" onclick="rellGuardar()">💾 Guardar</button></div>`)}
+function rellLeer(){window._rell=window._rell.map((r,i)=>{const a=($('#rlA'+i)||{}).value,d=($('#rlD'+i)||{}).value||'cocina',ins=(($('#rlI'+i)||{}).value||'').trim();
+  const o={insumo:ins,gramos:+(($('#rlG'+i)||{}).value)||0,destino:d};if(a==='f')o.grupo='facturas';else o.patron=(($('#rlP'+i)||{}).value||r.patron||'').trim();
+  if(d==='deposito'){const m=(window._rellIns||[]).find(x=>norm(x.nombre)===norm(ins));if(m)o.insumo_id=m.id}return o})}
+async function rellGuardar(){rellLeer();const reglas=window._rell.filter(r=>(r.patron||r.grupo)&&r.insumo&&r.gramos>0);
+  const malos=reglas.filter(r=>r.destino==='deposito'&&!r.insumo_id);if(malos.length)return toast('No encontré en el Depósito: '+malos.map(r=>r.insumo).join(', '),6000);
   await sbIns('config',[{clave:'consumos_horneado',valor:{reglas}}],true);
-  for(const r of reglas){if(!(DEP.cocina||[]).some(x=>norm(x.nombre||x.id)===norm(r.insumo))){try{await polyRPC('stock_sector_ajustar',{p_sector:'cocina',p_nombre:r.insumo,p_delta:{},p_motivo:'alta relleno',p_usuario:null})}catch(e){}}}
+  for(const r of reglas.filter(r=>r.destino!=='deposito')){if(!(DEP.cocina||[]).some(x=>norm(x.nombre||x.id)===norm(r.insumo))){try{await polyRPC('stock_sector_ajustar',{p_sector:'cocina',p_nombre:r.insumo,p_delta:{},p_motivo:'alta relleno',p_usuario:null})}catch(e){}}}
   toast('Guardado ✅');cerrarModal();DEP.cargado=false;vDepositos()}
 
 // Productos que salen de leudado por lata pero se venden por kilo: Madrugada los pesa al hornear.
