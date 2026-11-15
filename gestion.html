@@ -421,8 +421,15 @@ function ventasRango(a,b){return D.cierres.filter(c=>{const d=diaLocal(c.fecha);
 function mesRango(off=0){const h=new Date(hoy()+'T12:00:00');const d=new Date(h.getFullYear(),h.getMonth()+off,1);const f=new Date(d.getFullYear(),d.getMonth()+1,0);
   const iso=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');return [iso(d),iso(f)]}
 function criticos(){return D.insumos.filter(i=>i.activo!==false&&(+i.stock_minimo||0)>0&&(+i.stock||0)<=(+i.stock_minimo||0))}
+// ---- Control de caja: plata cobrada (medios de pago) vs lo facturado en Ayres (Excel de artículos) ----
+async function guardarTolCaja(v){const n=Math.max(0,+v||0);await sbIns('config',[{clave:'tolerancia_caja',valor:n}],true);D.config.tolerancia_caja=n;toast('Tolerancia guardada ✅');vFinanzas()}
+function tolCaja(){const v=D.config&&D.config.tolerancia_caja;return v==null?5000:+v}
+function difCaja(c){return c.total_articulos==null?null:Math.round((+c.total||0)-(+c.total_articulos||0))}
+function turnoTxt(c){return (c.turno||'')}
 function insights(){
   const out=[];const H=hoy();
+  D.cierres.filter(c=>diaLocal(c.fecha)>=sumaDias(H,-14)&&difCaja(c)!=null&&Math.abs(difCaja(c))>tolCaja()).forEach(c=>{const d=difCaja(c);
+    out.push({r:1,t:`Diferencia de caja · ${fechaCorta(diaLocal(c.fecha))} ${turnoTxt(c)}`,d:`Cobrado ${$$(c.total)} vs vendido en Ayres ${$$(c.total_articulos)}: ${d<0?'falta':'sobra'} ${$$(Math.abs(d))}${c.responsable?' · '+c.responsable:''}.`,a:'#finanzas',al:'Ver'})});
   criticos().forEach(i=>out.push({r:1,t:'Stock crítico · '+i.nombre,d:`Quedan ${fnum(i.stock)} ${i.unidad} (mínimo ${fnum(i.stock_minimo)}).`,a:'#compras',al:'Pedir'}));
   D.gastosFijos.filter(g=>g.activo!==false&&g.proximo_vencimiento).forEach(g=>{const dias=Math.round((new Date(g.proximo_vencimiento+'T12:00:00')-new Date(H+'T12:00:00'))/864e5);
     if(dias<=(+g.dias_aviso||3))out.push({r:dias<0,t:(dias<0?'Vencido: ':'Vence pronto: ')+g.nombre,d:`${$$(g.monto)} · ${dias<0?'venció hace '+(-dias)+' días':dias===0?'vence hoy':'vence en '+dias+' días'}`,a:'#finanzas',al:'Pagar'})});
@@ -1127,6 +1134,13 @@ function vFinanzas(){
   <div class="card kpi"><div class="lbl">💵 Efectivo</div><div class="val">${$$(ef)}</div><div class="sub muted">${ing?fnum(ef/ing*100,1)+'% de la venta':''}</div></div>
   <div class="card kpi"><div class="lbl">📱 Online / digital</div><div class="val">${$$(on)}</div><div class="sub muted">${ing?fnum(on/ing*100,1)+'% de la venta':''}${totCom?' · comisiones −'+$$(totCom):''}</div></div>
   <div class="card kpi"><div class="lbl">Resultado del mes</div><div class="val" style="color:${util>=0?'var(--verde)':'var(--rojo)'}">${$$(util)}</div><div class="sub muted">${ing?'margen '+fnum(util/ing*100,1)+'%':''}</div></div></div>
+  ${(()=>{const cc=D.cierres.filter(c=>c.total_articulos!=null).slice(0,20);const malos=cc.filter(c=>Math.abs(difCaja(c))>tolCaja()).length;
+    return `<div class="card" style="margin-top:12px"><h3>🔎 Control de caja <span class="muted">· lo cobrado vs lo vendido en Ayres, por turno</span></h3>
+    <div class="acciones" style="margin-bottom:6px"><span class="muted">Avisar desde una diferencia de</span> <input type="number" class="mini" value="${tolCaja()}" onchange="guardarTolCaja(this.value)" style="width:110px"> <span class="muted">por turno</span></div>
+    ${cc.length?`<div class="scroll"><table><tr><th>Fecha</th><th>Turno</th><th>Responsable</th><th class="num">Cobrado</th><th class="num">Vendido en Ayres</th><th class="num">Diferencia</th></tr>
+    ${cc.map(c=>{const d=difCaja(c),ad=Math.abs(d);const col=ad<=1?'var(--verde)':ad<=tolCaja()?'#a07000':'var(--rojo)';return `<tr style="${ad>tolCaja()?'background:#fff0f0':''}"><td>${fechaCorta(diaLocal(c.fecha))}</td><td>${esc(c.turno||'')}</td><td>${esc(c.responsable||'—')}</td><td class="num">${$$(c.total)}</td><td class="num">${$$(c.total_articulos)}</td><td class="num" style="color:${col};font-weight:700">${ad<=1?'✅ cierra':(d<0?'falta ':'sobra ')+$$(ad)}</td></tr>`}).join('')}</table></div>
+    ${malos?`<p style="color:var(--rojo);font-weight:700;margin-top:6px">⚠️ ${malos} turno${malos>1?'s':''} con diferencia mayor a ${$$(tolCaja())}</p>`:''}`
+    :'<p class="muted">Todavía no hay turnos cargados con los dos archivos de Ayres (artículos + cierre de caja). Cuando cargues la venta del día con el Excel de artículos, acá vas a ver si la caja cierra.</p>'}</div>`})()}
   <div class="card" style="margin-top:12px"><h3>🧮 Cómo se arma el resultado</h3><table>
    <tr><td>Ventas</td><td class="num">${$$(ing)}</td><td class="num muted">100%</td></tr>
    <tr><td>− Comisiones de cobro (estimadas)</td><td class="num down">${$$(-totCom)}</td><td class="num muted">${ing?fnum(totCom/ing*100,1)+'%':''}</td></tr>
@@ -1208,10 +1222,10 @@ function nuevoCierre(){
   $('#bGC').onclick=async()=>{$('#bGC').disabled=true;try{
     const fp={};let s=0;document.querySelectorAll('.fpg').forEach(e=>{if(+e.value){fp[e.dataset.k]=+e.value;s+=+e.value}});
     if(!s)return toast('Cargá al menos un importe');
-    if(VD_ART&&Math.abs(VD_ART.total-s)>1&&!confirm('Los medios de pago suman '+$$(s)+' y los artículos vendidos '+$$(VD_ART.total)+' (diferencia '+$$(s-VD_ART.total)+').\n¿Guardar igual?'))return;
+    if(VD_ART&&Math.abs(s-VD_ART.total)>tolCaja()&&!confirm('⚠️ No cierra la caja.\nCobrado (medios de pago): '+$$(s)+'\nVendido según Ayres: '+$$(VD_ART.total)+'\n'+(s<VD_ART.total?'Falta ':'Sobra ')+$$(Math.abs(s-VD_ART.total))+'.\n\n¿Guardar igual? Va a quedar marcado como diferencia de caja.'))return;
     const items=[];document.querySelectorAll('#tV tr').forEach((tr,k)=>{if(!k)return;const p=tr.querySelector('.vP').value.trim(),c=+tr.querySelector('.vC').value;if(!p||!c)return;const it={producto:p,unidad:tr.querySelector('.vU').value,cantidad:c,total:+tr.querySelector('.vT').value||0};const cod=tr.dataset.cod;if(cod)it.codigo=cod;items.push(it)});
     const t=$('#cT').value,hora=t==='Mañana'?'14:00':t==='Tarde'?'20:00':'23:00';
-    const [c]=await sbIns('cierres_caja',[{fecha:new Date($('#cF').value+'T'+hora+':00-03:00').toISOString(),turno:t,total:s,formas_pago:fp,items,tickets:+$('#cTk').value||null,responsable:$('#cR').value||null,estado:'cerrado'}]);D.cierres.unshift(c);
+    const [c]=await sbIns('cierres_caja',[{fecha:new Date($('#cF').value+'T'+hora+':00-03:00').toISOString(),turno:t,total:s,formas_pago:fp,items,tickets:+$('#cTk').value||null,total_articulos:VD_ART?VD_ART.total:null,responsable:$('#cR').value||null,estado:'cerrado'}]);D.cierres.unshift(c);
     cerrarModal();toast('Venta guardada ✅ '+$$(s));VISTAS[vistaActual]();
   }finally{const b=$('#bGC');if(b)b.disabled=false}};
 }
@@ -1220,7 +1234,7 @@ function sumaCanales(){let ef=0,on=0;document.querySelectorAll('.fpg').forEach(e
   $('#cResumen').innerHTML=`<div class="fila" style="align-items:center"><div><div class="muted">Total del día</div><div style="font-size:26px;font-weight:700;color:var(--verde)">${$$(t)}</div></div>
   <div><div class="muted">💵 Efectivo</div><b>${$$(ef)}</b> ${t?`<span class="muted">(${fnum(ef/t*100,0)}%)</span>`:''}</div><div><div class="muted">📱 Online</div><b>${$$(on)}</b> ${t?`<span class="muted">(${fnum(on/t*100,0)}%)</span>`:''}</div>
   ${com?`<div><div class="muted">Comisiones estimadas</div><b class="down">−${$$(com)}</b></div>`:''}</div>
-  ${VD_ART?(()=>{const d=t-VD_ART.total;return Math.abs(d)<=1?`<div style="margin-top:8px;color:var(--verde);font-weight:700">✅ Cierra: medios de pago y artículos vendidos suman lo mismo (${$$(t)})</div>`:`<div style="margin-top:8px;color:var(--rojo);font-weight:700">⚠️ No cierra: artículos ${$$(VD_ART.total)} · medios de pago ${$$(t)} · diferencia ${$$(d)}</div>`})():''}
+  ${VD_ART?(()=>{const d=t-VD_ART.total,ad=Math.abs(d);return ad<=1?`<div style="margin-top:8px;color:var(--verde);font-weight:700">✅ Cierra: lo cobrado y lo vendido en Ayres suman lo mismo (${$$(t)})</div>`:ad<=tolCaja()?`<div style="margin-top:8px;color:#a07000;font-weight:700">🟡 Diferencia chica: ${d<0?'falta':'sobra'} ${$$(ad)} (cobrado ${$$(t)} · Ayres ${$$(VD_ART.total)}). Está dentro de la tolerancia de ${$$(tolCaja())}.</div>`:`<div style="margin-top:8px;color:var(--rojo);font-weight:700">🔴 No cierra: ${d<0?'falta':'sobra'} ${$$(ad)} · cobrado ${$$(t)} · vendido en Ayres ${$$(VD_ART.total)}</div>`})():''}
   ${+($('#cTk')||{}).value&&t?`<div class="muted" style="margin-top:4px">Ticket promedio: ${$$(t/+$('#cTk').value)}</div>`:''}`}
 function nuevoGasto(){modal(`<h3>➖ Registrar gasto</h3><p class="muted">Para compras a proveedores usá "Cargar factura" (así actualiza stock y costos). Esto es para otros gastos: sueldos, servicios, arreglos, etc.</p>
   <div class="fila"><div><label>Fecha</label><input id="gF" type="date" value="${hoy()}"></div><div><label>Monto</label><input id="gM" type="number" step="any"></div></div>
