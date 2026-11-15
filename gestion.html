@@ -148,6 +148,7 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#facturas">🧾 Facturas</a>
   <a href="#produccion">🏭 Producción</a>
   <a href="#inventario">📦 Inventario</a>
+  <a href="#invsalon">🏪 Inventario Salón</a>
   <a href="#venta">🏷️ Productos de venta</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
@@ -389,7 +390,7 @@ Reglas:
 - Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,venta:vVenta,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,venta:vVenta,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -828,6 +829,107 @@ function nutDescargar(id){const a=document.createElement('a');a.href=$('#nuCanva
 function nutCompartir(id){$('#nuCanvas').toBlob(async b=>{const f=new File([b],nutArchivo(id),{type:'image/png'});
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:recMap[id]?.nombre})}catch(e){}}
   else{nutDescargar(id);toast('Tu navegador no permite compartir directo: se descargó la imagen para que la mandes por WhatsApp')}},'image/png')}
+
+// ================= INVENTARIO SALÓN =================
+// Stock de lo que hay en el local (tabla salon_stock, la misma que usa el módulo Salón).
+// Se puede cargar desde un Excel, poner en 0 o corregir a mano. Cada carga queda registrada en salon_inventarios.
+let IS={rows:[],edit:{},cargado:false,f:'',sec:'',hist:[]};
+const IS_SECT={panaderia:'🍞 Panadería',pasteleria:'🎂 Pastelería',cocina:'🍳 Cocina',madrugada:'🌙 Madrugada',insumos:'🧻 Insumos del local'};
+async function cargarIS(){const [r,h]=await Promise.all([sbGet('salon_stock','order=sector,nombre'),sbGet('salon_inventarios','order=created_at.desc&limit=5').catch(()=>[])]);IS.rows=r||[];IS.hist=h||[];IS.edit={};IS.cargado=true}
+const isNum=v=>Math.round((+v||0)*1000)/1000;
+function isCambios(){return IS.rows.filter(r=>IS.edit[r.id]!==undefined&&isNum(IS.edit[r.id])!==isNum(r.cantidad))}
+async function vInvSalon(){
+  if(!IS.cargado){$('#app').innerHTML='<div class="cargando">Cargando stock del Salón…</div>';try{await cargarIS()}catch(e){$('#app').innerHTML='<div class="card">No se pudo cargar: '+esc(e.message)+'</div>';return}}
+  const q=norm(IS.f);const filas=IS.rows.filter(r=>(!IS.sec||(r.sector||'insumos')===IS.sec)&&(!q||norm(r.nombre).includes(q)||norm(r.id).includes(q)));
+  const cambios=isCambios();const conStock=IS.rows.filter(r=>+r.cantidad).length;
+  const sectores=[...new Set(IS.rows.map(r=>r.sector||'insumos'))];
+  const ult=IS.hist[0];
+  $('#app').innerHTML=`<h2>🏪 Inventario Salón</h2>
+  <p class="muted">El stock de lo que hay en el local, el mismo que ve el Salón. Podés cargarlo desde un Excel, ponerlo todo en 0 o corregir a mano. Los cambios se ven en el Salón en menos de un minuto.</p>
+  <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Productos</div><div class="val">${IS.rows.length}</div></div>
+  <div class="card kpi"><div class="lbl">Con stock</div><div class="val">${conStock}</div></div>
+  <div class="card kpi"><div class="lbl">Último inventario</div><div class="val" style="font-size:16px">${ult?new Date(ult.created_at).toLocaleString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</div><div class="sub muted">${ult?esc(({excel:'desde Excel',manual:'a mano',cero:'todo en 0'})[ult.tipo]||ult.tipo)+' · '+(ult.detalle||[]).length+' productos':''}</div></div></div>
+  <div class="acciones" style="margin-bottom:10px">
+    <button class="btn" onclick="$('#isArch').click()">📥 Subir Excel de stock</button><input type="file" id="isArch" accept=".xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none" onchange="isLeerExcel(this.files[0]);this.value=''">
+    <button class="btn sec" onclick="isPlantilla()">⬇️ Descargar planilla para completar</button>
+    <button class="btn rojo" onclick="confirmar('¿Poner en 0 el stock de TODOS los productos del Salón?',isCero)">0️⃣ Poner todo en 0</button>
+    <button class="btn sec" onclick="IS.cargado=false;vInvSalon()">🔄 Recargar</button>
+  </div>
+  ${cambios.length?`<div class="alerta" style="position:sticky;top:0;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${cambios.length} cambio${cambios.length>1?'s':''} sin guardar</b><button class="btn" onclick="isGuardar()">💾 Guardar cambios</button><button class="btn sec" onclick="IS.edit={};IS.origen=null;vInvSalon()">Descartar</button></div>`:''}
+  <div class="acciones" style="margin-bottom:8px"><input placeholder="Buscar producto…" value="${esc(IS.f)}" oninput="IS.f=this.value;clearTimeout(window._tis);window._tis=setTimeout(()=>{vInvSalon();const i=document.querySelector('#isBus');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" id="isBus" style="max-width:260px">
+    <select onchange="IS.sec=this.value;vInvSalon()" style="max-width:220px"><option value="">Todos los sectores</option>${sectores.map(s=>`<option value="${esc(s)}" ${IS.sec===s?'selected':''}>${esc(IS_SECT[s]||s)}</option>`).join('')}</select></div>
+  <div class="card scroll"><table><tr><th>Producto</th><th>Sector</th><th>Unidad</th><th class="num">Stock actual</th><th class="num">Nuevo stock</th></tr>
+  ${filas.map(r=>{const e=IS.edit[r.id];const camb=e!==undefined&&isNum(e)!==isNum(r.cantidad);
+    return `<tr style="${camb?'background:#fff7e0':''}"><td><b>${esc(r.nombre)}</b></td><td>${esc(IS_SECT[r.sector||'insumos']||r.sector)}</td><td>${esc(r.unidad||'')}</td><td class="num">${fnum(r.cantidad,3)}</td>
+    <td class="num"><input class="mini" type="number" step="any" inputmode="decimal" value="${e!==undefined?e:isNum(r.cantidad)}" onchange="isSet('${esc(r.id)}',this.value)" style="${camb?'border-color:var(--oro);font-weight:700':''}"></td></tr>`}).join('')||'<tr><td colspan="5" class="muted">No hay productos con ese filtro.</td></tr>'}
+  </table></div>
+  ${cambios.length?`<div class="acciones" style="margin-top:10px"><button class="btn" onclick="isGuardar()">💾 Guardar ${cambios.length} cambio${cambios.length>1?'s':''}</button></div>`:''}`;
+}
+function isSet(id,v){IS.edit[id]=v===''?0:+v;vInvSalon()}
+async function isGuardar(tipo,archivo){
+  tipo=tipo||(IS.origen&&IS.origen.tipo)||'manual';archivo=archivo||(IS.origen&&IS.origen.archivo)||null;
+  const cambios=isCambios();if(!cambios.length)return toast('No hay cambios para guardar');
+  const ahora=new Date().toISOString();
+  const rows=cambios.map(r=>({...r,cantidad:isNum(IS.edit[r.id]),updated_at:ahora}));
+  for(let i=0;i<rows.length;i+=200)await sbIns('salon_stock?on_conflict=id',rows.slice(i,i+200),true);
+  const det=cambios.map(r=>({id:r.id,nombre:r.nombre,antes:isNum(r.cantidad),despues:isNum(IS.edit[r.id])}));
+  try{await sbIns('salon_inventarios',[{tipo,usuario:(window.POLY_USUARIO||{}).usuario||null,archivo,detalle:det}])}catch(e){}
+  toast('Stock del Salón actualizado ✅ ('+rows.length+' productos)',4000);IS.cargado=false;IS.origen=null;vInvSalon();
+}
+async function isCero(){IS.rows.forEach(r=>{IS.edit[r.id]=0});await isGuardar('cero')}
+function isPlantilla(){
+  const filas=[['id','Producto','Sector','Unidad','Cantidad']].concat(IS.rows.map(r=>[r.id,r.nombre,IS_SECT[r.sector||'insumos']||r.sector||'',r.unidad||'',String(isNum(r.cantidad)).replace('.',',')]));
+  const csv='﻿'+filas.map(f=>f.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='inventario_salon_'+hoy()+'.csv';a.click();
+  toast('Abrila con Excel, completá la columna Cantidad y subila con "Subir Excel de stock"',6000)}
+// ---- lectura del Excel ----
+const IS_STOP=new Set(['de','del','con','y','x','la','el','los','las','por','a','en','g','gr','grs','kg','u','un','unidad','unidades']);
+function isTokens(s){return norm(s).replace(/\bjyq\b/g,'jamon queso').replace(/\(.*?\)/g,' ').replace(/[^a-z0-9ñ ]/g,' ').split(/\s+/).filter(w=>w&&!IS_STOP.has(w)).map(w=>w.length>3?w.replace(/(es|s)$/,''):w)}
+function isParecido(a,b){const A=new Set(isTokens(a)),B=new Set(isTokens(b));if(!A.size||!B.size)return 0;let c=0;A.forEach(w=>{if(B.has(w))c++});return c/Math.max(A.size,B.size)}
+function isEquiv(){try{return JSON.parse(localStorage.getItem('inv_salon_equiv')||'{}')}catch(e){return {}}}
+function isBuscar(nombre,id){
+  if(id){const r=IS.rows.find(x=>x.id===String(id).trim());if(r)return [r,'id']}
+  const n=norm(nombre).trim();if(!n)return [null,''];
+  const eq=isEquiv()[n];if(eq){const r=IS.rows.find(x=>x.id===eq);if(r)return [r,'aprendido']}
+  let r=IS.rows.find(x=>norm(x.nombre).trim()===n||norm(x.id).replace(/_/g,' ')===n);if(r)return [r,'exacto'];
+  let best=null,bs=0;IS.rows.forEach(x=>{const s=isParecido(nombre,x.nombre);if(s>bs){bs=s;best=x}});
+  return bs>=0.6?[best,'parecido']:[null,''];
+}
+let IS_IMP=null;
+async function isLeerExcel(file){
+  if(!file)return;if(!IS.cargado)await cargarIS();
+  let hojas;try{hojas=await planillaAHojas(file)}catch(e){return toast('⚠️ '+e.message,6000)}
+  const lineas=[];
+  for(const h of hojas){if(!h.filas.length)continue;
+    let hi=h.filas.findIndex(f=>{const n=f.map(x=>norm(String(x)).trim());return n.some(x=>/^(producto|articulo|nombre|descripcion|item)$/.test(x))&&n.some(x=>/^(cantidad|stock|existencia|conteo|cant|stock actual|unidades)$/.test(x))});
+    let cN=1,cQ=-1,cId=-1;
+    if(hi>=0){const H=h.filas[hi].map(x=>norm(String(x)).trim());cN=H.findIndex(x=>/^(producto|articulo|nombre|descripcion|item)$/.test(x));cQ=H.findIndex(x=>/^(cantidad|stock|existencia|conteo|cant|stock actual|unidades)$/.test(x));cId=H.indexOf('id')}
+    else{hi=-1;cN=0;cQ=1}
+    for(const f of h.filas.slice(hi+1)){const nombre=String(f[cN]??'').trim();const qv=f[cQ];
+      if(!nombre&&!(cId>=0&&f[cId]))continue;if(qv===''||qv==null)continue;
+      const q=numAR(qv);if(isNaN(q))continue;
+      const [r,como]=isBuscar(nombre,cId>=0?f[cId]:null);lineas.push({nombre:nombre||String(f[cId]),cant:q,id:r?r.id:'',como})}
+  }
+  if(!lineas.length)return toast('⚠️ No encontré productos con cantidad en ese archivo. Necesita una columna con el nombre del producto y otra con la cantidad.',7000);
+  IS_IMP={archivo:file.name,lineas};isPreview();
+}
+function isPreview(){
+  const L=IS_IMP.lineas,ok=L.filter(l=>l.id).length;
+  const opts=`<option value="">— no cargar —</option>`+IS.rows.map(r=>`<option value="${esc(r.id)}">${esc(r.nombre)} (${esc(r.unidad||'')})</option>`).join('');
+  modal(`<h2>📥 Stock desde Excel</h2><p class="muted">${esc(IS_IMP.archivo)} · ${L.length} filas · <b>${ok} reconocidas</b>${L.length-ok?` · <b style="color:var(--rojo)">${L.length-ok} sin reconocer</b>: elegí a qué producto corresponden o dejalas en "no cargar"`:''}.</p>
+  <div class="scroll" style="max-height:55vh"><table><tr><th>En el Excel</th><th class="num">Cantidad</th><th>Producto del Salón</th></tr>
+  ${L.map((l,k)=>`<tr style="${l.id?'':'background:#fff0f0'}"><td>${esc(l.nombre)}${l.como==='parecido'?' <span class="muted" style="font-size:11px">(por parecido, revisalo)</span>':''}</td><td class="num">${fnum(l.cant,3)}</td>
+  <td><select onchange="IS_IMP.lineas[${k}].id=this.value;IS_IMP.lineas[${k}].como='elegido'">${opts.replace(`value="${esc(l.id)}"`,`value="${esc(l.id)}" selected`)}</select></td></tr>`).join('')}</table></div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="isResto" style="width:auto"> Los productos del Salón que <b>no están</b> en el Excel, ponerlos en 0</label>
+  <div class="acciones" style="margin-top:12px"><button class="btn" onclick="isAplicar()">✅ Pasar a la tabla para revisar</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`)}
+function isAplicar(){
+  const eq=isEquiv();const usados=new Set();
+  IS_IMP.lineas.forEach(l=>{if(!l.id)return;IS.edit[l.id]=(usados.has(l.id)?(+IS.edit[l.id]||0):0)+l.cant;usados.add(l.id);if(l.como==='elegido'||l.como==='parecido')eq[norm(l.nombre).trim()]=l.id});
+  try{localStorage.setItem('inv_salon_equiv',JSON.stringify(eq))}catch(e){}
+  if($('#isResto')&&$('#isResto').checked)IS.rows.forEach(r=>{if(!usados.has(r.id))IS.edit[r.id]=0});
+  IS.origen={tipo:'excel',archivo:IS_IMP.archivo};cerrarModal();IS.f='';IS.sec='';vInvSalon();
+  toast('Revisá los cambios marcados en amarillo y tocá "Guardar cambios"',6000);
+}
 
 // ================= PRODUCTOS DE VENTA =================
 // Lista de productos que se venden en el local (mismos códigos que la caja) y

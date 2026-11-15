@@ -555,17 +555,45 @@ function initStock() {
   for (const item of allItems) {
     if (stockState[item.id] === undefined) stockState[item.id] = 0;
   }
-  saveStock();
+  try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){}
+  // El stock "de verdad" está en la base (salon_stock): así un inventario cargado desde Gestión no se pisa.
+  syncStockServidor(true);
+  setInterval(function(){ syncStockServidor(false); }, 60000);
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden) syncStockServidor(false); });
+}
+// stockSync = últimos valores que coinciden con la base. Solo se mandan a la base los productos que cambiaron acá.
+let stockSync = null;
+async function syncStockServidor(inicial) {
+  let rows = null;
+  try { rows = await sbSelect('salon_stock', '?select=id,cantidad'); } catch(e) {}
+  if (!Array.isArray(rows)) return; // sin conexión: queda lo local y se reintenta en un minuto
+  const srv = {}; rows.forEach(r => srv[r.id] = +r.cantidad || 0);
+  const base = stockSync, nuevo = {};
+  let cambio = false;
+  Object.keys(srv).forEach(id => {
+    // ¿se cambió acá y todavía no llegó a la base? entonces se respeta lo de acá y se vuelve a mandar
+    const pendiente = base !== null && base[id] !== undefined && (stockState[id]||0) !== base[id];
+    if (pendiente) { nuevo[id] = base[id]; return; }
+    if (stockState[id] !== srv[id]) { stockState[id] = srv[id]; cambio = true; }
+    nuevo[id] = srv[id];
+  });
+  stockSync = nuevo;
+  try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){}
+  saveStock(); // manda lo pendiente y los productos del catálogo que todavía no están en la base
+  if (cambio && typeof renderStock === 'function') { try { renderStock(); } catch(e){} }
 }
 function saveStock() {
   localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
+  if (stockSync === null) return; // todavía no se leyó la base: no pisar
   const allItems = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL];
-  const rows = allItems.map(item => ({
+  const rows = allItems.filter(item => (stockState[item.id]||0) !== stockSync[item.id]).map(item => ({
     id: item.id, nombre: item.nombre, cantidad: stockState[item.id]||0,
     unidad: item.unidad, sector: item.sector||'insumos', min_local: item.minLocal||0,
-    precio: getPrecio(item.id)
+    precio: getPrecio(item.id), updated_at: new Date().toISOString()
   }));
-  sbUpsert('salon_stock', rows).catch(()=>{});
+  if (!rows.length) return;
+  rows.forEach(r => stockSync[r.id] = r.cantidad);
+  sbUpsert('salon_stock', rows).then(res => { if (res === null) rows.forEach(r => delete stockSync[r.id]); }).catch(() => { rows.forEach(r => delete stockSync[r.id]); });
 }
 
 const PRECIOS_DEFAULT = {
