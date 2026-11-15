@@ -730,7 +730,7 @@ async function confirmHornear(){
       await sbUpsert('salon_recepciones', [{
         producto_id: pendingItem.producto_id,
         producto_nombre: pendingItem.producto_nombre || pendingItem.producto_id,
-        cantidad: horn, sector_origen: 'madrugada', destino: 'salon', estado: 'despachado', foto_url: fotoUrl
+        cantidad: horn, unidad: peso ? 'kg' : 'u', sector_origen: 'madrugada', destino: 'salon', estado: 'despachado', foto_url: fotoUrl
       }]);
     }
     if(merma > 0){
@@ -882,7 +882,7 @@ async function confirmarProd(){
   const btn = document.getElementById('pm-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Despachando…');
   let foto = null; if (prodFoto) { try { foto = await uploadFoto(prodFoto, { producto_id: 'rec_' + prodSel.id }); } catch (e) { console.warn('foto', e); } }
   try {
-    await sbUpsert('salon_recepciones', [{ producto_id: 'rec_' + prodSel.id, producto_nombre: prodSel.nombre, cantidad: Math.round(cant * 1000) / 1000,
+    await sbUpsert('salon_recepciones', [{ producto_id: 'rec_' + prodSel.id, producto_nombre: prodSel.nombre, cantidad: Math.round(cant * 1000) / 1000, unidad: porKg ? 'kg' : 'u',
       sector_origen: 'madrugada', destino: 'salon', estado: 'despachado', foto_url: foto }]);
     if (document.getElementById('pm-desc').checked) {
       try { await polyRPC('registrar_produccion', { p_sector: 'madrugada', p_producto: prodSel.nombre, p_tandas: 1, p_unidades: cant, p_unidades_por_tanda: null }); } catch (e) { console.warn('insumos', e); }

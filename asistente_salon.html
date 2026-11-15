@@ -565,9 +565,12 @@ function initStock() {
 let stockSync = null;
 async function syncStockServidor(inicial) {
   let rows = null;
-  try { rows = await sbSelect('salon_stock', '?select=id,cantidad,unidad,nombre'); } catch(e) {}
+  try { rows = await sbSelect('salon_stock', '?select=id,cantidad,unidad,nombre,sector'); } catch(e) {}
   if (!Array.isArray(rows)) return; // sin conexión: queda lo local y se reintenta en un minuto
   const srv = {}; rows.forEach(r => { srv[r.id] = +r.cantidad || 0; STOCK_META[r.id] = { unidad: r.unidad, nombre: r.nombre }; });
+  // Productos que existen en la base pero no en la lista de este dispositivo (ej. recibidos de Madrugada en otro celular): se suman para que se vean
+  const conocidos = new Set([...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL].map(p => p.id));
+  rows.forEach(r => { if (!String(r.id).startsWith('pv:') && !conocidos.has(r.id)) PRODUCTOS_EXTRA.push({ id: r.id, nombre: r.nombre || r.id, unidad: r.unidad || 'u', sector: r.sector || 'otros', minLocal: 0, paso: r.unidad === 'kg' ? 0.1 : 1 }); });
   const base = stockSync, nuevo = {};
   let cambio = false;
   Object.keys(srv).forEach(id => {
@@ -737,6 +740,7 @@ function renderStock(filterQ) {
     { key:'pasteleria', label:'🍰 Pastelería', items:allProds.filter(p=>p.sector==='pasteleria') },
     { key:'cocina', label:'🍳 Cocina', items:allProds.filter(p=>p.sector==='cocina') },
     { key:'especial', label:'🎁 Productos especiales', items:allProds.filter(p=>p.sector==='especial') },
+    { key:'otros', label:'🌅 Madrugada y otros', items:allProds.filter(p=>!['panaderia','pasteleria','cocina','especial','insumos','venta'].includes(p.sector) && (filterQ || (stockState[p.id]||0)!==0)) },
     { key:'insumos', label:'🧴 Insumos del local', items:INSUMOS_LOCAL },
   ];
 
@@ -1458,7 +1462,8 @@ async function confirmarDespacho(id){
   const cant = Number(r.cantidad)||0;
   const known = String(pid).startsWith('pv:') || [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL).some(function(p){ return p.id===pid; });
   if(!known){
-    PRODUCTOS_EXTRA.push({ id:pid, nombre:(r.producto_nombre||pid), unidad:'u', sector:(r.sector_origen||'salon'), minLocal:0, paso:1 });
+    const uni = r.unidad || 'u';
+    PRODUCTOS_EXTRA.push({ id:pid, nombre:(r.producto_nombre||pid), unidad:uni, sector:(['madrugada','churrero'].includes(r.sector_origen) ? 'panaderia' : (r.sector_origen||'otros')), minLocal:0, paso: uni==='kg' ? 0.1 : 1 });
     localStorage.setItem('salon_extra_productos', JSON.stringify(PRODUCTOS_EXTRA));
   }
   stockState[pid] = (stockState[pid]||0) + cant;
