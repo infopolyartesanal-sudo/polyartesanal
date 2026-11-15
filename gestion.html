@@ -496,6 +496,7 @@ async function vDepositos(){
     <input placeholder="Buscar producto…" value="${esc(DEP.f)}" id="depBus" style="max-width:260px" oninput="DEP.f=this.value;clearTimeout(window._tdep);window._tdep=setTimeout(()=>{vDepositos();const i=$('#depBus');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)">
     ${t!=='historial'?`<button class="btn sec" onclick="depCeroTab()">0️⃣ Poner esta pestaña en 0</button>`:''}
     <button class="btn sec" onclick="rellAbrir()">🥄 Rellenos al hornear</button>
+    <button class="btn sec" onclick="pesoAbrir()">⚖️ Productos por kilo</button>
     <button class="btn sec" onclick="if(depCambios().length&&!confirm('Tenés cambios sin guardar. ¿Recargar igual?'))return;DEP.cargado=false;DEP.edit={};vDepositos()">🔄 Recargar</button>
   </div>
   ${cuerpo}
@@ -518,6 +519,21 @@ async function rellGuardar(){rellLeer();const reglas=window._rell.filter(r=>r.pa
   await sbIns('config',[{clave:'consumos_horneado',valor:{reglas}}],true);
   for(const r of reglas){if(!(DEP.cocina||[]).some(x=>norm(x.nombre||x.id)===norm(r.insumo))){try{await polyRPC('stock_sector_ajustar',{p_sector:'cocina',p_nombre:r.insumo,p_delta:{},p_motivo:'alta relleno',p_usuario:null})}catch(e){}}}
   toast('Guardado ✅');cerrarModal();DEP.cargado=false;vDepositos()}
+
+// Productos que salen de leudado por lata pero se venden por kilo: Madrugada los pesa al hornear.
+// Si se compran hechos (ej. chipa), se descuentan de ese insumo del depósito.
+async function pesoAbrir(){let cfg={reglas:[]};try{const c=await sbGet('config','clave=eq.productos_por_peso');cfg=((c||[])[0]||{}).valor||cfg}catch(e){}
+  window._peso=(cfg.reglas||[]).slice();pesoPintar()}
+function pesoPintar(){const R=window._peso;
+  modal(`<h2>⚖️ Productos por kilo</h2>
+  <p class="muted">Si el nombre del producto contiene la palabra, Madrugada no carga unidades: <b>pesa lo que salió</b> y lo manda al Salón en kilos. Si el producto se compra hecho, poné el insumo del depósito y se descuentan esos kilos al hornear.</p>
+  <table><tr><th>Si el producto dice…</th><th>Se compra hecho (insumo del depósito)</th><th></th></tr>
+  ${R.map((r,i)=>`<tr><td><input id="psP${i}" value="${esc(r.patron||'')}"></td><td><input id="psC${i}" value="${esc(r.comprado||'')}" placeholder="(se hace acá)"></td><td><button class="btn peq sec" onclick="pesoLeer();window._peso.splice(${i},1);pesoPintar()">✕</button></td></tr>`).join('')}</table>
+  <div class="acciones" style="margin-top:8px"><button class="btn sec" onclick="pesoLeer();window._peso.push({patron:''});pesoPintar()">➕ Agregar</button><button class="btn" onclick="pesoGuardar()">💾 Guardar</button></div>`)}
+function pesoLeer(){window._peso=window._peso.map((r,i)=>{const o={patron:(($('#psP'+i)||{}).value||'').trim()};const c=(($('#psC'+i)||{}).value||'').trim();if(c)o.comprado=c;return o})}
+async function pesoGuardar(){pesoLeer();const reglas=window._peso.filter(r=>r.patron);
+  for(const r of reglas.filter(r=>r.comprado)){try{const ya=await sb('insumos?select=id&nombre=eq.'+encodeURIComponent(r.comprado));if(!(ya||[]).length)await sbIns('insumos',[{nombre:r.comprado,unidad:'kg',categoria:'ALIMENTOS',stock:0}])}catch(e){}}
+  await sbIns('config',[{clave:'productos_por_peso',valor:{reglas}}],true);toast('Guardado ✅');cerrarModal()}
 function depCeroTab(){
   const t=DEP.tab,tb=DEP_TABLA[t];if(!tb)return;
   DEP[t].forEach(r=>{
