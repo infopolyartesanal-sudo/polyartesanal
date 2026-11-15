@@ -1031,14 +1031,16 @@ async function vChurrero(){
   const pend=CH.bol.filter(b=>!b.pago_id),deuda=pend.reduce((a,b)=>a+(+b.total||0),0);
   const fmtD=f=>new Date(f+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});
   $('#app').innerHTML=`<h2>🍩 Churrero</h2>
-  <p class="muted">Madrugada carga la boleta cada día que viene (Madrugada → Churrero) con los precios de acá. Lo que trae entra al Salón: churros y donas como <b>Facturas</b>, pastelitos como <b>Pastelitos</b>. Acá ves cuánto le debés y registrás el pago semanal.</p>
+  <p class="muted">Madrugada copia el remito cada día que viene (Madrugada → Churrero): casilleros con los mismos códigos, foto del remito y el OK de quien lo revisó. Los precios salen de acá. Lo que trae entra al Salón: churros y donas como <b>Facturas</b>, pastelitos como <b>Pastelitos</b>. Acá ves cuánto le debés y registrás el pago semanal.</p>
   <div class="grid g4" style="margin-bottom:12px">
     <div class="card kpi"><div class="lbl">Le debés</div><div class="val" style="color:${deuda?'var(--rojo)':'var(--verde)'}">${$$(deuda)}</div><div class="sub muted">${pend.length} boleta${pend.length===1?'':'s'} sin pagar</div></div>
     <div class="card kpi"><div class="lbl">Último pago</div><div class="val" style="font-size:20px">${CH.pagos[0]?$$(CH.pagos[0].total):'—'}</div><div class="sub muted">${CH.pagos[0]?fechaCorta(diaLocal(CH.pagos[0].pagado_at)):''}</div></div>
   </div>
   <div class="card" style="margin-bottom:12px"><h3>💲 Precios</h3>
-    <div class="scroll"><table><tr><th>Producto</th><th>Se cobra por</th><th class="num">Precio</th><th>Va al local como</th><th></th></tr>
-    ${CH.items.map((it,i)=>`<tr><td><input id="chN${i}" value="${esc(it.nombre)}"></td><td><select id="chU${i}" style="width:auto"><option value="u" ${it.unidad!=='docena'?'selected':''}>unidad</option><option value="docena" ${it.unidad==='docena'?'selected':''}>docena</option></select></td>
+    <div class="scroll"><table><tr><th>Código del remito</th><th>Producto</th><th>En el remito viene en</th><th>Se cobra por</th><th class="num">Precio</th><th>Va al local como</th><th></th></tr>
+    ${CH.items.map((it,i)=>`<tr><td><input id="chC${i}" value="${esc(it.codigo||'')}" placeholder="ej: CHR" style="max-width:90px;text-transform:uppercase"></td><td><input id="chN${i}" value="${esc(it.nombre)}"></td>
+      <td><select id="chR${i}" style="width:auto"><option value="docena" ${it.remito==='docena'?'selected':''}>docenas</option><option value="u" ${it.remito!=='docena'?'selected':''}>unidades</option></select></td>
+      <td><select id="chU${i}" style="width:auto"><option value="u" ${it.unidad!=='docena'?'selected':''}>unidad</option><option value="docena" ${it.unidad==='docena'?'selected':''}>docena</option></select></td>
       <td class="num"><input id="chP${i}" type="number" min="0" value="${+it.precio||''}" placeholder="0" style="max-width:110px;text-align:right"></td>
       <td><select id="chD${i}" style="width:auto"><option ${it.destino!=='Pastelitos'?'selected':''}>Facturas</option><option ${it.destino==='Pastelitos'?'selected':''}>Pastelitos</option></select></td>
       <td><button class="btn peq sec" onclick="chQuitar(${i})">✕</button></td></tr>`).join('')}</table></div>
@@ -1048,41 +1050,43 @@ async function vChurrero(){
     return `<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Semana del ${fechaCorta(k)} al ${fechaCorta(sumaDias(k,6))}</h3>
       ${imp.length?`<button class="btn oro" onclick="chPagar('${k}')">💸 Registrar pago ${$$(timp)}</button>`:'<span class="chip" style="background:#E8F5E9;color:#2E7D32">✅ Pagada</span>'}</div>
       <div class="muted" style="font-size:13px;margin:4px 0 8px">${Object.entries(res).map(([n,q])=>fnum(q,0)+' '+esc(n)).join(' · ')}</div>
-      <table><tr><th>Día</th><th>Detalle</th><th class="num">Total</th><th></th></tr>${L.map(b=>`<tr><td>${fmtD(b.fecha)}</td><td style="font-size:13px">${(b.items||[]).map(x=>fnum(x.cantidad,0)+' '+esc(x.nombre)+(x.precio?' × '+$$(x.precio):'')).join('<br>')}</td><td class="num">${$$(b.total)}</td><td>${b.pago_id?'<span class="muted" style="font-size:12px">pagada</span>':`<button class="btn peq sec" onclick="confirmar('¿Borrar la boleta del ${fmtD(b.fecha)}? Lo que se mandó al Salón no se descuenta solo.',()=>chBorrar(${b.id}))">🗑️</button>`}</td></tr>`).join('')}
+      <table><tr><th>Día</th><th>Detalle</th><th class="num">Total</th><th></th></tr>${L.map(b=>`<tr><td>${fmtD(b.fecha)}${b.pedido?`<div class="muted" style="font-size:11px">pedido ${esc(b.pedido)}</div>`:''}${b.foto_url?`<div><a href="${esc(b.foto_url)}" target="_blank" style="font-size:12px">📷 remito</a></div>`:''}</td><td style="font-size:13px">${(b.items||[]).map(x=>(x.codigo?'<b>'+esc(x.codigo)+'</b> ':'')+(x.docenas!=null?fnum(x.docenas,0)+' doc. = ':'')+fnum(x.cantidad,0)+' '+esc(x.nombre)+(x.precio?' × '+$$(x.precio):'')).join('<br>')}${b.revisado_por?`<div class="muted" style="font-size:11px">✔ revisó ${esc(b.revisado_por)}</div>`:''}</td><td class="num">${$$(b.total)}</td><td>${b.pago_id?'<span class="muted" style="font-size:12px">pagada</span>':`<button class="btn peq sec" onclick="confirmar('¿Borrar la boleta del ${fmtD(b.fecha)}? Lo que se mandó al Salón no se descuenta solo.',()=>chBorrar(${b.id}))">🗑️</button>`}</td></tr>`).join('')}
       <tr><td colspan="2"><b>Total de la semana</b></td><td class="num"><b>${$$(tot)}</b></td><td></td></tr></table></div>`}).join('')||'<div class="card muted">Todavía no hay boletas cargadas.</div>'}`;
 }
-function chLeer(){return CH.items.map((it,i)=>({id:it.id||norm($('#chN'+i).value).replace(/[^a-z0-9]+/g,'_'),nombre:$('#chN'+i).value.trim(),unidad:$('#chU'+i).value,precio:+$('#chP'+i).value||0,destino:$('#chD'+i).value})).filter(x=>x.nombre)}
+function chLeer(){return CH.items.map((it,i)=>({id:it.id||norm($('#chN'+i).value).replace(/[^a-z0-9]+/g,'_'),codigo:$('#chC'+i).value.trim().toUpperCase(),nombre:$('#chN'+i).value.trim(),remito:$('#chR'+i).value,unidad:$('#chU'+i).value,precio:+$('#chP'+i).value||0,destino:$('#chD'+i).value})).filter(x=>x.nombre)}
 async function chGuardarPrecios(){const items=chLeer();await sbIns('config',[{clave:'churrero',valor:{items}}],true);CH.items=items;
   const alias=items.map(x=>norm(x.nombre).replace(/[^a-z0-9]+/g,' ').trim()).filter(Boolean);
   try{const ya=await sb('productos_venta_alias?select=alias&alias=in.('+alias.map(a=>'"'+a+'"').join(',')+')');const nuevos=items.filter(x=>!(ya||[]).some(y=>y.alias===norm(x.nombre).replace(/[^a-z0-9]+/g,' ').trim()));
     if(nuevos.length)await sbIns('productos_venta_alias',nuevos.map(x=>({alias:norm(x.nombre).replace(/[^a-z0-9]+/g,' ').trim(),codigo:x.destino==='Pastelitos'?'99':'53'})))}catch(e){console.warn('alias churrero',e)}
   toast('Precios guardados ✅');vChurrero()}
-function chAgregar(){CH.items=chLeer();CH.items.push({id:'item_'+Date.now(),nombre:'',unidad:'u',precio:0,destino:'Facturas'});vChurrero()}
+function chAgregar(){CH.items=chLeer();CH.items.push({id:'item_'+Date.now(),codigo:'',nombre:'',remito:'docena',unidad:'u',precio:0,destino:'Facturas'});vChurrero()}
 function chQuitar(i){CH.items=chLeer();CH.items.splice(i,1);vChurrero()}
 async function chBorrar(id){await sbDel('churrero_boletas','id=eq.'+id);CH.bol=CH.bol.filter(b=>b.id!==id);toast('Boleta borrada');vChurrero()}
 function chPagar(lunes){const L=CH.bol.filter(b=>!b.pago_id&&lunesDe(b.fecha)===lunes),tot=L.reduce((a,b)=>a+(+b.total||0),0);
   modal(`<h2>💸 Pago al churrero</h2><p>Semana del ${fechaCorta(lunes)} al ${fechaCorta(sumaDias(lunes,6))}: <b>${L.length} boleta${L.length>1?'s':''}</b> por <b>${$$(tot)}</b>.</p>
-  <div class="fila"><div><label>Monto pagado</label><input id="chPm" type="number" value="${Math.round(tot)}"></div><div><label>Medio de pago</label><select id="chPmed"><option>Efectivo</option><option>Transferencia</option><option>Mercado Pago</option></select></div></div>
+  <div class="fila"><div><label>Monto pagado</label><input id="chPm" type="number" value="${Math.round(tot)}"></div><div><label>Medio de pago</label><select id="chPmed"><option>Transferencia</option><option>Efectivo</option><option>Mercado Pago</option></select></div><div><label>N° de factura A</label><input id="chPfa" placeholder="ej: 0003-00001234"></div></div>
+  <p class="muted" style="font-size:12px">Si el monto de la factura A no coincide con el de las boletas, poné el de la factura: las boletas quedan igual como control.</p>
   <label>Nota (opcional)</label><input id="chPn">
   <p class="muted" style="font-size:12px">Queda registrado como una factura pagada del proveedor "Churrero", así se suma a tus compras en Finanzas.</p>
   <div class="acciones" style="margin-top:10px"><button class="btn" id="chPok">Registrar pago</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
   $('#chPok').onclick=async()=>{const monto=+$('#chPm').value||0;if(!(monto>0))return toast('Poné el monto');
     const res={};L.forEach(b=>(b.items||[]).forEach(x=>{const r=res[x.nombre]||(res[x.nombre]={descripcion:x.nombre,cantidad:0,precio_unitario:x.precio||0,subtotal:0});r.cantidad+=+x.cantidad||0;r.subtotal+=+x.subtotal||0}));
     const hasta=L.reduce((a,b)=>b.fecha>a?b.fecha:a,lunes);
-    const [fa]=await sbIns('facturas',[{proveedor:'Churrero',numero:'Semana '+lunes,tipo:'X',fecha:hasta,subtotal:monto,impuestos:0,total:monto,condicion_pago:$('#chPmed').value,categoria:'ALIMENTOS',estado:'pagada',items:Object.values(res),impacta_stock:false}]);
-    const [pg]=await sbIns('churrero_pagos',[{desde:lunes,hasta:sumaDias(lunes,6),total:monto,medio:$('#chPmed').value,notas:$('#chPn').value.trim()||null,factura_id:fa?fa.id:null,usuario:(window.POLY_USUARIO||{}).usuario||null}]);
+    const nfa=$('#chPfa').value.trim();
+    const [fa]=await sbIns('facturas',[{proveedor:'Churrero',numero:nfa||('Semana '+lunes),tipo:nfa?'A':'X',fecha:hasta,subtotal:monto,impuestos:0,total:monto,condicion_pago:$('#chPmed').value,categoria:'ALIMENTOS',estado:'pagada',items:Object.values(res),impacta_stock:false}]);
+    const [pg]=await sbIns('churrero_pagos',[{desde:lunes,hasta:sumaDias(lunes,6),total:monto,medio:$('#chPmed').value,factura_nro:nfa||null,notas:$('#chPn').value.trim()||null,factura_id:fa?fa.id:null,usuario:(window.POLY_USUARIO||{}).usuario||null}]);
     await sbUpd('churrero_boletas','id=in.('+L.map(b=>b.id).join(',')+')',{pago_id:pg.id});
     if(typeof D!=='undefined'&&D.facturas&&fa)D.facturas.unshift(fa);
     CH.cargado=false;cerrarModal();toast('Pago registrado ✅');vChurrero()}}
 function chBoletaManual(){if(!CH.items.length)return toast('Primero cargá los productos y precios');
   modal(`<h2>🧾 Boleta del churrero</h2><label>Fecha</label><input id="chBf" type="date" value="${hoy()}">
-  ${CH.items.map((it,i)=>`<div class="fila" style="align-items:center"><div style="flex:2"><b>${esc(it.nombre)}</b><div class="muted" style="font-size:12px">${$$(it.precio)} por ${it.unidad==='docena'?'docena':'unidad'}</div></div><div><input id="chBq${i}" type="number" min="0" placeholder="0"></div></div>`).join('')}
+  ${CH.items.map((it,i)=>`<div class="fila" style="align-items:center"><div style="flex:2"><b>${esc(it.codigo?it.codigo+' · ':'')}${esc(it.nombre)}</b><div class="muted" style="font-size:12px">${$$(it.precio)} por ${it.unidad==='docena'?'docena':'unidad'} · cargá ${it.remito==='docena'?'docenas':'unidades'}</div></div><div><input id="chBq${i}" type="number" min="0" placeholder="0"></div></div>`).join('')}
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="chBs" checked style="width:auto"> Mandar al Salón para que lo confirmen</label>
   <div class="acciones" style="margin-top:10px"><button class="btn" id="chBok">Guardar</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
-  $('#chBok').onclick=async()=>{const fecha=$('#chBf').value||hoy();const items=CH.items.map((it,i)=>{const q=+$('#chBq'+i).value||0;return q>0?{id:it.id,nombre:it.nombre,cantidad:q,unidad:it.unidad||'u',precio:+it.precio||0,subtotal:Math.round(q*(+it.precio||0)*100)/100,destino:it.destino||'Facturas'}:null}).filter(Boolean);
+  $('#chBok').onclick=async()=>{const fecha=$('#chBf').value||hoy();const items=CH.items.map((it,i)=>{const q=+$('#chBq'+i).value||0;if(!(q>0))return null;const m=it.remito==='docena'?12:1,u=q*m,porDoc=it.unidad==='docena';return {id:it.id,codigo:it.codigo||null,nombre:it.nombre,cantidad:u,docenas:m>1?q:null,unidad:'u',precio:+it.precio||0,subtotal:Math.round((porDoc?u/12:u)*(+it.precio||0)*100)/100,destino:it.destino||'Facturas'}}).filter(Boolean);
     if(!items.length)return toast('Cargá al menos una cantidad');const total=items.reduce((a,x)=>a+x.subtotal,0);
     await sbIns('churrero_boletas',[{fecha,items,total,cargado_por:(window.POLY_USUARIO||{}).usuario||null}]);
-    if($('#chBs').checked)await sbIns('salon_recepciones',items.map(x=>({producto_id:'churrero_'+x.id,producto_nombre:x.nombre,cantidad:x.cantidad*(x.unidad==='docena'?12:1),sector_origen:'churrero',destino:'salon',estado:'despachado'})));
+    if($('#chBs').checked)await sbIns('salon_recepciones',items.map(x=>({producto_id:'churrero_'+x.id,producto_nombre:x.nombre,cantidad:x.cantidad,unidad:'u',sector_origen:'churrero',destino:'salon',estado:'despachado'})));
     CH.cargado=false;cerrarModal();toast('Boleta guardada ✅');vChurrero()}}
 
 // ================= INVENTARIO SALÓN =================

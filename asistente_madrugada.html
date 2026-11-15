@@ -909,48 +909,95 @@ async function loadChurrero(){
   chItems = (((cfg||[])[0]||{}).valor||{}).items || []; chBoletas = bol || [];
   renderChurrero(); setStatus('Listo');
 }
+function chMult(it){ return it.remito === 'docena' ? 12 : 1; }
+function chSub(it, u){ return (it.unidad === 'docena' ? u / 12 : u) * (Number(it.precio)||0); }
+let chFoto = null, chLeido = null;
 function chCalcular(){
-  let t = 0; chItems.forEach((it, i) => { const q = Number((document.getElementById('ch-q' + i)||{}).value) || 0; t += q * (Number(it.precio)||0);
-    const s = document.getElementById('ch-s' + i); if (s) s.textContent = q ? pesos(q * (Number(it.precio)||0)) : ''; });
+  let t = 0; chItems.forEach((it, i) => { const q = Number((document.getElementById('ch-q' + i)||{}).value) || 0, u = q * chMult(it), sub = chSub(it, u); t += sub;
+    const s = document.getElementById('ch-s' + i); if (s) s.textContent = q ? (chMult(it) > 1 ? u + ' u · ' : '') + pesos(sub) : ''; });
   document.getElementById('ch-total').textContent = pesos(t);
 }
 function renderChurrero(){
   const el = document.getElementById('ch-form');
   if (!chItems.length) { el.innerHTML = emptyState('Todavía no hay productos del churrero.', 'Se cargan en Gestión → Churrero.'); return; }
-  const sinPrecio = chItems.some(it => !(Number(it.precio) > 0));
-  el.innerHTML = '<div style="font-size:15px;font-weight:800;color:#1B5E20;margin-bottom:4px;">🍩 Boleta del churrero</div>'
-    + '<div style="font-size:12px;color:#888;margin-bottom:10px;">Cargá lo que trajo hoy. Entra al Salón para confirmar: churros y donas como Facturas, pastelitos como Pastelitos.</div>'
-    + '<label style="font-size:13px;font-weight:600;">Fecha</label><input type="date" id="ch-fecha" value="' + hoyMad() + '" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;">'
-    + chItems.map((it, i) => '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #eee;border-radius:10px;padding:10px;margin-bottom:8px;">'
-      + '<div style="flex:1;min-width:0;"><div style="font-weight:700;">' + escMad(it.nombre) + '</div><div style="font-size:12px;color:#888;">' + (Number(it.precio) > 0 ? pesos(it.precio) + ' por ' + (it.unidad === 'docena' ? 'docena' : 'unidad') : 'sin precio') + ' · al local: ' + escMad(it.destino||'Facturas') + '</div><div id="ch-s' + i + '" style="font-size:12px;color:#1B5E20;font-weight:700;"></div></div>'
-      + '<input type="number" id="ch-q' + i + '" min="0" step="1" inputmode="numeric" placeholder="0" oninput="chCalcular()" style="width:90px;padding:10px;font-size:18px;text-align:center;border:1.5px solid #C8E6C9;border-radius:8px;font-weight:700;">'
-      + '<span style="font-size:12px;color:#888;width:46px;">' + (it.unidad === 'docena' ? 'doc.' : 'u') + '</span></div>').join('')
-    + (sinPrecio ? '<div style="font-size:12px;color:#B71C1C;margin:4px 0 8px;">Hay productos sin precio: avisale a Poly para que los cargue en Gestión.</div>' : '')
-    + '<div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin:10px 2px;"><span>Total</span><span id="ch-total">$ 0</span></div>'
-    + '<button onclick="guardarBoleta()" id="ch-ok" style="width:100%;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-device-floppy"></i> Guardar boleta y mandar al Salón</button>'
+  const tieneKey = !!localStorage.getItem('anthropic_api_key');
+  el.innerHTML = '<div style="font-size:15px;font-weight:800;color:#1B5E20;margin-bottom:4px;">🍩 Remito del churrero</div>'
+    + '<div style="font-size:12px;color:#888;margin-bottom:10px;">Copiá los números del remito en el mismo casillero (son <b>docenas</b>). Entra al Salón: churros y donas como Facturas, pastelitos como Pastelitos.</div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:10px;"><label style="flex:1;background:#E8F5E9;color:#1B5E20;border-radius:10px;padding:12px;text-align:center;font-size:14px;font-weight:700;cursor:pointer;"><i class="ti ti-camera"></i> Foto del remito<input type="file" accept="image/*" capture="environment" onchange="chFotoElegida(this.files[0])" style="display:none;"></label></div>'
+    + '<div id="ch-foto-info" style="font-size:12px;color:#666;margin:-4px 0 8px;">' + (chFoto ? '📷 Foto lista' + (chLeido ? ' · ' + chLeido : '') : (tieneKey ? 'Con la foto, el sistema completa los casilleros solo. Después revisalos.' : '')) + '</div>'
+    + (!tieneKey ? '<details style="font-size:12px;color:#666;margin-bottom:10px;"><summary>Activar lectura automática de la foto</summary><div style="margin-top:6px;">Pegá la clave de IA (la misma de Gestión):<input id="ch-key" placeholder="sk-ant-…" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;"><button onclick="localStorage.setItem(\'anthropic_api_key\',document.getElementById(\'ch-key\').value.trim());renderChurrero();" style="margin-top:6px;background:#1B5E20;color:#fff;border:none;border-radius:6px;padding:8px 12px;">Guardar clave</button></div></details>' : '')
+    + '<div style="display:flex;gap:8px;"><div style="flex:1"><label style="font-size:13px;font-weight:600;">Fecha</label><input type="date" id="ch-fecha" value="' + hoyMad() + '" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;"></div>'
+    + '<div style="width:110px"><label style="font-size:13px;font-weight:600;">N° pedido</label><input id="ch-ped" inputmode="numeric" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;"></div></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' + chItems.map((it, i) => '<div style="background:#fff;border:1.5px solid #F8BBD0;border-radius:10px;padding:8px;">'
+      + '<div style="font-size:12px;color:#C2185B;font-weight:800;letter-spacing:1px;">' + escMad(it.codigo || '—') + '</div><div style="font-size:12px;font-weight:700;line-height:1.2;min-height:28px;">' + escMad(it.nombre) + '</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="number" id="ch-q' + i + '" min="0" step="1" inputmode="numeric" placeholder="0" oninput="chCalcular()" style="width:70px;padding:8px;font-size:18px;text-align:center;border:1.5px solid #C8E6C9;border-radius:8px;font-weight:700;"><span style="font-size:11px;color:#888;">' + (chMult(it) > 1 ? 'doc.' : 'u') + '</span></div>'
+      + '<div id="ch-s' + i + '" style="font-size:11px;color:#1B5E20;font-weight:700;min-height:14px;"></div></div>').join('') + '</div>'
+    + '<div id="ch-extra" style="font-size:12px;color:#B71C1C;margin-top:6px;"></div>'
+    + '<div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin:12px 2px;"><span>Total</span><span id="ch-total">$ 0</span></div>'
+    + '<label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;background:#FFF8E1;border-radius:10px;padding:10px;"><input type="checkbox" id="ch-rev" style="width:22px;height:22px;"> <span><b>Revisé los números contra el remito</b> y están bien.</span></label>'
+    + '<button onclick="guardarBoleta()" id="ch-ok" style="width:100%;margin-top:10px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-check"></i> OK: guardar y mandar al Salón</button>'
     + '<div style="font-size:14px;font-weight:700;color:#1B5E20;margin:18px 0 6px;">Últimas boletas</div>'
-    + (chBoletas.length ? chBoletas.map(b => '<div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:13px;"><div style="display:flex;justify-content:space-between;font-weight:700;"><span>' + new Date(b.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday:'short', day:'2-digit', month:'2-digit' }) + '</span><span>' + pesos(b.total) + (b.pago_id ? ' · ✅ pagada' : '') + '</span></div><div style="color:#666;">' + (b.items||[]).map(x => x.cantidad + ' ' + escMad(x.nombre)).join(' · ') + '</div></div>').join('') : '<div style="font-size:13px;color:#999;">Todavía no hay boletas.</div>');
+    + (chBoletas.length ? chBoletas.map(b => '<div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:13px;"><div style="display:flex;justify-content:space-between;font-weight:700;"><span>' + new Date(b.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday:'short', day:'2-digit', month:'2-digit' }) + (b.pedido ? ' · pedido ' + escMad(b.pedido) : '') + '</span><span>' + pesos(b.total) + (b.pago_id ? ' · ✅ pagada' : '') + '</span></div><div style="color:#666;">' + (b.items||[]).map(x => (x.docenas != null ? x.docenas + ' doc. ' : x.cantidad + ' ') + escMad(x.codigo || x.nombre)).join(' · ') + (b.revisado_por ? ' · ✔ ' + escMad(b.revisado_por) : '') + (b.foto_url ? ' · <a href="' + b.foto_url + '" target="_blank">📷</a>' : '') + '</div></div>').join('') : '<div style="font-size:13px;color:#999;">Todavía no hay boletas.</div>');
   chCalcular();
+}
+function chImagenBase64(file){
+  return new Promise((ok, mal) => { const img = new Image(); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.85).split(',')[1]); }; img.onerror = mal; img.src = URL.createObjectURL(file); });
+}
+async function chFotoElegida(file){
+  if (!file) return; chFoto = file; chLeido = null;
+  const info = document.getElementById('ch-foto-info');
+  const key = localStorage.getItem('anthropic_api_key');
+  if (!key) { info.textContent = '📷 Foto lista (se guarda con la boleta). Completá los casilleros a mano.'; return; }
+  info.textContent = '📷 Leyendo el remito…'; setStatus('Leyendo remito…');
+  try {
+    const b64 = await chImagenBase64(file);
+    const codigos = chItems.filter(it => it.codigo).map(it => it.codigo + ' = ' + it.nombre);
+    const prompt = 'Es un remito de una churrería. Tiene una grilla con casilleros, cada uno con un código impreso arriba (CH, D, B, CHR, DG, CHBR, DBN, MINI, DREN, BREN, BOMB, DGL, DRRG, DRNG, PBAT, PDDL, AZUCAR, BOLSAS, CAJAS, etc.) y, a veces, un número escrito a mano debajo. '
+      + 'Leé solo los casilleros que tienen un número escrito a mano. Los códigos que nos interesan: ' + codigos.join('; ') + '. Atención: CHR y CHBR son distintos, DRRG y DRNG son distintos. '
+      + 'También leé la fecha, el número de PEDIDO y BULTOS si están. Si no estás segura de un número, no lo inventes: ponelo en "dudas". '
+      + 'Respondé SOLO con JSON: {"fecha":"YYYY-MM-DD o null","pedido":"texto o null","bultos":numero o null,"cantidades":{"CODIGO":numero},"dudas":"texto corto o null"}';
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 1000, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text: prompt }] }] }) });
+    const j = await r.json(); if (j.error) throw new Error(j.error.message);
+    const txt = (j.content || []).map(c => c.text || '').join(''); const out = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    const cant = out.cantidades || {}; let n = 0; const extra = [];
+    Object.keys(cant).forEach(cod => { const v = Number(cant[cod]) || 0; if (!v) return; const i = chItems.findIndex(it => (it.codigo || '').toUpperCase() === cod.toUpperCase());
+      if (i >= 0) { document.getElementById('ch-q' + i).value = v; n++; } else extra.push(cod + ': ' + v); });
+    chItems.forEach((it, i) => { if (it.codigo && !Object.keys(cant).some(c => c.toUpperCase() === it.codigo.toUpperCase())) document.getElementById('ch-q' + i).value = ''; });
+    if (out.fecha && /^\d{4}-\d{2}-\d{2}$/.test(out.fecha)) document.getElementById('ch-fecha').value = out.fecha;
+    if (out.pedido) document.getElementById('ch-ped').value = String(out.pedido).replace(/\D/g, '') || out.pedido;
+    document.getElementById('ch-extra').textContent = (extra.length ? '⚠️ El remito trae códigos que no están cargados en Gestión: ' + extra.join(', ') + '. ' : '') + (out.dudas ? '⚠️ ' + out.dudas : '');
+    chLeido = 'leí ' + n + ' casillero' + (n === 1 ? '' : 's') + ': revisalos contra el papel';
+    info.textContent = '📷 ' + chLeido; chCalcular();
+  } catch (e) { console.warn(e); info.textContent = '📷 Foto lista, pero no pude leerla (' + (e.message || 'error') + '). Completá a mano.'; }
+  setStatus('Listo');
 }
 async function guardarBoleta(){
   const fecha = document.getElementById('ch-fecha').value || hoyMad();
-  const items = chItems.map((it, i) => { const q = Number(document.getElementById('ch-q' + i).value) || 0; return q > 0 ? { id: it.id, nombre: it.nombre, cantidad: q, unidad: it.unidad || 'u', precio: Number(it.precio)||0, subtotal: Math.round(q * (Number(it.precio)||0) * 100) / 100, destino: it.destino || 'Facturas' } : null; }).filter(Boolean);
+  if (!document.getElementById('ch-rev').checked) { toast('Revisá los números contra el remito y marcá la casilla'); return; }
+  const items = chItems.map((it, i) => { const q = Number(document.getElementById('ch-q' + i).value) || 0; if (!(q > 0)) return null; const u = q * chMult(it);
+    return { id: it.id, codigo: it.codigo || null, nombre: it.nombre, cantidad: u, docenas: chMult(it) > 1 ? q : null, unidad: 'u', precio: Number(it.precio)||0, subtotal: Math.round(chSub(it, u) * 100) / 100, destino: it.destino || 'Facturas' }; }).filter(Boolean);
   if (!items.length) { toast('Cargá al menos una cantidad'); return; }
-  if (chBoletas.some(b => b.fecha === fecha) && !confirm('Ya hay una boleta cargada para ese día. ¿Cargar otra igual?')) return;
+  const ped = document.getElementById('ch-ped').value.trim() || null;
+  if (chBoletas.some(b => b.fecha === fecha && (!ped || b.pedido === ped)) && !confirm('Ya hay una boleta cargada para ese día' + (ped ? ' con ese pedido' : '') + '. ¿Cargar otra igual?')) return;
   const total = items.reduce((a, x) => a + x.subtotal, 0);
   const btn = document.getElementById('ch-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Guardando…');
   try {
-    const usr = (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null;
-    const res = await sbUpsert('churrero_boletas', [{ fecha, items, total, cargado_por: usr }]);
+    const usr = (window.POLY_USUARIO && (window.POLY_USUARIO.nombre || window.POLY_USUARIO.usuario)) || null;
+    let foto = null; if (chFoto) { try { foto = await uploadFoto(chFoto, { producto_id: 'remito_churrero' }); } catch (e) { console.warn('foto remito', e); } }
+    const codigos = {}; items.forEach(x => { if (x.codigo) codigos[x.codigo] = x.docenas != null ? x.docenas : x.cantidad; });
+    const res = await sbUpsert('churrero_boletas', [{ fecha, items, total, cargado_por: usr, revisado_por: usr, pedido: ped, codigos, foto_url: foto }]);
     if (!res) throw new Error('No se pudo guardar');
-    const rec = await sbUpsert('salon_recepciones', items.map(x => ({ producto_id: 'churrero_' + x.id, producto_nombre: x.nombre, cantidad: x.cantidad * (x.unidad === 'docena' ? 12 : 1), sector_origen: 'churrero', destino: 'salon', estado: 'despachado' })));
+    const rec = await sbUpsert('salon_recepciones', items.map(x => ({ producto_id: 'churrero_' + x.id, producto_nombre: x.nombre, cantidad: x.cantidad, unidad: 'u', sector_origen: 'churrero', destino: 'salon', estado: 'despachado' })));
     if (!rec) toast('⚠️ La boleta se guardó pero no llegó al Salón: avisá para que lo carguen a mano');
-    await sbLog('madrugada', 'churrero', 'Boleta del churrero ' + fecha + ': ' + items.map(x => x.cantidad + ' ' + x.nombre).join(', ') + ' · ' + pesos(total), total, null, '$');
-    toast('✅ Boleta guardada y enviada al Salón');
+    await sbLog('madrugada', 'churrero', 'Remito del churrero ' + fecha + (ped ? ' (pedido ' + ped + ')' : '') + ': ' + items.map(x => (x.docenas != null ? x.docenas + ' doc. ' : x.cantidad + ' ') + x.nombre).join(', ') + ' · ' + pesos(total) + (usr ? ' · revisó ' + usr : ''), total, null, '$');
+    toast('✅ Remito guardado y enviado al Salón'); chFoto = null; chLeido = null;
     await loadChurrero();
   } catch (e) { console.error(e); toast('⚠️ ' + (e.message || 'Hubo un error, probá de nuevo')); btn.disabled = false; btn.style.opacity = '1'; }
   setStatus('Listo');
 }
+
 
 // auto-refresh de lo que está leudando mientras se mira esa solapa
 setInterval(()=>{ const p=document.getElementById('panel-hornear'); if(p && p.classList.contains('active')) loadLeudando(); }, 60000);
