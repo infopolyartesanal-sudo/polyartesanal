@@ -502,7 +502,7 @@ async function loadStocks() {
   const [sal, dep, past] = await Promise.all([
     sbSelect('salon_stock', '?order=nombre.asc'),
     sbSelect('insumos', '?select=id,nombre,unidad,stock,stock_minimo&activo=not.is.false&or=(categoria.is.null,categoria.not.in.(LUZ,GAS))&order=nombre.asc'),
-    sbSelect('pasteleria_stock', '?order=recipe_name.asc'),
+    sbSelect('pasteleria_stock', '?order=nombre.asc'),
   ]);
   if (sal) salonStock = sal;
   // Inventario único (el mismo de Gestión y del Depósito)

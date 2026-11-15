@@ -860,6 +860,45 @@ async function sbSelect(table, params='') {
   return sbFetch('GET', table, null, params);
 }
 
+// ══════════════════════════════════════════════════════
+// STOCK DE PRODUCTOS TERMINADOS — la base es la fuente de verdad.
+// Cada cambio se manda como diferencia (+/-) para no pisar lo que se cargó
+// desde Gestión → Depósitos ni lo que descuentan otros sectores.
+// Si no hay internet, los cambios quedan en cola y se reintentan.
+// ══════════════════════════════════════════════════════
+async function rpcStock(fn, body) {
+  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) });
+  if (!r.ok) { const t = await r.text(); const e = new Error(t); e.http = r.status; throw e; }
+  return r.json();
+}
+function usrStock() { try { return (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null; } catch (e) { return null; } }
+const COLA_STOCK_KEY = 'poly_cola_stock_panaderia';
+let _colaStock = []; try { _colaStock = JSON.parse(localStorage.getItem(COLA_STOCK_KEY) || '[]') || []; } catch (e) { _colaStock = []; }
+let _colaCorre = false;
+function _guardarColaStock() { try { localStorage.setItem(COLA_STOCK_KEY, JSON.stringify(_colaStock)); } catch (e) {} }
+function encolarStock(it) { _colaStock.push(it); _guardarColaStock(); correrColaStock(); }
+async function correrColaStock() {
+  if (_colaCorre) return; _colaCorre = true;
+  while (_colaStock.length) {
+    const it = _colaStock[0]; let res;
+    try { res = await rpcStock(it.fn, it.body); }
+    catch (e) {
+      if (!e.http || e.http >= 500) break;             // sin conexión: se reintenta más tarde
+      console.warn('La base rechazó un cambio de stock:', e.message); res = undefined;
+    }
+    _colaStock.shift(); _guardarColaStock();
+    if (res !== undefined && !_colaStock.some(x => x.key === it.key)) { try { aplicarRespuestaStock(it, res); } catch (e) { console.warn(e); } }
+  }
+  _colaCorre = false;
+  if (_colaStock.length) setTimeout(correrColaStock, 15000);
+}
+function _copiaStock(o) { return JSON.parse(JSON.stringify(o || {})); }
+setInterval(() => { try { syncStockDesdeBase(); } catch (e) {} }, 45000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { try { syncStockDesdeBase(); } catch (e) {} } });
+window.addEventListener('online', () => { try { correrColaStock(); } catch (e) {} });
+
 async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
   await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
 }
@@ -944,6 +983,8 @@ function init() {
   loadProdDestino();
   renderProduccion();
   renderFreezer();
+  correrColaStock();
+  syncStockDesdeBase();   // la base manda: trae lo cargado en Gestión → Depósitos
   checkStockAlerts();
   renderWelcomeSummary();
   showLimpiezaIndicator();
@@ -2186,18 +2227,34 @@ const PROD_TO_FREEZER = {
 
 let freezerPanState = {}; // { productId: { total, subtipos: { subtipId: cantidad } } }
 
+let _freezerBase = {};   // último valor conocido de la base (para calcular diferencias)
 function loadFreezerPan() {
   try { freezerPanState = JSON.parse(localStorage.getItem(FREEZER_PAN_KEY) || '{}'); } catch(e){ freezerPanState = {}; }
+  _freezerBase = _copiaStock(freezerPanState);
 }
+function nombreFreezer(id) { return (FREEZER_CATALOG.find(c => c.id === id) || {}).nombre || id; }
 
 function saveFreezerPan() {
   localStorage.setItem(FREEZER_PAN_KEY, JSON.stringify(freezerPanState));
-  // Sync to Supabase
-  const rows = Object.entries(freezerPanState).map(([id, data]) => ({
-    id, nombre: FREEZER_CATALOG.find(c=>c.id===id)?.nombre || id,
-    total: data.total || 0, subtipos: data.subtipos || {}
-  }));
-  if (rows.length > 0) sbUpsert('freezer_panaderia', rows).catch(()=>{});
+  // Manda a la base solo lo que cambió (+/-)
+  const ids = new Set([...Object.keys(freezerPanState), ...Object.keys(_freezerBase)]);
+  ids.forEach(id => {
+    const a = _freezerBase[id] || { total: 0, subtipos: {} }, b = freezerPanState[id] || { total: 0, subtipos: {} };
+    const sa = a.subtipos || {}, sb = b.subtipos || {}, ds = {};
+    new Set([...Object.keys(sa), ...Object.keys(sb)]).forEach(k => {
+      const d = Math.round(((+sb[k] || 0) - (+sa[k] || 0)) * 1000) / 1000; if (d) ds[k] = d;
+    });
+    const dt = Object.keys(ds).length ? 0 : Math.round(((+b.total || 0) - (+a.total || 0)) * 1000) / 1000;
+    if (Object.keys(ds).length || dt) encolarStock({ key: 'f:' + id, fn: 'stock_freezer_pan_ajustar',
+      body: { p_id: id, p_nombre: nombreFreezer(id), p_delta_total: dt, p_delta_sub: ds, p_motivo: 'panaderia', p_usuario: usrStock() } });
+  });
+  _freezerBase = _copiaStock(freezerPanState);
+}
+function fijarFreezerPan(productId, subtipId, valor) {
+  localStorage.setItem(FREEZER_PAN_KEY, JSON.stringify(freezerPanState));
+  _freezerBase[productId] = _copiaStock(freezerPanState[productId]);
+  encolarStock({ key: 'f:' + productId, fn: 'stock_terminado_fijar',
+    body: { p_tabla: 'freezer_panaderia', p_id: productId, p_nombre: nombreFreezer(productId), p_campo: subtipId ? 'sub:' + subtipId : 'total', p_valor: valor, p_usuario: usrStock() } });
 }
 
 function getFreezerProduct(id) {
@@ -2258,18 +2315,46 @@ const DESTINO_KEY = 'panaderia_prod_destino_v1';
 let camaraPanState = {};   // { productId: cantidad }
 let prodDestino = {};      // { productId: 'freezer' | 'camara' }
 
+let _camaraBase = {};
 function loadCamaraPan() {
   try { camaraPanState = JSON.parse(localStorage.getItem(CAMARA_KEY) || '{}'); } catch(e){ camaraPanState = {}; }
+  _camaraBase = _copiaStock(camaraPanState);
 }
+function nombreCamara(id) { return (typeof PROD_CATALOG !== 'undefined' ? (PROD_CATALOG.find(c=>c.id===id)||{}).nombre : null) || id; }
 function saveCamaraPan() {
   localStorage.setItem(CAMARA_KEY, JSON.stringify(camaraPanState));
-  const rows = Object.entries(camaraPanState).map(([id, cantidad]) => ({
-    id,
-    nombre: (typeof PROD_CATALOG !== 'undefined' ? (PROD_CATALOG.find(c=>c.id===id)||{}).nombre : null) || id,
-    cantidad: cantidad || 0,
-    updated_at: new Date().toISOString(),
-  }));
-  if (rows.length > 0) sbUpsert('camara_panaderia', rows).catch(()=>{});
+  new Set([...Object.keys(camaraPanState), ...Object.keys(_camaraBase)]).forEach(id => {
+    const d = Math.round(((+camaraPanState[id] || 0) - (+_camaraBase[id] || 0)) * 1000) / 1000;
+    if (d) encolarStock({ key: 'c:' + id, fn: 'stock_camara_ajustar', body: { p_id: id, p_nombre: nombreCamara(id), p_delta: d, p_motivo: 'panaderia', p_usuario: usrStock() } });
+  });
+  _camaraBase = _copiaStock(camaraPanState);
+}
+function aplicarRespuestaStock(it, res) {
+  if (it.key.startsWith('f:') && res && typeof res === 'object') {
+    const id = it.key.slice(2);
+    freezerPanState[id] = { total: +res.total || 0, subtipos: res.subtipos || {} };
+    _freezerBase[id] = _copiaStock(freezerPanState[id]);
+    localStorage.setItem(FREEZER_PAN_KEY, JSON.stringify(freezerPanState));
+    renderFreezer();
+  } else if (it.key.startsWith('c:')) {
+    const id = it.key.slice(2), v = (res && typeof res === 'object') ? +res.cantidad : +res;
+    if (!isNaN(v)) { camaraPanState[id] = v; _camaraBase[id] = v; localStorage.setItem(CAMARA_KEY, JSON.stringify(camaraPanState)); renderProduccion(); }
+  }
+}
+async function syncStockDesdeBase() {
+  if (_colaStock.length) { correrColaStock(); return; }
+  const [f, c] = await Promise.all([
+    sbSelect('freezer_panaderia', '?select=id,total,subtipos'),
+    sbSelect('camara_panaderia', '?select=id,cantidad')]);
+  if (!f || !c || _colaStock.length) return;
+  const nf = {}; f.forEach(r => { nf[r.id] = { total: +r.total || 0, subtipos: r.subtipos || {} }; });
+  const nc = {}; c.forEach(r => { nc[r.id] = +r.cantidad || 0; });
+  const cambioF = JSON.stringify(nf) !== JSON.stringify(freezerPanState), cambioC = JSON.stringify(nc) !== JSON.stringify(camaraPanState);
+  freezerPanState = nf; _freezerBase = _copiaStock(nf); camaraPanState = nc; _camaraBase = _copiaStock(nc);
+  localStorage.setItem(FREEZER_PAN_KEY, JSON.stringify(freezerPanState));
+  localStorage.setItem(CAMARA_KEY, JSON.stringify(camaraPanState));
+  if (cambioF) renderFreezer();
+  if (cambioC) renderProduccion();
 }
 function getCamaraTotal(id) { return Math.round((camaraPanState[id] || 0) * 10) / 10; }
 
@@ -2318,7 +2403,7 @@ function setFreezerExacto(productId, subtipId) {
   } else {
     fp.total = num;
   }
-  saveFreezerPan();
+  fijarFreezerPan(productId, subtipId, num);
   renderFreezer();
   if (typeof addToLog === 'function') addToLog('✏️ Ajuste manual freezer: ' + nombre + ' → ' + num, 'freezer');
 }
@@ -2332,7 +2417,9 @@ function setCamaraExacto(productId) {
   const num = parseFloat(String(v).replace(',', '.').replace(/[^0-9.]/g, ''));
   if (isNaN(num) || num < 0) { alert('Poné un número válido (0 o más).'); return; }
   camaraPanState[productId] = Math.round(num * 10) / 10;
-  saveCamaraPan();
+  localStorage.setItem(CAMARA_KEY, JSON.stringify(camaraPanState));
+  _camaraBase[productId] = camaraPanState[productId];
+  encolarStock({ key: 'c:' + productId, fn: 'stock_terminado_fijar', body: { p_tabla: 'camara_panaderia', p_id: productId, p_nombre: nombre, p_campo: 'cantidad', p_valor: camaraPanState[productId], p_usuario: usrStock() } });
   renderProduccion();
   if (typeof addToLog === 'function') addToLog('✏️ Ajuste manual cámara: ' + nombre + ' → ' + num, 'camara');
 }
@@ -2786,13 +2873,9 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
     }
     if (!freezerId) return;
 
-    const rows = await sbSelect('freezer_panaderia', '?id=eq.' + freezerId);
-    if (!rows || rows.length === 0) return;
-
-    const actual = rows[0].total || 0;
-    const nuevo = Math.max(0, actual - cantidad);
-
-    await sbUpsert('freezer_panaderia', [{ id: freezerId, total: nuevo }]);
+    // Descuento atómico en la base (no pisa lo que cargó Gestión ni otros sectores)
+    const res = await rpcStock('stock_freezer_pan_ajustar', { p_id: freezerId, p_nombre: null, p_delta_total: -cantidad, p_delta_sub: {}, p_motivo: 'leudado', p_usuario: usrStock() });
+    const nuevo = res ? (+res.total || 0) : 0;
 
     // Alerta si quedó bajo
     if (nuevo <= 0) {

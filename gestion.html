@@ -148,6 +148,7 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#facturas">🧾 Facturas</a>
   <a href="#produccion">🏭 Producción</a>
   <a href="#inventario">📦 Inventario</a>
+  <a href="#depositos">🧊 Depósitos</a>
   <a href="#invsalon">🏪 Inventario Salón</a>
   <a href="#venta">🏷️ Productos de venta</a>
   <a href="#compras">🛒 Compras</a>
@@ -391,8 +392,111 @@ Reglas:
 - "items" solo si el reporte detalla productos; si no, dejalo vacío.
 - Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
+// ================= DEPÓSITOS (productos terminados) =================
+// Freezer y cámara de Panadería; local/heladera/freezer/estante de Cocina y Pastelería.
+// Cambiar estas cantidades NO toca insumos (harina, etc.): es solo el conteo de lo ya elaborado.
+const DEP={kidx:[],cargado:false,tab:'freezer',f:'',edit:{},freezer:[],camara:[],cocina:[],pasteleria:[],mov:[]};
+const DEP_UBIC=[['local','🏪 Local'],['heladera','❄️ Heladera'],['freezer','🧊 Freezer'],['estante','📦 Estante']];
+const DEP_TABS=[['freezer','🧊 Panadería · Freezer'],['camara','❄️ Panadería · Cámara'],['cocina','🍳 Cocina'],['pasteleria','🍰 Pastelería'],['historial','🕓 Historial']];
+const DEP_TABLA={freezer:'freezer_panaderia',camara:'camara_panaderia',cocina:'cocina_stock',pasteleria:'pasteleria_stock'};
+const depNum=v=>Math.round((+v||0)*1000)/1000;
+async function cargarDEP(){
+  const [f,c,co,pa]=await Promise.all([sbGet('freezer_panaderia','order=nombre.asc'),sbGet('camara_panaderia','order=nombre.asc'),sbGet('cocina_stock','order=nombre.asc'),sbGet('pasteleria_stock','order=nombre.asc')]);
+  DEP.freezer=f||[];DEP.camara=c||[];DEP.cocina=co||[];DEP.pasteleria=pa||[];
+  try{DEP.mov=await sbGet('movimientos_terminados','order=fecha.desc&limit=150')||[]}catch(e){DEP.mov=[]}
+  DEP.cargado=true;
+}
+// Cada campo editable tiene una clave: tabla|id|campo
+const depKey=(tabla,id,campo)=>tabla+'|'+id+'|'+campo;
+function depActual(tabla,r,campo){
+  if(tabla==='camara_panaderia')return depNum(r.cantidad);
+  if(tabla==='freezer_panaderia'){if(campo.startsWith('sub:'))return depNum((r.subtipos||{})[campo.slice(4)]);return depNum(r.total)}
+  return depNum(r[campo]);
+}
+function depCambios(){
+  const out=[];
+  for(const k in DEP.edit){const [tabla,id,campo]=k.split('|');const lista=DEP[Object.keys(DEP_TABLA).find(t=>DEP_TABLA[t]===tabla)]||[];
+    const r=lista.find(x=>x.id===id);if(!r)continue;const antes=depActual(tabla,r,campo),despues=depNum(DEP.edit[k]);
+    if(antes!==despues)out.push({k,tabla,id,campo,nombre:r.nombre||id,antes,despues});}
+  return out;
+}
+function depInput(tabla,r,campo){
+  const k=depKey(tabla,r.id,campo),act=depActual(tabla,r,campo),e=DEP.edit[k],camb=e!==undefined&&depNum(e)!==act;
+  return `<input class="mini" type="number" min="0" step="any" inputmode="decimal" value="${e!==undefined?e:act}" onchange="depSet(${DEP.kidx.push(k)-1},this.value)" style="width:${DEP_TABLA[DEP.tab]&&(DEP.tab==='cocina'||DEP.tab==='pasteleria')?62:78}px;${camb?'border-color:var(--oro);background:#fff7e0;font-weight:700':''}">`;
+}
+function depSet(i,v){const k=DEP.kidx[i];if(k===undefined)return;DEP.edit[k]=v===''?0:Math.max(0,+String(v).replace(',','.')||0);const y=window.scrollY;vDepositos();window.scrollTo(0,y)}
+async function vDepositos(){
+  if(!DEP.cargado){$('#app').innerHTML='<div class="cargando">Cargando depósitos…</div>';try{await cargarDEP()}catch(e){$('#app').innerHTML='<div class="card">No se pudo cargar: '+esc(e.message)+'</div>';return}}
+  const t=DEP.tab,q=norm(DEP.f),cambios=depCambios();DEP.kidx=[];
+  const filtra=r=>!q||norm(r.nombre||r.id).includes(q);
+  const total=r=>DEP_UBIC.reduce((a,[u])=>a+depNum(r[u]),0);
+  const conStock={freezer:DEP.freezer.filter(r=>+r.total>0).length,camara:DEP.camara.filter(r=>+r.cantidad>0).length,cocina:DEP.cocina.filter(r=>total(r)>0).length,pasteleria:DEP.pasteleria.filter(r=>total(r)>0).length};
+  let cuerpo='';
+  if(t==='freezer'){
+    const tb='freezer_panaderia';
+    cuerpo=`<div class="card scroll"><table><tr><th>Producto</th><th>Unidad</th><th class="num">Hay ahora</th><th class="num">Contado</th></tr>
+    ${DEP.freezer.filter(r=>filtra(r)||(r.def||[]).some(s=>norm(s.nombre).includes(q))).map(r=>{
+      const def=Array.isArray(r.def)?r.def:[];
+      if(def.length){
+        const subTot=def.reduce((a,s)=>{const k=depKey(tb,r.id,'sub:'+s.id);return a+(DEP.edit[k]!==undefined?depNum(DEP.edit[k]):depNum((r.subtipos||{})[s.id]))},0);
+        return `<tr style="background:#f3f6f3"><td colspan="2"><b>${esc(r.nombre)}</b> <span class="muted" style="font-size:12px">(se carga por variedad)</span></td><td class="num"><b>${fnum(r.total,1)}</b></td><td class="num"><b>${fnum(subTot,1)}</b></td></tr>`+
+          def.map(s=>`<tr><td style="padding-left:22px">${esc(s.nombre)}</td><td>${esc(r.unidad||'u')}</td><td class="num">${fnum((r.subtipos||{})[s.id],1)}</td><td class="num">${depInput(tb,r,'sub:'+s.id)}</td></tr>`).join('');
+      }
+      return `<tr><td><b>${esc(r.nombre)}</b></td><td>${esc(r.unidad||'')}</td><td class="num">${fnum(r.total,2)}</td><td class="num">${depInput(tb,r,'total')}</td></tr>`;
+    }).join('')||'<tr><td colspan="4" class="muted">No hay productos con ese filtro.</td></tr>'}</table></div>`;
+  }else if(t==='camara'){
+    const tb='camara_panaderia';
+    cuerpo=`<div class="card scroll"><table><tr><th>Producto</th><th>Unidad</th><th class="num">Hay ahora</th><th class="num">Contado</th></tr>
+    ${DEP.camara.filter(filtra).map(r=>`<tr><td><b>${esc(r.nombre)}</b></td><td>${esc(r.unidad||'')}</td><td class="num">${fnum(r.cantidad,2)}</td><td class="num">${depInput(tb,r,'cantidad')}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No hay productos con ese filtro.</td></tr>'}</table></div>`;
+  }else if(t==='cocina'||t==='pasteleria'){
+    const tb=DEP_TABLA[t];
+    cuerpo=`<div class="card scroll"><table><tr><th>Producto</th>${DEP_UBIC.map(([,n])=>`<th class="num">${n}</th>`).join('')}<th class="num">Total</th></tr>
+    ${DEP[t].filter(filtra).map(r=>{const tot=DEP_UBIC.reduce((a,[u])=>{const k=depKey(tb,r.id,u);return a+(DEP.edit[k]!==undefined?depNum(DEP.edit[k]):depNum(r[u]))},0);
+      return `<tr><td><b>${esc(r.nombre||r.id)}</b></td>${DEP_UBIC.map(([u])=>`<td class="num">${depInput(tb,r,u)}</td>`).join('')}<td class="num"><b>${fnum(tot,2)}</b></td></tr>`}).join('')||'<tr><td colspan="6" class="muted">No hay productos con ese filtro.</td></tr>'}</table></div>
+    <p class="muted" style="font-size:12px">En cada casilla poné lo que contaste en ese lugar. Las que no toques quedan como están.</p>`;
+  }else{
+    const nomT={freezer_panaderia:'Panadería · Freezer',camara_panaderia:'Panadería · Cámara',cocina_stock:'Cocina',pasteleria_stock:'Pastelería'};
+    const nomM={inventario:'Conteo (Gestión)',panaderia:'Panadería',cocina:'Cocina',pasteleria:'Pastelería',leudado:'Sacado a leudar',sector:'Sector'};
+    const campo=m=>{if(!m.campo||m.campo==='cantidad'||m.campo==='total')return '';if(m.campo.startsWith('{')){try{const o=JSON.parse(m.campo);const r=DEP.freezer.find(x=>x.id===m.producto_id);return Object.entries(o).map(([k,v])=>{const s=((r&&r.def)||[]).find(x=>x.id===k);return (s?s.nombre:k)+' '+(v>0?'+':'')+fnum(v,1)}).join(', ')}catch(e){return ''}}const u=DEP_UBIC.find(([x])=>x===m.campo);return u?u[1]:m.campo};
+    cuerpo=`<div class="card scroll"><table><tr><th>Fecha</th><th>Depósito</th><th>Producto</th><th class="num">Cambio</th><th class="num">Quedó</th><th>Origen</th></tr>
+    ${DEP.mov.filter(m=>!q||norm(m.nombre||m.producto_id).includes(q)).map(m=>`<tr><td>${new Date(m.fecha).toLocaleString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td><td>${esc(nomT[m.tabla]||m.tabla)}</td><td><b>${esc(m.nombre||m.producto_id)}</b>${campo(m)?`<div class="muted" style="font-size:11px">${esc(campo(m))}</div>`:''}</td><td class="num" style="color:${(+m.delta||0)<0?'#b3261e':'#1b6e3a'}">${m.delta==null?'':((+m.delta>0?'+':'')+fnum(m.delta,2))}</td><td class="num">${fnum(m.valor,2)}</td><td>${esc(nomM[m.motivo]||m.motivo||'')}${m.usuario?` · ${esc(m.usuario)}`:''}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Todavía no hay movimientos.</td></tr>'}</table></div>`;
+  }
+  $('#app').innerHTML=`<h2>🧊 Depósitos</h2>
+  <p class="muted">Lo que ya está <b>elaborado</b> y guardado en el freezer y la cámara de Panadería, y en el local, heladera, freezer y estante de Cocina y Pastelería. Es lo mismo que ve cada sector. Cambiar estas cantidades <b>no toca la harina ni ningún insumo</b>: es solo el conteo de mercadería hecha. Los sectores ven los cambios en menos de un minuto.</p>
+  <div class="tabs2">${DEP_TABS.map(([k,n])=>`<button class="${t===k?'on':''}" onclick="DEP.tab='${k}';vDepositos()">${n}${conStock[k]!==undefined?` <span class="muted" style="font-size:11px">(${conStock[k]})</span>`:''}</button>`).join('')}</div>
+  ${cambios.length?`<div class="alerta" style="position:sticky;top:96px;z-index:5;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${cambios.length} cambio${cambios.length>1?'s':''} sin guardar</b><button class="btn" onclick="depGuardar()">💾 Guardar cambios</button><button class="btn sec" onclick="DEP.edit={};vDepositos()">Descartar</button></div>`:''}
+  <div class="acciones" style="margin:10px 0">
+    <input placeholder="Buscar producto…" value="${esc(DEP.f)}" id="depBus" style="max-width:260px" oninput="DEP.f=this.value;clearTimeout(window._tdep);window._tdep=setTimeout(()=>{vDepositos();const i=$('#depBus');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)">
+    ${t!=='historial'?`<button class="btn sec" onclick="depCeroTab()">0️⃣ Poner esta pestaña en 0</button>`:''}
+    <button class="btn sec" onclick="if(depCambios().length&&!confirm('Tenés cambios sin guardar. ¿Recargar igual?'))return;DEP.cargado=false;DEP.edit={};vDepositos()">🔄 Recargar</button>
+  </div>
+  ${cuerpo}
+  ${cambios.length?`<div class="acciones" style="margin-top:10px"><button class="btn" onclick="depGuardar()">💾 Guardar ${cambios.length} cambio${cambios.length>1?'s':''}</button></div>`:''}`;
+}
+function depCeroTab(){
+  const t=DEP.tab,tb=DEP_TABLA[t];if(!tb)return;
+  DEP[t].forEach(r=>{
+    if(t==='freezer'){const def=Array.isArray(r.def)?r.def:[];if(def.length)def.forEach(s=>DEP.edit[depKey(tb,r.id,'sub:'+s.id)]=0);else DEP.edit[depKey(tb,r.id,'total')]=0}
+    else if(t==='camara')DEP.edit[depKey(tb,r.id,'cantidad')]=0;
+    else DEP_UBIC.forEach(([u])=>DEP.edit[depKey(tb,r.id,u)]=0);
+  });
+  vDepositos();toast('Quedó todo en 0 en pantalla. Revisá y tocá 💾 Guardar para confirmar.',5000);
+}
+async function depGuardar(){
+  const cambios=depCambios();if(!cambios.length)return toast('No hay cambios para guardar');
+  const usr=(window.POLY_USUARIO||{}).usuario||null;let ok=0;const errores=[];
+  for(const c of cambios){
+    try{await polyRPC('stock_terminado_fijar',{p_tabla:c.tabla,p_id:c.id,p_nombre:c.nombre,p_campo:c.campo,p_valor:c.despues,p_usuario:usr});ok++;delete DEP.edit[c.k]}
+    catch(e){errores.push(c.nombre+': '+e.message)}
+    if(cambios.length>8&&ok%8===0)toast('Guardando… '+ok+' de '+cambios.length);
+  }
+  DEP.cargado=false;await vDepositos();
+  if(errores.length)toast('⚠️ No se guardaron '+errores.length+': '+errores[0].slice(0,120),8000);
+  else toast('Depósitos actualizados ✅ ('+ok+' cambio'+(ok>1?'s':'')+')',4000);
+}
+
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));

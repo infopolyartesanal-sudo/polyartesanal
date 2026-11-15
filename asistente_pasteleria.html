@@ -605,6 +605,74 @@ async function sbSelect(table, params='') {
   return sbFetch('GET', table, null, params);
 }
 
+// ══════════════════════════════════════════════════════
+// STOCK DE PRODUCTOS TERMINADOS — la base es la fuente de verdad.
+// Cada cambio se manda como diferencia (+/-) para no pisar lo que se cargó
+// desde Gestión → Depósitos ni lo que descuentan otros sectores.
+// Si no hay internet, los cambios quedan en cola y se reintentan.
+// ══════════════════════════════════════════════════════
+async function rpcStock(fn, body) {
+  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+    headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body) });
+  if (!r.ok) { const t = await r.text(); const e = new Error(t); e.http = r.status; throw e; }
+  return r.json();
+}
+function usrStock() { try { return (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null; } catch (e) { return null; } }
+const COLA_STOCK_KEY = 'poly_cola_stock_pasteleria';
+let _colaStock = []; try { _colaStock = JSON.parse(localStorage.getItem(COLA_STOCK_KEY) || '[]') || []; } catch (e) { _colaStock = []; }
+let _colaCorre = false;
+function _guardarColaStock() { try { localStorage.setItem(COLA_STOCK_KEY, JSON.stringify(_colaStock)); } catch (e) {} }
+function encolarStock(it) { _colaStock.push(it); _guardarColaStock(); correrColaStock(); }
+async function correrColaStock() {
+  if (_colaCorre) return; _colaCorre = true;
+  while (_colaStock.length) {
+    const it = _colaStock[0]; let res;
+    try { res = await rpcStock(it.fn, it.body); }
+    catch (e) {
+      if (!e.http || e.http >= 500) break;             // sin conexión: se reintenta más tarde
+      console.warn('La base rechazó un cambio de stock:', e.message); res = undefined;
+    }
+    _colaStock.shift(); _guardarColaStock();
+    if (res !== undefined && !_colaStock.some(x => x.key === it.key)) { try { aplicarRespuestaStock(it, res); } catch (e) { console.warn(e); } }
+  }
+  _colaCorre = false;
+  if (_colaStock.length) setTimeout(correrColaStock, 15000);
+}
+function _copiaStock(o) { return JSON.parse(JSON.stringify(o || {})); }
+setInterval(() => { try { syncStockDesdeBase(); } catch (e) {} }, 45000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { try { syncStockDesdeBase(); } catch (e) {} } });
+window.addEventListener('online', () => { try { correrColaStock(); } catch (e) {} });
+
+let _stockBase = {};
+function encolarDifSector() {
+  new Set([...Object.keys(stockState), ...Object.keys(_stockBase)]).forEach(n => {
+    const a = _stockBase[n] || {}, b = stockState[n] || {}, d = {};
+    ['local', 'heladera', 'freezer', 'estante'].forEach(k => { const x = Math.round(((+b[k] || 0) - (+a[k] || 0)) * 1000) / 1000; if (x) d[k] = x; });
+    if (Object.keys(d).length) encolarStock({ key: 's:' + n, fn: 'stock_sector_ajustar', body: { p_sector: 'pasteleria', p_nombre: n, p_delta: d, p_motivo: 'pasteleria', p_usuario: usrStock() } });
+  });
+  _stockBase = _copiaStock(stockState);
+}
+function aplicarRespuestaStock(it, res) {
+  if (!it.key.startsWith('s:') || !res || typeof res !== 'object') return;
+  const n = it.key.slice(2);
+  stockState[n] = { local: +res.local || 0, heladera: +res.heladera || 0, freezer: +res.freezer || 0, estante: +res.estante || 0 };
+  _stockBase[n] = _copiaStock(stockState[n]);
+  try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch (e) {}
+  try { renderStock(); } catch (e) {}
+}
+async function syncStockDesdeBase() {
+  if (_colaStock.length) { correrColaStock(); return; }
+  const rows = await sbSelect('pasteleria_stock', '?select=id,nombre,local,heladera,freezer,estante');
+  if (!rows || _colaStock.length) return;
+  const nuevo = {};
+  rows.forEach(r => { nuevo[r.nombre || r.id] = { local: +r.local || 0, heladera: +r.heladera || 0, freezer: +r.freezer || 0, estante: +r.estante || 0 }; });
+  const cambio = JSON.stringify(nuevo) !== JSON.stringify(stockState);
+  stockState = nuevo; _stockBase = _copiaStock(nuevo);
+  try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch (e) {}
+  if (cambio) { try { renderStock(); } catch (e) {} try { checkStockAlerts(); } catch (e) {} }
+}
+
 async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, unidad=null) {
   await sbUpsert('registro_diario', { sector, tipo, descripcion, cantidad, producto_id: productoId, unidad });
 }
@@ -697,18 +765,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── Cargar stock desde Supabase ──────────────────
-  try {
-    const rows = await sbSelect('pasteleria_stock', '');
-    if (rows && rows.length > 0) {
-      stockState = {};
-      rows.forEach(r => { stockState[r.recipe_name] = { local: r.local||0, heladera: r.heladera||0, freezer: r.freezer||0, estante: r.estante||0 }; });
-      localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
-    } else {
-      try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(_){ stockState = {}; }
-    }
-  } catch(e) {
-    try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(_){ stockState = {}; }
-  }
+  try { stockState = JSON.parse(localStorage.getItem(STOCK_KEY) || '{}'); } catch(_){ stockState = {}; }
+  _stockBase = _copiaStock(stockState);
+  correrColaStock();
+  try { await syncStockDesdeBase(); } catch(e) { console.warn('stock desde la base:', e); }  // la base manda
 
   // ── Log del día desde localStorage (es efímero, no necesita Supabase) ──
   try { const l = localStorage.getItem(LOG_KEY + today()); if (l) log = JSON.parse(l); } catch(e){}
@@ -768,18 +828,8 @@ async function deleteRecipeFromSupabase(id) {
 async function saveStock() {
   // 1) Caché local
   try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){}
-  // 2) Supabase — upsert por recipe_name
-  try {
-    const rows = Object.entries(stockState).map(([recipe_name, s]) => ({
-      recipe_name,
-      sector: SB_SECTOR,
-      local: s.local||0,
-      heladera: s.heladera||0,
-      freezer: s.freezer||0,
-      estante: s.estante||0,
-    }));
-    if (rows.length > 0) await sbUpsert('pasteleria_stock', rows);
-  } catch(e){ console.warn('saveStock Supabase error:', e); }
+  // 2) Base: solo las diferencias (+/-), así no pisa lo cargado en Gestión → Depósitos
+  try { encolarDifSector(); } catch(e){ console.warn('saveStock base:', e); }
 }
 
 function saveLog() { try { localStorage.setItem(LOG_KEY + today(), JSON.stringify(log)); } catch(e){} }
@@ -1618,15 +1668,7 @@ let pedidosPasteleria = [];
 // ── PUBLICAR STOCK A SUPABASE (se llama desde confirmDeposito) ──
 async function publishStockToCentral() {
   try {
-    const rows = Object.entries(stockState).map(([recipe_name, s]) => ({
-      recipe_name,
-      sector: 'pasteleria',
-      local: s.local || 0,
-      heladera: s.heladera || 0,
-      freezer: s.freezer || 0,
-      estante: s.estante || 0,
-    }));
-    if (rows.length > 0) await sbUpsert('pasteleria_stock', rows);
+    // El stock ya se guarda solo en la base (diferencias). Acá solo se publican las alertas.
     await checkAndPublishAlerts();
   } catch(e) { console.warn('publishStock error:', e); }
 }
@@ -2008,13 +2050,9 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
     }
     if (!freezerId) return;
 
-    const rows = await sbSelect('freezer_panaderia', '?id=eq.' + freezerId);
-    if (!rows || rows.length === 0) return;
-
-    const actual = rows[0].total || 0;
-    const nuevo = Math.max(0, actual - cantidad);
-
-    await sbUpsert('freezer_panaderia', [{ id: freezerId, total: nuevo }]);
+    // Descuento atómico en la base (no pisa lo que cargó Gestión ni otros sectores)
+    const res = await rpcStock('stock_freezer_pan_ajustar', { p_id: freezerId, p_nombre: null, p_delta_total: -cantidad, p_delta_sub: {}, p_motivo: 'leudado', p_usuario: usrStock() });
+    const nuevo = res ? (+res.total || 0) : 0;
 
     // Alerta si quedó bajo
     if (nuevo <= 0) {
