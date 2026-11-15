@@ -153,6 +153,7 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#estadisticas">📊 Estadísticas</a>
+  <a href="#mayoristas">🤝 Mayoristas</a>
   <a href="#rrhh">👥 RRHH</a>
   <a href="#usuarios">🔐 Usuarios</a>
 </nav>
@@ -391,7 +392,7 @@ Reglas:
 - Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -429,6 +430,9 @@ function difCaja(c){return c.total_articulos==null?null:Math.round((+c.total||0)
 function turnoTxt(c){return (c.turno||'')}
 function insights(){
   const out=[];const H=hoy();
+  if(CRM.cargado){crmCalcular();const tar=CRM.clis.filter(c=>c._estado==='tarea'),con=CRM.clis.filter(c=>c._estado==='contactar');
+    if(tar.length)out.push({r:1,t:`${tar.length} tarea${tar.length>1?'s':''} con mayoristas para hoy`,d:tar.slice(0,4).map(c=>c.nombre+': '+(c.proxima_accion||'')).join(' · '),a:'#mayoristas',al:'Ver'});
+    if(con.length)out.push({t:`${con.length} mayorista${con.length>1?'s':''} para contactar`,d:'Dejaron de comprar a su ritmo: '+con.slice(0,5).map(c=>c.nombre+' ('+c._dias+' d)').join(', '),a:'#mayoristas',al:'Ver'})}
   D.cierres.filter(c=>diaLocal(c.fecha)>=sumaDias(H,-14)&&difCaja(c)!=null&&Math.abs(difCaja(c))>tolCaja()).forEach(c=>{const d=difCaja(c);
     out.push({r:1,t:`Diferencia de caja · ${fechaCorta(diaLocal(c.fecha))} ${turnoTxt(c)}`,d:`Cobrado ${$$(c.total)} vs vendido en Ayres ${$$(c.total_articulos)}: ${d<0?'falta':'sobra'} ${$$(Math.abs(d))}${c.responsable?' · '+c.responsable:''}.`,a:'#finanzas',al:'Ver'})});
   criticos().forEach(i=>out.push({r:1,t:'Stock crítico · '+i.nombre,d:`Quedan ${fnum(i.stock)} ${i.unidad} (mínimo ${fnum(i.stock_minimo)}).`,a:'#compras',al:'Pedir'}));
@@ -443,6 +447,7 @@ function insights(){
   return out;
 }
 function vInicio(){
+  if(!CRM.cargado&&!CRM._cargando){CRM._cargando=true;cargarCRM().then(()=>{if(!location.hash||location.hash.startsWith('#inicio'))vInicio()})}
   const H=hoy(),vh=ventasDia(H),vay=ventasDia(sumaDias(H,-1)),vsp=ventasDia(sumaDias(H,-7));
   const [m1,m2]=mesRango(0),[p1,p2]=mesRango(-1);const vm=ventasRango(m1,m2);
   const diaMes=+H.slice(8,10);const vmAnt=ventasRango(p1,sumaDias(p1,diaMes-1));
@@ -1023,6 +1028,138 @@ function estCSV(mes){const [m1,m2]=mesRango(mes);const cs=D.cierres.filter(c=>{c
   const f=[['Puesto','Código','Producto','Cantidad','Unidad','Plata','% de la venta']].concat(L.map((x,i)=>[i+1,x.codigo||'',x.nombre,String(Math.round(x.cant*100)/100).replace('.',','),x.unidad,Math.round(x.plata),String(Math.round(x.plata/tot*1000)/10).replace('.',',')]));
   const csv='﻿'+f.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='ranking_productos_'+m1.slice(0,7)+'.csv';a.click()}
+
+// ================= CRM MAYORISTAS =================
+// Clientes mayoristas (crm_clientes), notas/contactos (crm_interacciones) y sus pedidos (pedidos_clientes.cliente_id).
+let CRM={cargado:false,clis:[],inter:[],peds:[],f:'',est:'',orden:'estado'};
+const CRM_EST={tarea:['📌 Tarea para hoy','#6A1B9A'],contactar:['📞 Para contactar','#C62828'],inactivo:['💤 Inactivo','#757575'],nuevo:['🆕 Sin pedidos','#1565C0'],aldia:['✅ Al día','#2E7D32'],baja:['⛔ Dado de baja','#9E9E9E']};
+const CRM_TIPOS={whatsapp:'💬 WhatsApp',llamada:'📞 Llamada',visita:'🚶 Visita',nota:'📝 Nota',reclamo:'⚠️ Reclamo',pedido:'🧾 Pedido'};
+async function cargarCRM(){
+  try{
+    const [c,i,p]=await Promise.all([sbGet('crm_clientes','order=nombre'),sbGet('crm_interacciones','order=fecha.desc&limit=3000'),
+      sb('pedidos_clientes?select=id,numero,cliente,fecha_retiro,total,sena,estado,lista_precios,cliente_id,created_at,pedidos_clientes_items(producto,cantidad,precio,unidad)&cliente_id=not.is.null&order=created_at.desc&limit=3000')]);
+    CRM.clis=c||[];CRM.inter=i||[];CRM.peds=p||[];
+  }catch(e){console.warn('CRM',e)}
+  CRM.cargado=true;crmCalcular();
+}
+const diasEntre=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/864e5);
+function crmCalcular(){
+  const H=hoy(),[m1]=mesRango(0);
+  CRM.clis.forEach(c=>{
+    const ps=CRM.peds.filter(p=>p.cliente_id===c.id&&!/cancel/i.test(p.estado||''));
+    const fechas=ps.map(p=>(p.fecha_retiro||diaLocal(p.created_at))).sort();
+    c._peds=ps;c._n=ps.length;c._total=ps.reduce((a,p)=>a+(+p.total||0),0);
+    c._mes=ps.filter(p=>(p.fecha_retiro||diaLocal(p.created_at))>=m1).reduce((a,p)=>a+(+p.total||0),0);
+    c._ultima=fechas.length?fechas[fechas.length-1]:null;
+    // frecuencia: la que cargaste, o el promedio entre pedidos (con 3 o más), o 7 días
+    let fc=null;if(fechas.length>=3){const g=[];for(let k=1;k<fechas.length;k++)g.push(diasEntre(fechas[k-1],fechas[k]));fc=Math.max(1,Math.round(g.reduce((a,b)=>a+b,0)/g.length))}
+    c._freqCalc=fc;c._freq=+c.frecuencia_dias||fc||7;
+    c._dias=c._ultima?Math.max(0,diasEntre(c._ultima,H)):null;
+    const ult=CRM.inter.find(i=>i.cliente_id===c.id);c._ultContacto=ult?diaLocal(ult.fecha):null;
+    c._estado=c.activo===false?'baja':(c.proxima_fecha&&c.proxima_fecha<=H)?'tarea':!c._ultima?'nuevo':c._dias>Math.max(30,c._freq*3)?'inactivo':c._dias>Math.max(c._freq*1.5,c._freq+2)?'contactar':'aldia';
+  });
+}
+function crmChip(e){const [t,col]=CRM_EST[e]||[e,'#999'];return `<span class="chip" style="background:${col}1a;color:${col};border:1px solid ${col}55">${t}</span>`}
+function crmWa(tel){let d=String(tel||'').replace(/\D/g,'');if(!d)return null;if(d.startsWith('54')){if(!d.startsWith('549'))d='549'+d.slice(2)}else{d=d.replace(/^0/,'');if(d.length===10)d='549'+d;else if(d.length===12&&d.slice(2,4)==='15')d='549'+d.slice(0,2)+d.slice(4);else d='549'+d}return d}
+async function vMayoristas(){
+  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando mayoristas…</div>';await cargarCRM()}
+  crmCalcular();
+  const q=norm(CRM.f);const orden={tarea:0,contactar:1,inactivo:2,nuevo:3,aldia:4,baja:5};
+  let L=CRM.clis.filter(c=>(CRM.est?c._estado===CRM.est:c._estado!=='baja')&&(!q||norm([c.nombre,c.razon_social,c.contacto,c.zona,c.telefono,c.rubro].join(' ')).includes(q)));
+  L.sort(CRM.orden==='compras'?(a,b)=>b._mes-a._mes||b._total-a._total:CRM.orden==='nombre'?(a,b)=>norm(a.nombre).localeCompare(norm(b.nombre)):(a,b)=>(orden[a._estado]-orden[b._estado])||((b._dias??-1)-(a._dias??-1)));
+  const act=CRM.clis.filter(c=>c._estado!=='baja');const cnt=k=>act.filter(c=>c._estado===k).length;
+  const mes=act.reduce((a,c)=>a+c._mes,0),compraron=act.filter(c=>c._mes>0).length;
+  $('#app').innerHTML=`<h2>🤝 Mayoristas</h2>
+  <p class="muted">Tus clientes mayoristas: datos, pedidos y seguimiento. Los pedidos se vinculan solos cuando en el Salón se elige el cliente con la lista Mayorista.</p>
+  <div class="grid g4" style="margin-bottom:12px">
+    <div class="card kpi"><div class="lbl">Clientes activos</div><div class="val">${act.length}</div><div class="sub muted">${cnt('nuevo')?cnt('nuevo')+' todavía sin pedidos':''}</div></div>
+    <div class="card kpi"><div class="lbl">Compraron este mes</div><div class="val">${compraron}</div><div class="sub muted">${$$(mes)} en pedidos</div></div>
+    <div class="card kpi"><div class="lbl">Para contactar</div><div class="val" style="color:${cnt('contactar')+cnt('tarea')?'var(--rojo)':'var(--verde)'}">${cnt('contactar')+cnt('tarea')}</div><div class="sub muted">${cnt('tarea')?cnt('tarea')+' con tarea para hoy':'dejaron de comprar a su ritmo'}</div></div>
+    <div class="card kpi"><div class="lbl">Inactivos</div><div class="val">${cnt('inactivo')}</div><div class="sub muted">más de un mes sin comprar</div></div>
+  </div>
+  <div class="acciones" style="margin-bottom:8px"><button class="btn" onclick="crmEditar()">➕ Nuevo mayorista</button>
+    <button class="btn sec" onclick="$('#crmArch').click()">📥 Importar desde Excel</button><input type="file" id="crmArch" accept=".xlsx,.xls,.csv" style="display:none" onchange="crmImportar(this.files[0]);this.value=''">
+    <button class="btn sec" onclick="CRM.cargado=false;vMayoristas()">🔄 Recargar</button></div>
+  <div class="acciones" style="margin-bottom:8px"><input id="crmBus" placeholder="Buscar por nombre, zona, contacto…" value="${esc(CRM.f)}" style="max-width:280px" oninput="CRM.f=this.value;clearTimeout(window._tcrm);window._tcrm=setTimeout(()=>{vMayoristas();const i=$('#crmBus');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
+    <select style="max-width:200px" onchange="CRM.est=this.value;vMayoristas()"><option value="">Todos (activos)</option>${Object.entries(CRM_EST).map(([k,[t]])=>`<option value="${k}" ${CRM.est===k?'selected':''}>${t}</option>`).join('')}</select>
+    <select style="max-width:200px" onchange="CRM.orden=this.value;vMayoristas()">${[['estado','Ordenar: prioridad'],['compras','Ordenar: más compras'],['nombre','Ordenar: nombre']].map(([k,t])=>`<option value="${k}" ${CRM.orden===k?'selected':''}>${t}</option>`).join('')}</select></div>
+  <div class="card scroll"><table><tr><th>Cliente</th><th>Estado</th><th>Última compra</th><th class="num">Este mes</th><th class="num">Histórico</th><th>Próxima acción</th><th></th></tr>
+  ${L.map(c=>{const wa=crmWa(c.telefono);return `<tr><td><a href="javascript:crmFicha(${c.id})" style="font-weight:700;color:var(--verde)">${esc(c.nombre)}</a><div class="muted" style="font-size:12px">${esc([c.rubro,c.zona,c.contacto].filter(Boolean).join(' · '))}</div></td>
+    <td>${crmChip(c._estado)}</td>
+    <td>${c._ultima?`${fechaCorta(c._ultima)} <span class="muted">· hace ${c._dias} d</span><div class="muted" style="font-size:11px">suele comprar cada ${c._freq} d</div>`:'<span class="muted">—</span>'}</td>
+    <td class="num">${c._mes?$$(c._mes):'—'}</td><td class="num">${c._total?$$(c._total):'—'}<div class="muted" style="font-size:11px">${c._n} pedido${c._n===1?'':'s'}</div></td>
+    <td>${c.proxima_accion?`<b style="font-size:13px">${esc(c.proxima_accion)}</b><div class="muted" style="font-size:11px">${c.proxima_fecha?fechaCorta(c.proxima_fecha):''}</div>`:'<span class="muted">—</span>'}</td>
+    <td style="white-space:nowrap">${wa?`<button class="btn peq sec" onclick="crmMensaje(${c.id})">💬</button> `:''}<button class="btn peq" onclick="crmFicha(${c.id})">Ver</button></td></tr>`}).join('')||`<tr><td colspan="7" class="muted">${CRM.clis.length?'No hay clientes con ese filtro.':'Todavía no cargaste mayoristas. Empezá con "➕ Nuevo mayorista" o importalos desde un Excel.'}</td></tr>`}
+  </table></div>`;
+}
+const CRM_CAMPOS=[['nombre','Nombre del negocio *'],['razon_social','Razón social'],['cuit','CUIT'],['rubro','Rubro (cafetería, almacén, colegio…)'],['contacto','Persona de contacto'],['telefono','Teléfono / WhatsApp'],['email','Email'],['direccion','Dirección'],['zona','Zona / barrio'],['dias_entrega','Días y horario de entrega'],['condicion_pago','Condición de pago (contado, 7 días…)'],['frecuencia_dias','Suele comprar cada (días)']];
+function crmEditar(id){const c=id?CRM.clis.find(x=>x.id===id):{activo:true};
+  modal(`<h2>${id?'✏️ Editar':'➕ Nuevo'} mayorista</h2><div class="fila" style="flex-wrap:wrap">${CRM_CAMPOS.map(([k,l])=>`<div style="min-width:230px;flex:1"><label>${l}</label><input id="crm_${k}" ${k==='frecuencia_dias'?'type="number" placeholder="se calcula sola si lo dejás vacío"':''}${k==='telefono'?' inputmode="tel" placeholder="ej: 11 2345 6789"':''} value="${esc(c[k]??'')}"></div>`).join('')}</div>
+  <label>Notas</label><textarea id="crm_notas" rows="3">${esc(c.notas||'')}</textarea>
+  ${id?`<label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crm_baja" style="width:auto" ${c.activo===false?'checked':''}> Dado de baja (no aparece en la lista)</label>`:''}
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="crmG">💾 Guardar</button><button class="btn sec" onclick="${id?`crmFicha(${id})`:'cerrarModal()'}">Cancelar</button></div>`);
+  $('#crmG').onclick=async()=>{const row={};CRM_CAMPOS.forEach(([k])=>{const v=$('#crm_'+k).value.trim();row[k]=k==='frecuencia_dias'?(v===''?null:Math.max(1,Math.round(+v))):(v||null)});
+    row.notas=$('#crm_notas').value.trim()||null;if(!row.nombre)return toast('Falta el nombre');
+    if(!id&&CRM.clis.some(x=>norm(x.nombre)===norm(row.nombre)))return toast('Ya existe un mayorista con ese nombre');
+    row.updated_at=new Date().toISOString();if(id)row.activo=!$('#crm_baja').checked;
+    if(id){const [x]=await sbUpd('crm_clientes','id=eq.'+id,row);Object.assign(c,x||row)}else{const [x]=await sbIns('crm_clientes',[row]);CRM.clis.push(x);id=x.id}
+    toast('Guardado ✅');crmCalcular();crmFicha(id);if(location.hash.startsWith('#mayoristas'))vMayoristas()};
+}
+function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcular();
+  const prods={};c._peds.forEach(p=>(p.pedidos_clientes_items||[]).forEach(i=>{const k=norm(i.producto);const x=prods[k]||(prods[k]={n:i.producto,q:0,v:0,u:i.unidad||'u'});x.q+=+i.cantidad||0;x.v+=(+i.cantidad||0)*(+i.precio||0)}));
+  const top=Object.values(prods).sort((a,b)=>b.v-a.v||b.q-a.q).slice(0,8);
+  const ints=CRM.inter.filter(i=>i.cliente_id===id);const wa=crmWa(c.telefono);
+  const dato=(l,v)=>v?`<div><span class="muted" style="font-size:12px">${l}</span><div><b>${esc(v)}</b></div></div>`:'';
+  modal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap"><div><h2 style="margin-bottom:4px">${esc(c.nombre)}</h2>${crmChip(c._estado)}</div>
+    <div class="acciones">${wa?`<button class="btn" onclick="crmMensaje(${id})">💬 WhatsApp</button><a class="btn sec" href="tel:+${wa}" style="text-decoration:none">📞 Llamar</a>`:''}<button class="btn sec" onclick="crmEditar(${id})">✏️ Editar</button></div></div>
+  <div class="grid g4" style="margin:12px 0">
+    <div class="card kpi"><div class="lbl">Última compra</div><div class="val" style="font-size:20px">${c._ultima?fechaCorta(c._ultima):'—'}</div><div class="sub muted">${c._dias!=null?'hace '+c._dias+' días':''}</div></div>
+    <div class="card kpi"><div class="lbl">Ritmo de compra</div><div class="val" style="font-size:20px">cada ${c._freq} d</div><div class="sub muted">${c.frecuencia_dias?'lo cargaste vos':c._freqCalc?'calculado de sus pedidos':'estimado'}</div></div>
+    <div class="card kpi"><div class="lbl">Este mes</div><div class="val" style="font-size:20px">${$$(c._mes)}</div></div>
+    <div class="card kpi"><div class="lbl">Histórico</div><div class="val" style="font-size:20px">${$$(c._total)}</div><div class="sub muted">${c._n} pedidos${c._n?' · promedio '+$$(c._total/c._n):''}</div></div>
+  </div>
+  <div class="grid g4" style="margin-bottom:10px">${dato('Contacto',c.contacto)}${dato('Teléfono',c.telefono)}${dato('Email',c.email)}${dato('Rubro',c.rubro)}${dato('Dirección',[c.direccion,c.zona].filter(Boolean).join(' · '))}${dato('Entrega',c.dias_entrega)}${dato('Pago',c.condicion_pago)}${dato('CUIT',[c.cuit,c.razon_social].filter(Boolean).join(' · '))}</div>
+  ${c.notas?`<div class="alerta" style="white-space:pre-wrap">${esc(c.notas)}</div>`:''}
+  <div class="card" style="margin-bottom:10px"><h3>📌 Próxima acción</h3><div class="fila"><input id="crmPA" placeholder="ej: Ofrecer budines nuevos, pasar lista de precios…" value="${esc(c.proxima_accion||'')}"><input id="crmPF" type="date" value="${c.proxima_fecha||''}" style="max-width:170px"><button class="btn" onclick="crmProxima(${id})">Guardar</button>${c.proxima_accion?`<button class="btn sec" onclick="crmProxima(${id},true)">✔ Hecha</button>`:''}</div></div>
+  <div class="grid g2">
+    <div class="card"><h3>🗒️ Contactos y notas</h3>
+      <div class="fila"><select id="crmIT" style="max-width:140px">${Object.entries(CRM_TIPOS).filter(([k])=>k!=='pedido').map(([k,t])=>`<option value="${k}" ${k==='nota'?'selected':''}>${t}</option>`).join('')}</select><input id="crmID" placeholder="Qué hablaron, qué pidió, quedó en…"><button class="btn" onclick="crmNota(${id})">Agregar</button></div>
+      <div style="max-height:260px;overflow:auto;margin-top:8px">${ints.map(i=>`<div style="padding:6px 0;border-bottom:1px solid #eee"><span class="muted" style="font-size:12px">${new Date(i.fecha).toLocaleString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${CRM_TIPOS[i.tipo]||esc(i.tipo)}${i.usuario?' · '+esc(i.usuario):''}</span><div>${esc(i.detalle||'')}</div></div>`).join('')||'<p class="muted">Todavía no hay contactos registrados.</p>'}</div></div>
+    <div class="card"><h3>🥐 Lo que más compra</h3>${top.length?`<table>${top.map(x=>`<tr><td>${esc(x.n)}</td><td class="num">${fnum(x.q,x.u==='kg'?2:0)} ${esc(x.u)}</td><td class="num">${x.v?$$(x.v):''}</td></tr>`).join('')}</table>`:'<p class="muted">Sin pedidos vinculados todavía.</p>'}</div>
+  </div>
+  <div class="card" style="margin-top:10px"><h3>🧾 Pedidos</h3>${c._peds.length?`<div class="scroll" style="max-height:280px"><table><tr><th>#</th><th>Fecha</th><th>Productos</th><th class="num">Total</th><th>Estado</th></tr>
+    ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando en el Salón se elige este cliente al cargar un pedido con lista Mayorista.</p>'}</div>`);
+}
+async function crmNota(id,tipo,detalle){tipo=tipo||$('#crmIT').value;detalle=detalle??$('#crmID').value.trim();if(!detalle)return toast('Escribí qué hablaron');
+  const [x]=await sbIns('crm_interacciones',[{cliente_id:id,tipo,detalle,usuario:(window.POLY_USUARIO||{}).usuario||null}]);CRM.inter.unshift(x);toast('Agregado ✅');crmFicha(id)}
+async function crmProxima(id,hecha){const c=CRM.clis.find(x=>x.id===id);
+  if(hecha){const t=c.proxima_accion;const [x]=await sbUpd('crm_clientes','id=eq.'+id,{proxima_accion:null,proxima_fecha:null,updated_at:new Date().toISOString()});Object.assign(c,x);await crmNota(id,'nota','✔ Hecho: '+t);return}
+  const patch={proxima_accion:$('#crmPA').value.trim()||null,proxima_fecha:$('#crmPF').value||null,updated_at:new Date().toISOString()};
+  const [x]=await sbUpd('crm_clientes','id=eq.'+id,patch);Object.assign(c,x||patch);toast('Guardado ✅');crmFicha(id)}
+function crmMensaje(id){const c=CRM.clis.find(x=>x.id===id);const wa=crmWa(c.telefono);if(!wa)return toast('Este cliente no tiene teléfono cargado');
+  const nom=(c.contacto||'').split(' ')[0]||'';
+  const P={hola:`Hola${nom?' '+nom:''}! ¿Cómo andás? Te escribo de Poly Artesanal 🥐 ¿Te preparo el pedido de esta semana?`,
+    extrano:`Hola${nom?' '+nom:''}! Te escribo de Poly Artesanal. Hace unos días que no te vemos, ¿cómo vienen las ventas? Si querés te paso lo que tenemos esta semana 😊`,
+    lista:`Hola${nom?' '+nom:''}! Te comparto la lista de precios mayorista actualizada de Poly Artesanal. Cualquier consulta, avisame.`};
+  modal(`<h2>💬 WhatsApp a ${esc(c.nombre)}</h2><div class="tabs2">${[['hola','Tomar pedido'],['extrano','Hace mucho que no compra'],['lista','Lista de precios']].map(([k,t])=>`<button onclick="$('#crmMsg').value=${esc(JSON.stringify(P[k]))}">${t}</button>`).join('')}</div>
+  <textarea id="crmMsg" rows="5">${esc(c._estado==='contactar'||c._estado==='inactivo'?P.extrano:P.hola)}</textarea>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crmReg" checked style="width:auto"> Registrarlo en sus contactos</label>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="crmEnv">Abrir WhatsApp</button><button class="btn sec" onclick="crmFicha(${id})">Volver</button></div>`);
+  $('#crmEnv').onclick=async()=>{const t=$('#crmMsg').value;window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank');if($('#crmReg').checked)await crmNota(id,'whatsapp',t.length>140?t.slice(0,140)+'…':t);else crmFicha(id)}}
+async function crmImportar(file){if(!file)return;if(!CRM.cargado)await cargarCRM();
+  let hojas;try{hojas=await planillaAHojas(file)}catch(e){return toast('⚠️ '+e.message,6000)}
+  const MAP={nombre:/^(nombre|cliente|negocio|comercio|razon social|denominacion|nombre fantasia)$/,telefono:/^(telefono|tel|celular|cel|whatsapp|movil)$/,direccion:/^(direccion|domicilio)$/,cuit:/^(cuit|cuil|dni|cuit cuil)$/,email:/^(email|mail|e mail|correo)$/,zona:/^(zona|barrio|localidad)$/,contacto:/^(contacto|encargado|responsable)$/,rubro:/^(rubro|tipo|categoria)$/,condicion_pago:/^(condicion|condicion de pago|pago)$/};
+  const nuevos=[];let dup=0;
+  for(const h of hojas){const hi=h.filas.findIndex(f=>f.some(x=>MAP.nombre.test(norm(String(x)).trim())));if(hi<0)continue;
+    const H=h.filas[hi].map(x=>norm(String(x)).trim());const col={};Object.entries(MAP).forEach(([k,re])=>{const i=H.findIndex(x=>re.test(x));if(i>=0)col[k]=i});
+    for(const f of h.filas.slice(hi+1)){const nombre=String(f[col.nombre]??'').trim();if(!nombre)continue;
+      if(CRM.clis.some(x=>norm(x.nombre)===norm(nombre))||nuevos.some(x=>norm(x.nombre)===norm(nombre))){dup++;continue}
+      const r={nombre};Object.keys(col).forEach(k=>{if(k!=='nombre'){const v=String(f[col[k]]??'').trim();if(v)r[k]=v}});nuevos.push(r)}}
+  if(!nuevos.length)return toast(dup?'Todos los clientes del archivo ya estaban cargados':'⚠️ No encontré una columna con el nombre del cliente (Nombre, Cliente o Negocio)',7000);
+  modal(`<h2>📥 Importar mayoristas</h2><p>${nuevos.length} clientes nuevos${dup?` · ${dup} ya estaban cargados (no se tocan)`:''}.</p>
+  <div class="scroll" style="max-height:50vh"><table><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Contacto</th></tr>${nuevos.map(r=>`<tr><td>${esc(r.nombre)}</td><td>${esc(r.telefono||'')}</td><td>${esc(r.direccion||'')}</td><td>${esc(r.contacto||'')}</td></tr>`).join('')}</table></div>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="crmImpOk">Importar ${nuevos.length}</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  $('#crmImpOk').onclick=async()=>{const rows=await sbIns('crm_clientes',nuevos);CRM.clis.push(...(rows||[]));cerrarModal();toast(nuevos.length+' mayoristas importados ✅');vMayoristas()}}
 
 // ================= PRODUCTOS DE VENTA =================
 // Lista de productos que se venden en el local (mismos códigos que la caja) y

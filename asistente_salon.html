@@ -2146,7 +2146,21 @@ function renderTareas(){
 
   // ── Listas de precios (Gestión → Productos de venta) ──
   var LISTAS = { minorista: ['Minorista', 'precio_lpu', '#6A1B9A'], mayorista: ['Mayorista', 'precio_may', '#1565C0'], pedidosya: ['PedidosYa', 'precio_pey', '#E53935'] };
-  var lista = 'minorista', pvMap = {};
+  var lista = 'minorista', pvMap = {}, mayoristas = [], cliId = null;
+  function cargarMayoristas() { return api('crm_clientes?select=id,nombre,telefono,direccion,contacto&activo=eq.true&order=nombre').then(function (r) { mayoristas = r || []; var dl = document.getElementById('pcs-may'); if (dl) dl.innerHTML = mayoristas.map(function (m) { return '<option value="' + esc(m.nombre) + '">'; }).join(''); }).catch(function () {}); }
+  // Pedido mayorista: el cliente se elige de la lista de mayoristas (Gestión → Mayoristas) y el pedido queda en su ficha
+  window.pcsCliente = function () {
+    var el = document.getElementById('pcs-cli'), h = document.getElementById('pcs-clih'); if (!el) return;
+    cliId = null;
+    if (lista !== 'mayorista') { if (h) h.innerHTML = ''; return; }
+    var m = mayoristas.find(function (x) { return norm(x.nombre).trim() === norm(el.value).trim(); });
+    if (m) {
+      cliId = m.id;
+      var t = document.getElementById('pcs-tel'); if (t && !t.value && m.telefono) t.value = m.telefono;
+      var d = document.getElementById('pcs-dir'); if (d && !d.value && m.direccion) d.value = m.direccion;
+      if (h) h.innerHTML = '<span style="color:#2E7D32;font-weight:700">✓ Mayorista de la lista' + (m.contacto ? ' · ' + esc(m.contacto) : '') + '</span>';
+    } else if (h) h.innerHTML = el.value.trim() ? '<span style="color:#E65100">No está en la lista de mayoristas: el pedido se guarda igual, pero no queda en ninguna ficha.</span>' : '<span style="color:#888">Empezá a escribir y elegí el mayorista de la lista.</span>';
+  };
   function baseNom(x) { return norm(x).replace(/\(.*?\)/g, ' ').replace(/\bmayorista\b/g, ' ').replace(/\s+/g, ' ').trim(); }
   function cargarProductos() {
     var a = api('recetas?select=id,nombre,sector,precio_venta,tipo,unidad_venta&tipo=neq.BASE&order=nombre').then(function (r) { productos = r || []; }).catch(function () {});
@@ -2172,6 +2186,8 @@ function renderTareas(){
   }
   window.pcsLista = function (l) {
     lista = l;
+    var ci = document.getElementById('pcs-cli');
+    if (ci) { if (l === 'mayorista') { ci.setAttribute('list', 'pcs-may'); ci.placeholder = 'Elegí el mayorista…'; if (!mayoristas.length) cargarMayoristas(); } else { ci.removeAttribute('list'); ci.placeholder = ''; } pcsCliente(); }
     var w = document.getElementById('pcs-listas');
     if (w) Array.prototype.forEach.call(w.children, function (b) { var on = b.getAttribute('data-l') === l, c = LISTAS[b.getAttribute('data-l')][2]; b.style.background = on ? c : '#fff'; b.style.color = on ? '#fff' : c; });
     carrito.forEach(function (c) { if (c.manual) return; var p = productos.find(function (x) { return x.id === c.receta_id; }); if (p) { var pr = precioDe(p); c.precio = pr[0]; c.origen = pr[1]; } });
@@ -2214,7 +2230,7 @@ function renderTareas(){
     var box = document.getElementById('pcs-box');
     box.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">🧾 Nuevo pedido de cliente</b><button onclick="pcsCerrar()" style="border:0;background:none;font-size:24px;cursor:pointer">×</button></div>' +
       '<div class="pcs-lb" style="margin-top:10px">Lista de precios *</div><div id="pcs-listas" style="display:flex;gap:6px;margin:4px 0 10px">' + Object.keys(LISTAS).map(function (k) { return '<button type="button" data-l="' + k + '" onclick="pcsLista(\'' + k + '\')" style="flex:1;padding:10px 4px;border-radius:8px;border:2px solid ' + LISTAS[k][2] + ';font:700 14px system-ui,sans-serif;cursor:pointer">' + LISTAS[k][0] + '</button>'; }).join('') + '</div>' +
-      '<div class="pcs-lb">Nombre del cliente *</div><input id="pcs-cli" class="pcs-in" autocomplete="off">' +
+      '<div class="pcs-lb">Nombre del cliente *</div><input id="pcs-cli" class="pcs-in" autocomplete="off" oninput="pcsCliente()" onchange="pcsCliente()"><datalist id="pcs-may"></datalist><div id="pcs-clih" style="font-size:12px;margin:-4px 0 8px"></div>' +
       '<div class="pcs-lb">Teléfono</div><input id="pcs-tel" class="pcs-in" type="tel" inputmode="tel" placeholder="11 2345-6789">' +
       '<div style="display:flex;gap:8px"><div style="flex:1"><div class="pcs-lb">Día que retira / se entrega *</div><input id="pcs-fec" class="pcs-in" type="date" value="' + ymd(1) + '" min="' + ymd(0) + '"></div><div style="width:110px"><div class="pcs-lb">Hora</div><input id="pcs-hora" class="pcs-in" type="time"></div></div>' +
       '<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:2px 0 8px"><input type="checkbox" id="pcs-env" onchange="document.getElementById(\'pcs-dirw\').style.display=this.checked?\'block\':\'none\'"> 🛵 Hay que entregarlo (envío)</label>' +
@@ -2227,7 +2243,9 @@ function renderTareas(){
       '<div id="pcs-tot" style="background:#faf5ff;border-radius:10px;padding:10px;margin:6px 0 12px;font-size:14px"></div>' +
       '<button id="pcs-ok" class="pcs-b" style="width:100%;padding:14px;font-size:15px" onclick="pcsGuardar()">✅ Guardar y avisar a los sectores</button>';
     document.getElementById('pcs-ov').style.display = 'flex';
+    cliId = null;
     pcsLista('minorista');
+    cargarMayoristas();
     if (!productos.length) cargarProductos();
   };
   window.pcsCerrar = function () { document.getElementById('pcs-ov').style.display = 'none'; };
@@ -2279,7 +2297,7 @@ function renderTareas(){
     var b = document.getElementById('pcs-ok'); b.disabled = true; b.textContent = 'Guardando…';
     var u = window.POLY_USUARIO || {};
     var body = { cliente: v('pcs-cli'), telefono: v('pcs-tel'), fecha_retiro: v('pcs-fec'), hora_retiro: v('pcs-hora'), envio: document.getElementById('pcs-env').checked, direccion: v('pcs-dir'),
-      sena: v('pcs-sena') || 0, sena_medio: v('pcs-medio'), notas: v('pcs-not'), creado_por: u.usuario || 'salon', lista_precios: lista, items: items };
+      sena: v('pcs-sena') || 0, sena_medio: v('pcs-medio'), notas: v('pcs-not'), creado_por: u.usuario || 'salon', lista_precios: lista, cliente_id: lista === 'mayorista' ? cliId : null, items: items };
     api('rpc/crear_pedido_cliente', { method: 'POST', body: JSON.stringify({ p: body }) }).then(function (r) {
       pcsCerrar(); aviso('✅ Pedido #' + r.numero + ' guardado. Se avisó a ' + Array.from(new Set(items.map(function (i) { return (SECT[i.sector] || i.sector); }))).join(', '));
       if (typeof addToLog === 'function') addToLog('🧾 Pedido de cliente #' + r.numero + ' — ' + body.cliente);
