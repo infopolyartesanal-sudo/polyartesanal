@@ -323,7 +323,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
 
   var guardado = null; try { guardado = JSON.parse(leer('poly_usuario') || 'null'); } catch (e) {}
   window.polyRPC('verificar_sesion', { p_token: token }).then(function (u) {
-    if (!u || !u.ok) { borrar(); irA('index.html'); return; }
+    if (!u || !u.ok) { if (u && u.motivo === 'fuera_local') { irA('index.html#fuera'); return; } borrar(); irA('index.html'); return; }
     try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
     if (!permitido(u)) { irA(destino(u)); return; }
     window.POLY_USUARIO = u;
@@ -407,14 +407,15 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
       m.querySelector('p').textContent='Hola '+(u.nombre||u.usuario)+' — elegí a dónde entrar';}
     else location.replace(ARCH[u.modulo]||'index.html');
   }
-  function login(){document.getElementById('login').style.display='block';document.getElementById('menu').style.display='none';setTimeout(function(){document.getElementById('lu').focus()},50);}
+  var FUERA='📍 El sistema solo funciona desde la panadería. Conectate al WiFi del local y probá de nuevo.';
+  function login(msj){document.getElementById('login').style.display='block';document.getElementById('menu').style.display='none';if(msj)document.getElementById('le').textContent=msj;setTimeout(function(){document.getElementById('lu').focus()},50);}
   var t=null;try{t=localStorage.getItem('poly_sesion')}catch(e){}
-  if(t){polyRPC('verificar_sesion',{p_token:t}).then(function(u){if(u&&u.ok){try{localStorage.setItem('poly_usuario',JSON.stringify(u))}catch(e){}entrar(u)}else{try{localStorage.removeItem('poly_sesion')}catch(e){}login()}},
+  if(t){polyRPC('verificar_sesion',{p_token:t}).then(function(u){if(u&&u.ok){try{localStorage.setItem('poly_usuario',JSON.stringify(u))}catch(e){}entrar(u)}else if(u&&u.motivo==='fuera_local'){login(FUERA)}else{try{localStorage.removeItem('poly_sesion')}catch(e){}login()}},
     function(){var g=null;try{g=JSON.parse(localStorage.getItem('poly_usuario')||'null')}catch(e){}if(g)entrar(g);else login();});}
-  else login();
+  else login(location.hash==='#fuera'?FUERA:null);
   document.getElementById('fLogin').onsubmit=function(ev){ev.preventDefault();var b=document.getElementById('lb'),e=document.getElementById('le');b.disabled=true;b.textContent='Entrando…';e.textContent='';
     polyRPC('login',{p_usuario:document.getElementById('lu').value,p_clave:document.getElementById('lc').value}).then(function(r){
-      if(!r.ok){e.textContent='Usuario o clave incorrectos';b.disabled=false;b.textContent='Entrar';return}
+      if(!r.ok){e.textContent=r.motivo==='fuera_local'?FUERA:'Usuario o clave incorrectos';b.disabled=false;b.textContent='Entrar';return}
       try{localStorage.setItem('poly_sesion',r.token);localStorage.setItem('poly_usuario',JSON.stringify(r))}catch(x){}
       entrar(r);},function(){e.textContent='No hay conexión. Probá de nuevo.';b.disabled=false;b.textContent='Entrar';});};
 })();

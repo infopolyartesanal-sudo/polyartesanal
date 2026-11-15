@@ -85,7 +85,7 @@
 
   var guardado = null; try { guardado = JSON.parse(leer('poly_usuario') || 'null'); } catch (e) {}
   window.polyRPC('verificar_sesion', { p_token: token }).then(function (u) {
-    if (!u || !u.ok) { borrar(); irA('index.html'); return; }
+    if (!u || !u.ok) { if (u && u.motivo === 'fuera_local') { irA('index.html#fuera'); return; } borrar(); irA('index.html'); return; }
     try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
     if (!permitido(u)) { irA(destino(u)); return; }
     window.POLY_USUARIO = u;

@@ -85,7 +85,7 @@
 
   var guardado = null; try { guardado = JSON.parse(leer('poly_usuario') || 'null'); } catch (e) {}
   window.polyRPC('verificar_sesion', { p_token: token }).then(function (u) {
-    if (!u || !u.ok) { borrar(); irA('index.html'); return; }
+    if (!u || !u.ok) { if (u && u.motivo === 'fuera_local') { irA('index.html#fuera'); return; } borrar(); irA('index.html'); return; }
     try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
     if (!permitido(u)) { irA(destino(u)); return; }
     window.POLY_USUARIO = u;
@@ -2495,7 +2495,7 @@ async function vUsuarios(){
   window._us=us;
   $('#app').innerHTML=`<h2>🔐 Usuarios y claves</h2>
   <p class="muted">Vos (administradora) entrás a todo. Cada sector entra solo a su módulo con su usuario y clave. Si cambiás una clave o das de baja a alguien, se le cierra la sesión en todos los dispositivos.</p>
-  <div class="acciones"><button class="btn" onclick="editarUsuario()">➕ Nuevo usuario</button></div>
+  <div class="acciones"><button class="btn" onclick="editarUsuario()">➕ Nuevo usuario</button><button class="btn sec" onclick="vRedLocal()">📍 Usar solo desde la panadería</button></div>
   <div class="card scroll"><table><tr><th>Usuario</th><th>Nombre</th><th>Acceso</th><th>Último ingreso</th><th>Estado</th><th></th></tr>
   ${us.map((u,k)=>`<tr><td><b>${esc(u.usuario)}</b></td><td>${esc(u.nombre||'')}</td><td>${u.rol==='admin'?'<span class="chip ok">Todo (admin)</span>':esc(MODULOS[u.modulo]||u.modulo)}</td><td class="muted">${u.ultimo_ingreso?new Date(u.ultimo_ingreso).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'nunca'}</td><td><span class="chip ${u.activo?'ok':'neu'}">${u.activo?'activo':'de baja'}</span></td><td><button class="btn sec peq" onclick="editarUsuario(${k})">Editar / cambiar clave</button></td></tr>`).join('')}</table></div>`;
 }
@@ -2512,6 +2512,32 @@ function editarUsuario(k){const u=k!=null?window._us[k]:{usuario:'',nombre:'',ro
     try{await polyRPC('admin_guardar_usuario',{p_token:polyToken(),p_usuario:$('#uU').value,p_nombre:$('#uN').value.trim(),p_rol:rol,p_modulo:rol==='admin'?null:$('#uM').value,p_activo:$('#uA').checked,p_clave:clave});
       cerrarModal();toast(clave?'Guardado ✅ Anotá la clave: '+clave:'Guardado ✅',clave?9000:2500);vUsuarios()}catch(e){toast('⚠️ '+e.message,6000)}};
 }
+
+async function vRedLocal(){
+  $('#app').innerHTML='<div class="cargando">Cargando…</div>';
+  let e;try{e=await polyRPC('seguridad_red_estado',{p_token:polyToken()})}catch(x){$('#app').innerHTML='<div class="card">'+esc(x.message)+'</div>';return}
+  const cfg=e.config||{activo:false,ips:[]},ips=cfg.ips||[],mia=e.mi_ip,esta=ips.some(i=>i.ip===mia);
+  const fh=f=>new Date(f).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const intentos=(e.intentos||[]).filter(i=>i.ip&&!ips.some(x=>x.ip===i.ip));
+  $('#app').innerHTML=`<h2>📍 Usar el sistema solo desde la panadería</h2>
+  <p class="muted">Con esto activado, los usuarios del equipo solo pueden usar el sistema conectados al WiFi del local. Vos (administradora) podés entrar desde cualquier lado.</p>
+  <div class="card" style="margin-bottom:12px;border:2px solid ${cfg.activo?'var(--verde2)':'var(--borde)'}"><h3>${cfg.activo?'🟢 Activado':'⚪ Desactivado'}</h3>
+    ${cfg.activo?'<p>El equipo solo puede usar el sistema desde las conexiones de abajo.</p><button class="btn sec" onclick="redGuardar(false)">Desactivar</button>'
+      :`<p>${ips.length?'Listo para activar.':'Primero agregá la conexión de la panadería <b>estando en el local, conectada al WiFi</b>.'}</p>${ips.length?'<button class="btn" onclick="redGuardar(true)">Activar</button>':''}`}</div>
+  <div class="card" style="margin-bottom:12px"><h3>Conexiones del local</h3>
+    ${ips.length?`<table>${ips.map(i=>`<tr><td><b>${esc(i.nombre||'Panadería')}</b><div class="muted" style="font-size:12px">${esc(i.ip)} · desde ${fh(i.desde)}</div></td><td>${i.ip===mia?'<span class="chip ok">estás acá</span>':''}</td><td><button class="btn sec peq" onclick="redQuitar(${esc(JSON.stringify(i.ip))})">Quitar</button></td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hay ninguna.</p>'}
+    <p style="margin-top:10px">Tu conexión ahora: <b>${esc(mia||'desconocida')}</b> ${esta?'<span class="chip ok">es del local</span>':''}</p>
+    ${!esta&&mia?`<button class="btn" onclick="redAgregar('actual')">📍 Estoy en la panadería: agregar esta conexión</button><p class="muted" style="font-size:12px">Tocalo solo si estás conectada al WiFi del local, no desde tu casa.</p>`:''}</div>
+  <div class="card" style="margin-bottom:12px"><h3>🚫 Intentos bloqueados (últimos 7 días)</h3>
+    <p class="muted" style="font-size:13px">Si la compañía de internet cambia la conexión del local, el equipo queda bloqueado y aparece acá. Si el intento es de alguien que estaba en la panadería, tocá "Es del local" y queda habilitado, aunque estés en otro lado.</p>
+    ${intentos.length?`<table>${intentos.map(i=>`<tr><td><b>${esc(i.usuario)}</b><div class="muted" style="font-size:12px">${fh(i.fecha)} · ${esc(i.ip)}</div></td><td><button class="btn peq" onclick="redAgregar(${esc(JSON.stringify(i.ip))})">✅ Es del local</button></td></tr>`).join('')}</table>`:'<p class="muted">Ninguno.</p>'}</div>
+  <div class="card"><h3>Últimas conexiones del equipo</h3><table>${(e.conexiones||[]).map(c=>`<tr><td>${esc(c.usuario)}</td><td class="muted">${esc(c.modulo)}</td><td class="muted" style="font-size:12px">${esc(c.ip||'')}</td><td class="muted" style="font-size:12px">${fh(c.ultimo)}</td></tr>`).join('')}</table></div>
+  <button class="btn sec" style="margin-top:12px" onclick="vUsuarios()">← Volver a usuarios</button>`;
+  window._red=cfg;
+}
+async function redGuardar(activo,extra){try{await polyRPC('seguridad_red_guardar',Object.assign({p_token:polyToken(),p_activo:activo},extra||{}));toast(activo?'Activado 🟢':'Guardado ✅');vRedLocal()}catch(x){toast('⚠️ '+x.message,6000)}}
+function redAgregar(ip){if(ip!=='actual'&&!confirm('¿Habilitar la conexión '+ip+' como del local?'))return;redGuardar(!!(window._red&&window._red.activo),{p_agregar_ip:ip,p_nombre:'Panadería'})}
+function redQuitar(ip){if(!confirm('¿Quitar esta conexión? El equipo no va a poder usar el sistema desde ahí.'))return;const queda=(window._red.ips||[]).filter(i=>i.ip!==ip).length;redGuardar(queda?!!window._red.activo:false,{p_quitar_ip:ip})}
 
 // ================= ARRANQUE =================
 cargarTodo().then(ir).catch(e=>{$('#app').innerHTML='<div class="card"><h3>No pude conectar con la base de datos</h3><p>'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Reintentar</button></div>'});
