@@ -2578,7 +2578,7 @@ function igPintar(){
     <div class="acciones" style="margin-top:6px"><button class="btn" onclick="igEnviar()">Enviar</button><button class="btn sec" onclick="igSugerir()">✨ Sugerir respuesta</button></div>
     <p class="muted" style="font-size:12px">Instagram solo deja responder dentro de los 7 días del último mensaje del cliente.</p>`;
   $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}
-  <p class="muted">Conectado a <b>@${esc(e.ig||'')}</b> (${esc(e.page||'')}). Los mensajes privados llegan solos y cada persona queda en Clientes.</p>
+  <p class="muted">Conectado a <b>@${esc(e.ig||'')}</b> (${esc(e.page||'')}). Los mensajes privados llegan solos y cada persona queda en Clientes. ${window.POLY_USUARIO&&window.POLY_USUARIO.rol==='admin'?'<a href="javascript:igReconectar()">🔄 Reconectar con un código nuevo</a>':''}</p>
   <div class="grid" style="grid-template-columns:minmax(220px,1fr) 2fr;gap:12px"><div class="card" style="padding:0;max-height:70vh;overflow:auto">${lista}</div><div class="card">${chat}</div></div>`;
   const ch=$('#igChat');if(ch)ch.scrollTop=ch.scrollHeight}
 async function igAbrir(id){IG.sel=id;IG.msgs=await sb('ig_mensajes?select=*&igsid=eq.'+encodeURIComponent(id)+'&order=fecha.asc&limit=300')||[];
@@ -2592,7 +2592,8 @@ async function igSugerir(){const key=apiKey();if(!key){toast('Cargá la clave de
     body:JSON.stringify({model:MODELO_IA,max_tokens:400,messages:[{role:'user',content:'Sos quien atiende el Instagram de Poly Artesanal, panadería de autor en Galván 3512, Villa Urquiza (abierta 24 h). Respondé en español rioplatense, cálido y breve (máximo 3 oraciones), sin inventar precios ni promesas. Si piden encargar algo, invitá a hacerlo desde la web de pedidos. Conversación:\n'+ult+'\n\nEscribí solo la respuesta.'}]})});
     const j=await r.json();if(j.error)throw new Error(j.error.message);$('#igTxt').value=j.content.map(c=>c.text||'').join('').trim()}catch(e){$('#igTxt').value='';toast('⚠️ '+e.message)}}
 async function igGuardarSecreto(){const v=$('#igSec').value.trim();if(!v)return;try{await igApi('guardar_secreto',{secreto:v});toast('Clave guardada 🔒');vInstagram()}catch(e){toast('⚠️ '+e.message,7000)}}
-async function igConectar(){const v=$('#igTok').value.trim();if(!v)return;try{const r=await igApi('conectar',{user_token:v});toast('Instagram conectado: @'+r.ig+' ✅',6000);vInstagram()}catch(e){toast('⚠️ '+e.message,9000)}}
+function igReconectar(){modal(`<h3>🔄 Reconectar Instagram</h3><p class="muted">Pegá el código de acceso nuevo que generaste en el Explorador de la API de Meta.</p><input id="igTok" type="password" autocomplete="off" placeholder="Código de acceso"><div class="acciones" style="margin-top:10px"><button class="btn" onclick="_igTok=$('#igTok').value;cerrarModal();igConectar()">Conectar</button></div>`)}
+let _igTok='';async function igConectar(){const el=$('#igTok');const v=(el?el.value:_igTok).trim();if(!v)return;try{const r=await igApi('conectar',{user_token:v});toast(r.aviso?'Conectado, pero: '+r.aviso:'Instagram conectado: @'+r.ig+' ✅',r.aviso?12000:6000);vInstagram()}catch(e){toast('⚠️ '+e.message,9000)}}
 setInterval(()=>{if(location.hash==='#instagram'&&IG.estado&&IG.estado.conectado){igCargarContactos().then(()=>{if(IG.sel)igAbrir(IG.sel);else igPintar()}).catch(()=>{})}},45000);
 
 // ================= ARRANQUE =================
