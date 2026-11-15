@@ -1,6 +1,36 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<!-- poly-seguridad -->
+<script>
+/* Seguridad: cada pedido a la base va firmado con la sesión de quien está usando el sistema */
+(function () {
+  var BASE = 'sinoeoaktirnscdpbvdc.supabase.co', f0 = window.fetch;
+  function token() { try { return localStorage.getItem('poly_sesion'); } catch (e) { return null; } }
+  window.fetch = function (u, o) {
+    var url = typeof u === 'string' ? u : (u && u.url) || '', t = token();
+    if (!t || url.indexOf(BASE) < 0 || window.__polySinFirma) return f0.call(this, u, o);
+    var o2 = Object.assign({}, o || {}), h = new Headers((o && o.headers) || (typeof u !== 'string' && u && u.headers) || {});
+    h.set('x-poly-token', t); o2.headers = h;
+    var self = this;
+    return f0.call(self, u, o2).catch(function (e) {
+      // si el navegador rechaza el encabezado, se sigue trabajando como antes
+      if (e && e.name === 'TypeError') { window.__polySinFirma = true; return f0.call(self, u, o); }
+      throw e;
+    });
+  };
+  function ping() {
+    if (!token()) return;
+    var m = (location.pathname.split('/').pop() || 'index.html').replace('.html', '') || 'index';
+    window.fetch('https://' + BASE + '/rest/v1/rpc/seguridad_ping', { method: 'POST',
+      headers: { apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg',
+        Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_modulo: m + (window.__polySinFirma ? ':sin-firma' : '') }) }).catch(function () {});
+  }
+  setTimeout(ping, 4000);
+})();
+</script>
+<!-- /poly-seguridad -->
 <script>
 /* Poly Artesanal — control de acceso
    Cada módulo incluye este archivo. Verifica la sesión y deja entrar solo:
