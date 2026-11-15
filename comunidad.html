@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Comunidad Poly · Poly Artesanal</title>
-<meta name="description" content="Sumate a la comunidad de Poly Artesanal: beneficios por tus compras y un regalo en tu cumpleaños.">
+<meta name="description" content="Sumate a la comunidad de Poly Artesanal: facturas de regalo por tus compras, descuento en tu cumpleaños y promos cada mes.">
 <meta property="og:title" content="Sumate a la Comunidad Poly 🥐">
-<meta property="og:description" content="Beneficios por tus compras y un regalo en tu cumpleaños. Panadería de autor en Villa Urquiza.">
+<meta property="og:description" content="Facturas de regalo por tus compras, descuento en tu cumple y promos cada mes. Panadería de autor en Villa Urquiza.">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -37,6 +37,8 @@ input:focus{outline:2px solid var(--or);border-color:var(--or)}
 .sello{aspect-ratio:1;border-radius:50%;border:2px dashed rgba(245,240,233,.55);display:flex;align-items:center;justify-content:center;font-size:20px}
 .sello.ok{background:var(--or);border:2px solid var(--or)}
 .aviso{background:#fff7e0;border:1px solid var(--or);border-radius:12px;padding:12px 14px;margin-top:12px;color:#5a4400}
+.promo{background:linear-gradient(135deg,#C9A84C,#e6c873);color:#2b2105;border-radius:14px;padding:12px 14px;margin:-8px 0 20px;font-size:15px;box-shadow:0 2px 8px rgba(201,168,76,.35)}
+.promo b{display:block;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px}
 .oculto{display:none}
 footer{text-align:center;color:#888;font-size:12px;padding:10px 16px 30px}
 </style>
@@ -48,10 +50,11 @@ footer{text-align:center;color:#888;font-size:12px;padding:10px 16px 30px}
     <h1 id="titulo">Sumate a la Comunidad Poly</h1>
     <p class="lead">Es gratis y te lleva un minuto.</p>
     <div class="ben">
-      <div><span class="i">🥐</span><span>Cada <b id="bCada">10</b> compras te regalamos <b id="bBen">un café con medialuna</b>.</span></div>
-      <div><span class="i">🎂</span><span>En tu cumpleaños tenés <b id="bCumple">un regalo</b>.</span></div>
-      <div><span class="i">📣</span><span>Te enterás primero de las novedades y promos.</span></div>
+      <div><span class="i">🥐</span><span>Cada <b id="bCada">10</b> compras <span id="bMin">de más de $ 10.000</span> te llevás <b id="bBen">½ docena de facturas de regalo</b>.</span></div>
+      <div><span class="i">🎂</span><span>En tu cumpleaños tenés <b id="bCumple">15% de descuento</b>.</span></div>
+      <div><span class="i">📣</span><span>Te enterás de las <b>promos y beneficios de cada mes</b>.</span></div>
     </div>
+    <div class="promo oculto" id="bPromo"></div>
     <div class="card">
       <label for="fN">Nombre y apellido</label><input id="fN" autocomplete="name" placeholder="Tu nombre">
       <label for="fT">WhatsApp</label><input id="fT" type="tel" inputmode="tel" autocomplete="tel" placeholder="ej: 11 2345 6789">
@@ -80,7 +83,8 @@ footer{text-align:center;color:#888;font-size:12px;padding:10px 16px 30px}
       <div id="tTexto"></div>
     </div>
     <div id="avisos"></div>
-    <p class="muted" style="text-align:center;margin-top:14px">En cada compra decí tu número de WhatsApp en caja y te sumamos un sello.<br>📍 Galván 3512, Villa Urquiza · abierto las 24 horas</p>
+    <div class="promo oculto" id="tPromo" style="margin:12px 0 0"></div>
+    <p class="muted" style="text-align:center;margin-top:14px">En cada compra <span id="tMin"></span>decí tu número de WhatsApp en caja y te sumamos un sello.<br>📍 Galván 3512, Villa Urquiza · abierto las 24 horas</p>
     <button class="btn sec" id="bInsta" onclick="window.open('https://instagram.com/polyartesanal','_blank')">Seguinos en Instagram @polyartesanal</button>
     <button class="link" id="bSalir">No soy yo</button>
   </section>
@@ -106,8 +110,14 @@ footer{text-align:center;color:#888;font-size:12px;padding:10px 16px 30px}
     if (CFG.cada) $('bCada').textContent = CFG.cada;
     if (CFG.beneficio) $('bBen').textContent = CFG.beneficio;
     if (CFG.cumple) $('bCumple').textContent = CFG.cumple;
+    $('bMin').textContent = +CFG.minimo > 0 ? 'de más de $ ' + Number(CFG.minimo).toLocaleString('es-AR') : '';
+    pintarPromo();
   }).catch(function () {});
 
+  function pintarPromo() {
+    ['bPromo', 'tPromo'].forEach(function (id) { var el = $(id); if (!el) return;
+      if (CFG.promo_mes) { el.innerHTML = '<b>⭐ Promo del mes</b>' + esc(CFG.promo_mes); el.classList.remove('oculto'); } else el.classList.add('oculto'); });
+  }
   function tarjeta(e, bienvenida) {
     $('hola').textContent = bienvenida ? '¡Bienvenido/a, ' + e.nombre + '!' : '¡Hola, ' + e.nombre + '!';
     $('tNombre').textContent = e.nombre;
@@ -121,6 +131,8 @@ footer{text-align:center;color:#888;font-size:12px;padding:10px 16px 30px}
     if (e.cumple_disponible) av += '<div class="aviso">🎂 <b>¡Se viene tu cumple!</b> Tenés ' + esc(e.regalo_cumple) + '. Avisanos en caja.</div>';
     if (!e.tiene_cumple) av += '<div class="aviso">🎂 Todavía no tenemos tu cumpleaños. Decínoslo en caja para recibir tu regalo.</div>';
     $('avisos').innerHTML = av;
+    $('tMin').textContent = +e.minimo > 0 ? 'de más de $ ' + Number(e.minimo).toLocaleString('es-AR') + ', ' : '';
+    pintarPromo();
     ver('vTarjeta');
   }
   $('bUnirme').onclick = function () {

@@ -1887,10 +1887,11 @@ async function crmAltaAnuncio(kid){const k=CRM.camps.find(x=>x.id===kid);const n
 
 // ───────── COMUNIDAD POLY (programa de beneficios) ─────────
 // Página pública comunidad.html: el cliente se suma solo. En el Salón se suman compras y se canjean beneficios.
-const COM_DEF={nombre:'Comunidad Poly',cada:10,beneficio:'un café con medialuna de regalo',cumple:'10% de descuento en tu compra',cumple_dias:7};
+const COM_DEF={nombre:'Comunidad Poly',cada:10,minimo:10000,beneficio:'½ docena de facturas de regalo',cumple:'15% de descuento',cumple_dias:7,promo_mes:''};
+function comMinTxt(cfg){return +cfg.minimo>0?' de más de $ '+Number(cfg.minimo).toLocaleString('es-AR'):''}
 function comCfg(){return Object.assign({},COM_DEF,CRM.com||{})}
 function comLink(){return location.href.split('#')[0].replace(/[^\/]*$/,'')+'comunidad.html'}
-function comCompras(c){return (c._n||0)+CRM.compras.filter(x=>x.cliente_id===c.id).length}
+function comCompras(c){const m=+comCfg().minimo||0;return (c._peds||[]).filter(p=>(+p.total||0)>=m).length+CRM.compras.filter(x=>x.cliente_id===c.id).length}
 function comDiasCumple(f){if(!f)return null;const H=new Date(hoy()+'T12:00:00');let best=null;
   for(const y of [H.getFullYear()-1,H.getFullYear(),H.getFullYear()+1]){const d=new Date(y,+f.slice(5,7)-1,1,12);d.setDate(+f.slice(8,10));const n=Math.round((d-H)/864e5);if(best===null||Math.abs(n)<Math.abs(best))best=n}return best}
 async function vComunidad(){
@@ -1904,7 +1905,7 @@ async function vComunidad(){
   const proximos=CRM.clis.filter(c=>c.activo!==false&&c.cumpleanos).map(c=>({c,d:comDiasCumple(c.cumpleanos)})).filter(x=>x.d>=-2&&x.d<=14).sort((a,b)=>a.d-b.d);
   const ranking=miembros.map(c=>({c,n:comCompras(c)})).sort((a,b)=>b.n-a.n).slice(0,15);
   $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('comunidad')}
-  <p class="muted">Tus clientes se suman solos desde un link. En cada compra, en el Salón (Pedidos → ⭐ Comunidad) se busca el WhatsApp y se suma un sello; al completar la tarjeta tienen un beneficio, y en la semana de su cumple, un regalo. Los pedidos con teléfono también cuentan como compra.</p>
+  <p class="muted">Tus clientes se suman solos desde un link. En cada compra, en el Salón (Pedidos → ⭐ Comunidad) se busca el WhatsApp y se suma un sello; al completar la tarjeta tienen un beneficio, y en la semana de su cumple, un regalo. Los pedidos con teléfono también cuentan como compra (si superan la compra mínima).</p>
   <div class="grid g4" style="margin-bottom:12px">
     <div class="card kpi"><div class="lbl">Miembros</div><div class="val">${miembros.length}</div><div class="sub muted">${nuevosMes} nuevos este mes</div></div>
     <div class="card kpi"><div class="lbl">Compras sumadas este mes</div><div class="val">${comprasMes}</div><div class="sub muted">en el mostrador</div></div>
@@ -1915,12 +1916,13 @@ async function vComunidad(){
     <div class="card"><h3>🔗 Link para sumarse</h3><p class="muted" style="font-size:13px">Compartilo en la bio de Instagram, en historias, en el WhatsApp del local y en un cartel en el mostrador.</p>
       <div class="fila"><input readonly value="${esc(link)}" onclick="this.select()"><button class="btn" onclick="crmCopiar(${esc(JSON.stringify(link))}).then(()=>toast('Link copiado 📋'))">📋 Copiar</button></div>
       <div class="acciones" style="margin-top:8px"><a class="btn sec" href="${esc(link)}" target="_blank" style="text-decoration:none">👀 Ver la página</a><button class="btn sec" onclick="comPlacaMostrador()">🖼️ Placa para el mostrador</button>
-      <button class="btn sec" onclick="crmCopiar(${esc(JSON.stringify(`🥐 ¡Sumate a la ${cfg.nombre}! Cada ${cfg.cada} compras te regalamos ${cfg.beneficio}, y en tu cumple tenés ${cfg.cumple}. Es gratis: ${link}`))}).then(()=>toast('Mensaje copiado 📋'))">💬 Copiar mensaje de invitación</button></div>
+      <button class="btn sec" onclick="crmCopiar(${esc(JSON.stringify(`🥐 ¡Sumate a la ${cfg.nombre}! Cada ${cfg.cada} compras${comMinTxt(cfg)} te llevás ${cfg.beneficio}, en tu cumple tenés ${cfg.cumple} y te enterás de las promos de cada mes.${cfg.promo_mes?' ⭐ '+cfg.promo_mes+'.':''} Es gratis: ${link}`))}).then(()=>toast('Mensaje copiado 📋'))">💬 Copiar mensaje de invitación</button></div>
       <p class="muted" style="font-size:12px;margin-top:6px">Para un código QR: pegá el link en cualquier generador de QR (por ejemplo, desde Canva) y sumalo a la placa.</p></div>
     <div class="card"><h3>⚙️ Reglas del programa</h3>
       <label>Nombre</label><input id="cmN" value="${esc(cfg.nombre)}">
-      <div class="fila"><div style="max-width:140px"><label>Cada cuántas compras</label><input id="cmC" type="number" min="2" value="${esc(cfg.cada)}"></div><div><label>Beneficio</label><input id="cmB" value="${esc(cfg.beneficio)}"></div></div>
+      <div class="fila"><div style="max-width:140px"><label>Cada cuántas compras</label><input id="cmC" type="number" min="2" value="${esc(cfg.cada)}"></div><div style="max-width:150px"><label>Compra mínima ($)</label><input id="cmM" type="number" min="0" step="500" value="${esc(cfg.minimo||0)}"></div><div><label>Beneficio</label><input id="cmB" value="${esc(cfg.beneficio)}"></div></div>
       <div class="fila"><div><label>Regalo de cumpleaños</label><input id="cmR" value="${esc(cfg.cumple)}"></div><div style="max-width:160px"><label>Vale (días antes/después)</label><input id="cmD" type="number" min="0" max="31" value="${esc(cfg.cumple_dias)}"></div></div>
+      <label>⭐ Promo del mes (se ve en la página de la comunidad)</label><input id="cmP" placeholder="Ej: Este mes, los alfajorcitos de maicena tienen 40% de descuento" value="${esc(cfg.promo_mes||'')}">
       <button class="btn" style="margin-top:8px" onclick="comGuardar()">💾 Guardar reglas</button>
       <p class="muted" style="font-size:12px">Si cambiás la cantidad de compras, las tarjetas se recalculan con la nueva regla.</p></div>
   </div>
@@ -1930,11 +1932,11 @@ async function vComunidad(){
     <div class="card"><h3>🏆 Los que más compran</h3>${ranking.length?`<table>${ranking.map(({c,n})=>`<tr><td><a href="javascript:crmFicha(${c.id})">${esc(c.nombre)}</a></td><td class="num">${n} compra${n===1?'':'s'}</td><td class="num muted" style="font-size:12px">${n%cfg.cada}/${cfg.cada}</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hay miembros. ¡Compartí el link!</p>'}</div>
   </div>`;
 }
-function comPlacaMostrador(){const cfg=comCfg();placaAbrir({titulo:'Sumate a la '+cfg.nombre,subtitulo:'Cada '+cfg.cada+' compras: '+cfg.beneficio+' · En tu cumple: '+cfg.cumple,pie:'Es gratis: pedí el link en caja o entrá desde @polyartesanal',formato:'post'})}
+function comPlacaMostrador(){const cfg=comCfg();placaAbrir({titulo:'Sumate a la '+cfg.nombre,subtitulo:'Cada '+cfg.cada+' compras'+comMinTxt(cfg)+': '+cfg.beneficio+' · En tu cumple: '+cfg.cumple,pie:'Es gratis: pedí el link en caja o entrá desde @polyartesanal',formato:'post'})}
 function comMsgCumple(c){const cfg=comCfg();const n=crmPrimerNombre(c);return `¡Feliz cumpleaños${n?' '+n:''}! 🎂 En Poly Artesanal queremos festejarte: esta semana tenés ${cfg.cumple}. ¡Te esperamos en Galván 3512! 🥐`}
 function comSaludar(id){const c=CRM.clis.find(x=>x.id===id);const wa=crmWa(c.telefono);if(!wa)return;const t=comMsgCumple(c);
   window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank');crmNota(id,'whatsapp','🎂 Saludo de cumpleaños',true)}
-async function comGuardar(){const v={nombre:$('#cmN').value.trim()||COM_DEF.nombre,cada:Math.max(2,Math.round(+$('#cmC').value||10)),beneficio:$('#cmB').value.trim()||COM_DEF.beneficio,cumple:$('#cmR').value.trim()||COM_DEF.cumple,cumple_dias:Math.max(0,Math.min(31,Math.round(+$('#cmD').value||7)))};
+async function comGuardar(){const v={nombre:$('#cmN').value.trim()||COM_DEF.nombre,cada:Math.max(2,Math.round(+$('#cmC').value||10)),beneficio:$('#cmB').value.trim()||COM_DEF.beneficio,cumple:$('#cmR').value.trim()||COM_DEF.cumple,cumple_dias:Math.max(0,Math.min(31,Math.round(+$('#cmD').value||7))),minimo:Math.max(0,Math.round(+$('#cmM').value||0)),promo_mes:$('#cmP').value.trim()};
   await sbIns('config',[{clave:'comunidad',valor:v}],true);CRM.com=v;toast('Reglas guardadas ✅');vComunidad()}
 
 // ───────── PLACAS CON LA MARCA (imágenes para Instagram / WhatsApp) ─────────
