@@ -1554,7 +1554,7 @@ function crmCalcular(){
   const H=hoy(),[m1]=mesRango(0);
   CRM.clis.forEach(c=>{
     c.tipo=c.tipo||'mayorista';
-    const ps=CRM.peds.filter(p=>p.cliente_id===c.id&&!/cancel/i.test(p.estado||''));
+    const ps=CRM.peds.filter(p=>p.cliente_id===c.id&&!/cancel/i.test(p.estado||'')&&p.estado!=='por_confirmar');
     const fechas=ps.map(p=>(p.fecha_retiro||diaLocal(p.created_at))).sort();
     c._peds=ps;c._n=ps.length;c._total=ps.reduce((a,p)=>a+(+p.total||0),0);
     c._mes=ps.filter(p=>(p.fecha_retiro||diaLocal(p.created_at))>=m1).reduce((a,p)=>a+(+p.total||0),0);
@@ -1655,7 +1655,7 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
   const ori=c.origen?(crmOrigenes().find(([k])=>k===c.origen)||[0,c.origen])[1]:null;
   const dato=(l,v)=>v?`<div><span class="muted" style="font-size:12px">${l}</span><div><b>${esc(v)}</b></div></div>`:'';
   modal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap"><div><h2 style="margin-bottom:4px">${esc(c.nombre)}</h2>${crmChip(c.tipo,CRM_TCLI)} ${crmChip(c._estado)}${c.acepta_promos===false?' <span class="chip" style="background:#eee;color:#666">No recibe promos</span>':''}</div>
-    <div class="acciones">${wa?`<button class="btn" onclick="crmMensaje(${id})">💬 WhatsApp</button><a class="btn sec" href="tel:+${wa}" style="text-decoration:none">📞 Llamar</a>`:''}${c.instagram?`<button class="btn sec" onclick="crmIG(${id})">📸 Instagram</button>`:''}<button class="btn sec" onclick="crmEditar(${id})">✏️ Editar</button></div></div>
+    <div class="acciones">${wa?`<button class="btn" onclick="crmMensaje(${id})">💬 WhatsApp</button><a class="btn sec" href="tel:+${wa}" style="text-decoration:none">📞 Llamar</a>`:''}${c.instagram?`<button class="btn sec" onclick="crmIG(${id})">📸 Instagram</button>`:''}<button class="btn sec" onclick="crmEditar(${id})">✏️ Editar</button><button class="btn sec" title="Si se olvidó la contraseña de la página de pedidos" onclick="window.PW&&PW.codigo(null,${id})">🔑 Clave web</button></div></div>
   <div class="grid g4" style="margin:12px 0">
     <div class="card kpi"><div class="lbl">Última compra</div><div class="val" style="font-size:20px">${c._ultima?fechaCorta(c._ultima):'—'}</div><div class="sub muted">${c._dias!=null?'hace '+c._dias+' días':''}</div></div>
     ${c.tipo==='mayorista'?`<div class="card kpi"><div class="lbl">Ritmo de compra</div><div class="val" style="font-size:20px">cada ${c._freq} d</div><div class="sub muted">${c.frecuencia_dias?'lo cargaste vos':c._freqCalc?'calculado de sus pedidos':'estimado'}</div></div>`:`<div class="card kpi"><div class="lbl">Campañas recibidas</div><div class="val" style="font-size:20px">${envs.filter(x=>x.e.estado!=='pendiente').length}</div></div>`}
@@ -1926,12 +1926,37 @@ async function vComunidad(){
       <button class="btn" style="margin-top:8px" onclick="comGuardar()">💾 Guardar reglas</button>
       <p class="muted" style="font-size:12px">Si cambiás la cantidad de compras, las tarjetas se recalculan con la nueva regla.</p></div>
   </div>
+  <div class="card" style="margin-top:12px"><h3>🌐 Pedidos web</h3><p class="muted" style="font-size:13px">Los clientes se crean un usuario con su WhatsApp y una contraseña, arman el pedido y les pedimos la seña. Cuando llega, se confirma desde el aviso dorado "🌐 pedidos web por confirmar" (acá o en el Salón) y pasa a los sectores.</p>
+    <div class="fila"><input readonly value="${esc(pwLink())}" onclick="this.select()"><button class="btn" onclick="crmCopiar(${esc(JSON.stringify(pwLink()))}).then(()=>toast('Link copiado 📋'))">📋 Copiar</button></div>
+    <div class="acciones" style="margin-top:8px"><a class="btn sec" href="${esc(pwLink())}" target="_blank" style="text-decoration:none">👀 Ver la página</a><button class="btn sec" onclick="pwConfig()">⚙️ Seña, alias y productos</button><button class="btn sec" onclick="window.PW&&PW.codigo()">🔑 Código de contraseña</button>${window.PW?'<button class="btn sec" onclick="PW.abrir()">⏳ Pedidos por confirmar</button>':''}</div></div>
   <div class="grid g2" style="margin-top:12px">
     <div class="card"><h3>🎂 Cumpleaños próximos</h3>${proximos.length?`<table>${proximos.map(({c,d})=>`<tr><td><a href="javascript:crmFicha(${c.id})"><b>${esc(c.nombre)}</b></a><div class="muted" style="font-size:12px">${d===0?'¡Hoy!':d>0?'en '+d+' día'+(d>1?'s':''):'hace '+(-d)+' día'+(d<-1?'s':'')} · ${new Date(c.cumpleanos+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long'})}</div></td>
       <td style="white-space:nowrap">${crmWa(c.telefono)&&c.acepta_promos!==false?`<button class="btn peq" onclick="comSaludar(${c.id})">💬 Saludar</button>`:''}${c.instagram?` <button class="btn peq sec" onclick="crmIG(${c.id},${esc(JSON.stringify(comMsgCumple(c)))})">📸</button>`:''}</td></tr>`).join('')}</table>`:'<p class="muted">No hay cumpleaños en las próximas 2 semanas.</p>'}</div>
     <div class="card"><h3>🏆 Los que más compran</h3>${ranking.length?`<table>${ranking.map(({c,n})=>`<tr><td><a href="javascript:crmFicha(${c.id})">${esc(c.nombre)}</a></td><td class="num">${n} compra${n===1?'':'s'}</td><td class="num muted" style="font-size:12px">${n%cfg.cada}/${cfg.cada}</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hay miembros. ¡Compartí el link!</p>'}</div>
   </div>`;
 }
+function pwLink(){return comLink().replace(/comunidad\.html.*$/,'pedidos.html')}
+let PWCFG=null,PWCAT=[];
+async function pwConfig(){
+  const [cfgRow,cat]=await Promise.all([sb('config?select=valor&clave=eq.pedidos_web'),sb('rpc/cliente_catalogo',{method:'POST',body:{}})]);
+  PWCFG=Object.assign({sena_pct:50,anticipacion_dias:2,envio:true,alias:'',titular:'',ocultos:[],sectores:{}},(cfgRow[0]||{}).valor||{});
+  const pv=await sb('productos_venta?select=codigo,nombre,precio_lpu&activo=eq.true&precio_lpu=gt.0&order=nombre');
+  const sec={};(cat.productos||[]).forEach(p=>sec[p.codigo]=p.sector);
+  PWCAT=pv.filter(p=>!/^articulo libre$/i.test((p.nombre||'').trim())).map(p=>({...p,sector:PWCFG.sectores[p.codigo]||sec[p.codigo]||'panaderia'}));
+  const SEC={panaderia:'Panadería',pasteleria:'Pastelería',cocina:'Cocina',reventa:'Reventa (sin producción)'};
+  modal(`<h2>🌐 Pedidos web</h2>
+   <div class="fila"><div><label>Seña (%)</label><input id="pwS" type="number" min="0" max="100" value="${esc(PWCFG.sena_pct)}"></div><div><label>Anticipación (días)</label><input id="pwA" type="number" min="0" max="30" value="${esc(PWCFG.anticipacion_dias)}"></div><div><label>Envío a domicilio</label><select id="pwE"><option value="1"${PWCFG.envio!==false?' selected':''}>Sí</option><option value="0"${PWCFG.envio===false?' selected':''}>No, solo retiro</option></select></div></div>
+   <div class="fila"><div><label>Alias para la seña</label><input id="pwAl" value="${esc(PWCFG.alias)}"></div><div><label>A nombre de</label><input id="pwT" value="${esc(PWCFG.titular)}"></div></div>
+   <h3 style="margin-top:14px">Productos que se pueden pedir</h3><p class="muted" style="font-size:13px">Salen de Productos de venta con precio minorista. Destildá los que no se encargan y corregí a qué sector va cada uno (el pedido le llega a ese sector).</p>
+   <input id="pwQ" placeholder="Buscar…" oninput="pwFiltrar()" style="margin-bottom:8px">
+   <div style="max-height:46vh;overflow:auto"><table><thead><tr><th>Se ve</th><th>Producto</th><th class="num">Precio</th><th>Sector</th></tr></thead><tbody id="pwTb">${PWCAT.map(p=>`<tr data-n="${esc(norm(p.nombre))}"><td><input type="checkbox" data-c="${esc(p.codigo)}" class="pwV"${(PWCFG.ocultos||[]).includes(p.codigo)?'':' checked'}></td><td>${esc(p.nombre)}</td><td class="num">${$$(p.precio_lpu)}</td><td><select class="pwSec" data-c="${esc(p.codigo)}">${Object.entries(SEC).map(([k,v])=>`<option value="${k}"${p.sector===k?' selected':''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
+   <button class="btn" style="margin-top:10px" onclick="pwGuardar()">💾 Guardar</button>`)}
+function pwFiltrar(){const q=norm($('#pwQ').value);document.querySelectorAll('#pwTb tr').forEach(tr=>tr.style.display=!q||tr.dataset.n.includes(q)?'':'none')}
+async function pwGuardar(){
+  const ocultos=[...document.querySelectorAll('.pwV')].filter(x=>!x.checked).map(x=>x.dataset.c);
+  const sectores={};document.querySelectorAll('.pwSec').forEach(x=>{sectores[x.dataset.c]=x.value});
+  const v=Object.assign({},PWCFG,{sena_pct:Math.max(0,Math.min(100,+$('#pwS').value||50)),anticipacion_dias:Math.max(0,Math.min(30,Math.round(+$('#pwA').value||0))),envio:$('#pwE').value==='1',alias:$('#pwAl').value.trim(),titular:$('#pwT').value.trim(),ocultos,sectores});
+  await sbIns('config',[{clave:'pedidos_web',valor:v}],true);cerrarModal();toast('Pedidos web guardados ✅')}
 function comPlacaMostrador(){const cfg=comCfg();placaAbrir({titulo:'Sumate a la '+cfg.nombre,subtitulo:'Cada '+cfg.cada+' compras'+comMinTxt(cfg)+': '+cfg.beneficio+' · En tu cumple: '+cfg.cumple,pie:'Es gratis: pedí el link en caja o entrá desde @polyartesanal',formato:'post'})}
 function comMsgCumple(c){const cfg=comCfg();const n=crmPrimerNombre(c);return `¡Feliz cumpleaños${n?' '+n:''}! 🎂 En Poly Artesanal queremos festejarte: esta semana tenés ${cfg.cumple}. ¡Te esperamos en Galván 3512! 🥐`}
 function comSaludar(id){const c=CRM.clis.find(x=>x.id===id);const wa=crmWa(c.telefono);if(!wa)return;const t=comMsgCumple(c);
@@ -2462,5 +2487,127 @@ function editarUsuario(k){const u=k!=null?window._us[k]:{usuario:'',nombre:'',ro
 cargarTodo().then(ir).catch(e=>{$('#app').innerHTML='<div class="card"><h3>No pude conectar con la base de datos</h3><p>'+esc(e.message)+'</p><button class="btn" onclick="location.reload()">Reintentar</button></div>'});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarModal()});
 </script>
+<!-- pedidos-web -->
+<script>
+/* Pedidos web por confirmar: aviso, confirmar con la seña, rechazar y escribirle al cliente por WhatsApp */
+(function () {
+  var SB = 'https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
+  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var H = { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' };
+  function get(p) { return fetch(SB + p, { headers: H }).then(function (r) { return r.json(); }); }
+  function rpc(fn, b) { return fetch(SB + 'rpc/' + fn, { method: 'POST', headers: H, body: JSON.stringify(b || {}) }).then(function (r) { return r.text().then(function (t) { var j = t ? JSON.parse(t) : null; if (!r.ok) throw new Error((j && j.message) || 'Error'); return j; }); }); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function plata(n) { return '$ ' + Math.round(+n || 0).toLocaleString('es-AR'); }
+  function cant(q, u) { return u === 'kg' ? String(+(+q).toFixed(2)).replace('.', ',') + ' kg' : Math.round(q) + ' u'; }
+  function usr() { try { return (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || 'local'; } catch (e) { return 'local'; } }
+  function wa(tel) { var d = String(tel || '').replace(/\D/g, ''); if (d.startsWith('54')) d = d.slice(2); if (d.startsWith('9') && d.length === 11) d = d.slice(1); if (d.startsWith('0')) d = d.slice(1); if (d.length === 12 && d.slice(2, 4) === '15') d = d.slice(0, 2) + d.slice(4); return d.length === 10 ? '549' + d : null; }
+  function fecha(f) { return f ? new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'numeric' }) : ''; }
+  var lista = [], vistos = null;
+  var css = document.createElement('style');
+  css.textContent = '#pw-pill{position:fixed;right:12px;top:58px;z-index:9980;border:0;border-radius:22px;padding:9px 14px;background:#C9A84C;color:#1b1405;font:800 14px system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.3);cursor:pointer;display:none;animation:pwlat 1.6s ease-in-out infinite}' +
+    '@keyframes pwlat{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}' +
+    '#pw-ov{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99998;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:14px 8px}' +
+    '#pw-box{background:#fff;color:#222;border-radius:14px;max-width:560px;width:100%;padding:16px;font:15px/1.45 system-ui,sans-serif}' +
+    '#pw-box h3{margin:0 0 4px;color:#0C461F;font-size:18px}.pw-c{border:1px solid #e5dfd3;border-left:4px solid #C9A84C;border-radius:12px;padding:12px;margin-top:10px}' +
+    '.pw-b{border:0;border-radius:10px;padding:10px 12px;font:700 14px system-ui,sans-serif;cursor:pointer;color:#fff;background:#0C461F}.pw-b.g{background:#1f9e55}.pw-b.r{background:#fff;color:#B3261E;border:1px solid #B3261E}.pw-b.s{background:#eee;color:#333}' +
+    '.pw-f{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.pw-in{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font:15px system-ui,sans-serif;margin:3px 0 8px;background:#fff;color:#222}' +
+    'html.noche #pw-box{background:#0f2416;color:#eaf2ec}html.noche #pw-box h3{color:#9fe0b2}html.noche .pw-c{border-color:#24452f}html.noche .pw-in{background:#0c1d12;color:#eaf2ec;border-color:#2a4a34}html.noche .pw-b.s{background:#24452f;color:#eaf2ec}';
+  document.head.appendChild(css);
+  function montar() {
+    if (document.getElementById('pw-pill')) return;
+    var pill = document.createElement('button'); pill.id = 'pw-pill'; pill.onclick = abrir; document.body.appendChild(pill);
+    var ov = document.createElement('div'); ov.id = 'pw-ov'; ov.innerHTML = '<div id="pw-box"></div>'; ov.onclick = function (e) { if (e.target === ov) cerrar(); }; document.body.appendChild(ov);
+  }
+  function beep() { try { var c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = .08; o.start(); setTimeout(function () { o.frequency.value = 1320; }, 160); setTimeout(function () { o.stop(); c.close(); }, 380); } catch (e) {} }
+  function cargar() {
+    return get('pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,precio)&estado=eq.por_confirmar&order=created_at').then(function (r) {
+      lista = Array.isArray(r) ? r : [];
+      var ids = lista.map(function (p) { return p.id; });
+      if (vistos && ids.some(function (i) { return vistos.indexOf(i) < 0; })) { beep(); if (window.Notification && Notification.permission === 'granted') try { new Notification('🌐 Nuevo pedido web', { body: lista[lista.length - 1].cliente }); } catch (e) {} }
+      vistos = ids;
+      var pill = document.getElementById('pw-pill');
+      if (pill) { pill.style.display = lista.length ? 'block' : 'none'; pill.textContent = '🌐 ' + lista.length + ' pedido' + (lista.length > 1 ? 's' : '') + ' web por confirmar'; }
+      if (document.getElementById('pw-ov').style.display === 'flex') pintar();
+    }).catch(function () {});
+  }
+  function abrir() { pintar(); document.getElementById('pw-ov').style.display = 'flex'; if (window.Notification && Notification.permission === 'default') try { Notification.requestPermission(); } catch (e) {} }
+  function cerrar() { document.getElementById('pw-ov').style.display = 'none'; }
+  function pintar() {
+    var b = document.getElementById('pw-box');
+    b.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap"><h3>🌐 Pedidos web por confirmar</h3><span><button class="pw-b s" onclick="PW.codigo()">🔑 Código de contraseña</button> <button class="pw-b s" onclick="PW.cerrar()">Cerrar</button></span></div>' +
+      '<p style="margin:4px 0 0;font-size:13px;opacity:.75">Se confirman cuando llega la seña. Al confirmar, el pedido pasa a los sectores y al Salón como cualquier otro.</p>' +
+      (lista.length ? lista.map(function (p) {
+        var its = (p.pedidos_clientes_items || []).map(function (i) { return cant(i.cantidad, i.unidad) + ' ' + esc(i.producto); }).join('<br>');
+        return '<div class="pw-c" id="pw-' + p.id + '"><div style="display:flex;justify-content:space-between;gap:8px"><b>#' + p.numero + ' · ' + esc(p.cliente) + '</b><span style="font-size:13px;opacity:.75">' + esc(p.telefono || '') + '</span></div>' +
+          '<div style="font-size:14px;margin:4px 0"><b>' + esc(fecha(p.fecha_retiro)) + '</b>' + (p.hora_retiro ? ' · ' + esc(p.hora_retiro) : '') + ' · ' + (p.envio ? '🛵 Envío: ' + esc(p.direccion || '') : '🏪 Retira en el local') + '</div>' +
+          '<div style="font-size:14px">' + its + '</div>' + (p.notas ? '<div style="font-size:13px;margin-top:4px">📝 ' + esc(p.notas) + '</div>' : '') +
+          '<div style="margin-top:6px">Total <b>' + plata(p.total) + '</b> · Seña pedida <b>' + plata(p.sena_requerida) + '</b></div>' +
+          '<div class="pw-f"><button class="pw-b" onclick="PW.confirmar(' + p.id + ')">✅ Llegó la seña: confirmar</button>' +
+          (wa(p.telefono) ? '<button class="pw-b g" onclick="PW.chat(' + p.id + ')">💬 WhatsApp</button>' : '') +
+          '<button class="pw-b r" onclick="PW.rechazar(' + p.id + ')">Rechazar</button></div></div>';
+      }).join('') : '<p style="margin-top:14px">No hay pedidos web esperando confirmación. 👌</p>');
+  }
+  function ped(id) { return lista.find(function (p) { return p.id === id; }); }
+  function linkPedidos() { return location.href.split('#')[0].split('?')[0].replace(/[^\/]*$/, '') + 'pedidos.html'; }
+  window.PW = {
+    cerrar: cerrar, abrir: abrir, recargar: cargar,
+    codigo: function (tel, cliente) {
+      var b = document.getElementById('pw-box');
+      b.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><h3>🔑 Código para cambiar la contraseña</h3><button class="pw-b s" onclick="PW.cerrar()">Cerrar</button></div>' +
+        '<p style="font-size:14px;margin:6px 0 10px">Para el cliente que se olvidó la contraseña de la página de pedidos. El código se manda <b>solo al WhatsApp de su cuenta</b>, sirve una vez y vence en 30 minutos.</p>' +
+        (cliente ? '' : '<label style="font-size:13px;font-weight:700">WhatsApp del cliente</label><input class="pw-in" id="pw-ct" type="tel" value="' + esc(tel || '') + '" placeholder="ej: 11 2345 6789">') +
+        '<button class="pw-b" style="width:100%" id="pw-cg">Generar código</button><div id="pw-cr" style="margin-top:12px"></div>';
+      document.getElementById('pw-ov').style.display = 'flex';
+      document.getElementById('pw-cg').onclick = function () {
+        var bt = this, t = cliente ? null : document.getElementById('pw-ct').value.trim();
+        if (!cliente && t.replace(/\D/g, '').length < 10) { alert('Poné el WhatsApp completo, con característica'); return; }
+        var tok = null; try { tok = window.polyToken ? window.polyToken() : localStorage.getItem('poly_sesion'); } catch (e) {}
+        bt.disabled = true;
+        rpc('local_codigo_clave', { p_staff_token: tok, p_tel: t, p_cliente: cliente || null }).then(function (r) {
+          var n = String(r.nombre || '').split(' ')[0], w = wa(r.telefono);
+          var msg = '¡Hola ' + n + '! 🔑 Tu código para cambiar la contraseña de los pedidos de Poly Artesanal es *' + r.codigo + '*. Vence en 30 minutos.\nEntrá a ' + linkPedidos() + ', tocá "Me olvidé la contraseña" y ponelo con tu contraseña nueva.\nSi no lo pediste vos, ignorá este mensaje.';
+          document.getElementById('pw-cr').innerHTML = '<div style="text-align:center;font-size:13px">Código para <b>' + esc(r.nombre) + '</b></div><div style="text-align:center;font:800 34px/1.2 system-ui;letter-spacing:6px;margin:4px 0 8px">' + esc(r.codigo) + '</div>' +
+            (w ? '<a class="pw-b g" style="display:block;text-align:center;text-decoration:none" target="_blank" href="https://wa.me/' + w + '?text=' + encodeURIComponent(msg) + '">💬 Mandárselo por WhatsApp a ' + esc(r.telefono) + '</a>' : '<p>No tiene un WhatsApp válido cargado.</p>');
+        }).catch(function (e) { bt.disabled = false; alert('⚠️ ' + e.message); });
+      };
+    },
+    chat: function (id) { var p = ped(id); window.open('https://wa.me/' + wa(p.telefono) + '?text=' + encodeURIComponent('¡Hola ' + String(p.cliente).split(' ')[0] + '! Te escribimos de Poly Artesanal por tu pedido #' + p.numero + '. '), '_blank'); },
+    confirmar: function (id) {
+      var p = ped(id), c = document.getElementById('pw-' + id);
+      c.insertAdjacentHTML('beforeend', '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed #ccc"><label style="font-size:13px;font-weight:700">Seña recibida ($)</label><input class="pw-in" id="pw-s' + id + '" type="number" value="' + (+p.sena_requerida || 0) + '">' +
+        '<label style="font-size:13px;font-weight:700">Medio</label><select class="pw-in" id="pw-m' + id + '"><option>Transferencia</option><option>Efectivo</option><option>Mercado Pago</option></select>' +
+        (p.envio ? '<label style="font-size:13px;font-weight:700">Costo del envío ($)</label><input class="pw-in" id="pw-e' + id + '" type="number" placeholder="0">' : '') +
+        '<button class="pw-b" style="width:100%" id="pw-ok' + id + '">Confirmar pedido #' + p.numero + '</button></div>');
+      c.querySelector('.pw-f').style.display = 'none';
+      document.getElementById('pw-ok' + id).onclick = function () {
+        var bt = this; bt.disabled = true;
+        var s = +document.getElementById('pw-s' + id).value || 0, m = document.getElementById('pw-m' + id).value, e = p.envio ? (+document.getElementById('pw-e' + id).value || 0) : null;
+        rpc('pedido_web_confirmar', { p_pedido: id, p_sena: s, p_medio: m, p_usuario: usr(), p_costo_envio: e }).then(function () {
+          var tot = (+p.total || 0) + (e || 0), saldo = tot - s;
+          var msg = '¡Hola ' + String(p.cliente).split(' ')[0] + '! 🥐 Recibimos tu seña de ' + plata(s) + '. Tu pedido #' + p.numero + ' para el ' + fecha(p.fecha_retiro) + (p.hora_retiro ? ' (' + p.hora_retiro + ')' : '') + ' quedó *confirmado* ✅\n' +
+            (e ? 'Envío: ' + plata(e) + '. ' : '') + 'Saldo a pagar ' + (p.envio ? 'al recibirlo' : 'al retirar') + ': ' + plata(saldo) + '.\n¡Gracias por elegir Poly Artesanal!';
+          c.innerHTML = '<b>✅ Pedido #' + p.numero + ' confirmado.</b> Ya está en los sectores y en el Salón.' +
+            (wa(p.telefono) ? '<div class="pw-f"><a class="pw-b g" style="text-decoration:none" target="_blank" href="https://wa.me/' + wa(p.telefono) + '?text=' + encodeURIComponent(msg) + '">💬 Avisarle al cliente por WhatsApp</a></div>' : '');
+          lista = lista.filter(function (x) { return x.id !== id; }); vistos = lista.map(function (x) { return x.id; });
+          var pill = document.getElementById('pw-pill'); if (pill) { pill.style.display = lista.length ? 'block' : 'none'; pill.textContent = '🌐 ' + lista.length + ' pedido' + (lista.length > 1 ? 's' : '') + ' web por confirmar'; }
+          try { if (typeof window.switchTab === 'function' && document.getElementById('pcs-seccion')) window.switchTab('clientes'); } catch (x) {}
+        }).catch(function (err) { bt.disabled = false; alert('⚠️ ' + err.message); });
+      };
+    },
+    rechazar: function (id) {
+      var p = ped(id); if (!confirm('¿Rechazar el pedido #' + p.numero + ' de ' + p.cliente + '? (por ejemplo, si no llegó la seña)')) return;
+      rpc('pedido_web_rechazar', { p_pedido: id, p_usuario: usr() }).then(function () {
+        var c = document.getElementById('pw-' + id), msg = '¡Hola ' + String(p.cliente).split(' ')[0] + '! Te escribimos de Poly Artesanal: no pudimos confirmar tu pedido #' + p.numero + ' porque no recibimos la seña. Si querés, hacelo de nuevo desde la web o escribinos. ¡Gracias!';
+        c.innerHTML = '<b>Pedido #' + p.numero + ' rechazado.</b>' + (wa(p.telefono) ? '<div class="pw-f"><a class="pw-b g" style="text-decoration:none" target="_blank" href="https://wa.me/' + wa(p.telefono) + '?text=' + encodeURIComponent(msg) + '">💬 Avisarle por WhatsApp</a></div>' : '');
+        lista = lista.filter(function (x) { return x.id !== id; }); vistos = lista.map(function (x) { return x.id; });
+        var pill = document.getElementById('pw-pill'); if (pill) pill.style.display = lista.length ? 'block' : 'none';
+      }).catch(function (err) { alert('⚠️ ' + err.message); });
+    }
+  };
+  function iniciar() { montar(); cargar(); setInterval(cargar, 60e3); document.addEventListener('visibilitychange', function () { if (!document.hidden) cargar(); }); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
+})();
+</script>
+<!-- /pedidos-web -->
 </body>
 </html>
