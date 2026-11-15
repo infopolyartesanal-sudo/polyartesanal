@@ -834,8 +834,12 @@ function nutCompartir(id){$('#nuCanvas').toBlob(async b=>{const f=new File([b],n
 // Stock de lo que hay en el local (tabla salon_stock, la misma que usa el módulo Salón).
 // Se puede cargar desde un Excel, poner en 0 o corregir a mano. Cada carga queda registrada en salon_inventarios.
 let IS={rows:[],edit:{},cargado:false,f:'',sec:'',hist:[]};
-const IS_SECT={panaderia:'🍞 Panadería',pasteleria:'🎂 Pastelería',cocina:'🍳 Cocina',madrugada:'🌙 Madrugada',insumos:'🧻 Insumos del local'};
-async function cargarIS(){const [r,h]=await Promise.all([sbGet('salon_stock','order=sector,nombre'),sbGet('salon_inventarios','order=created_at.desc&limit=5').catch(()=>[])]);IS.rows=r||[];IS.hist=h||[];IS.edit={};IS.cargado=true}
+const IS_SECT={venta:'🏷️ Producto de venta',panaderia:'🍞 Panadería',pasteleria:'🎂 Pastelería',cocina:'🍳 Cocina',madrugada:'🌙 Madrugada',insumos:'🧻 Insumos del local'};
+async function cargarIS(){const [r,h]=await Promise.all([sbGet('salon_stock','order=sector,nombre'),sbGet('salon_inventarios','order=created_at.desc&limit=5').catch(()=>[]),PV.cargado?null:cargarPV().catch(()=>{})]);
+  // los nombres de producción vinculados a un producto de venta se agrupan ahí: solo se muestran si todavía tienen stock
+  const grupo=x=>{if(String(x.id).startsWith('pv:'))return null;const k=normV(x.nombre);const a=pvAliasDe(k);if(a)return a.codigo;const p=(PV.prods||[]).find(p=>normV(p.nombre)===k);return p?p.codigo:null};
+  IS.rows=(r||[]).map(x=>({...x,grupo:grupo(x)})).filter(x=>!x.grupo||+x.cantidad).sort((a,b)=>((a.sector==='venta'?0:1)-(b.sector==='venta'?0:1))||norm(a.nombre).localeCompare(norm(b.nombre)));
+  IS.hist=h||[];IS.edit={};IS.cargado=true}
 const isNum=v=>Math.round((+v||0)*1000)/1000;
 function isCambios(){return IS.rows.filter(r=>IS.edit[r.id]!==undefined&&isNum(IS.edit[r.id])!==isNum(r.cantidad))}
 async function vInvSalon(){
@@ -845,7 +849,7 @@ async function vInvSalon(){
   const sectores=[...new Set(IS.rows.map(r=>r.sector||'insumos'))];
   const ult=IS.hist[0];
   $('#app').innerHTML=`<h2>🏪 Inventario Salón</h2>
-  <p class="muted">El stock de lo que hay en el local, el mismo que ve el Salón. Podés cargarlo desde un Excel, ponerlo todo en 0 o corregir a mano. Los cambios se ven en el Salón en menos de un minuto.</p>
+  <p class="muted">El stock de lo que hay en el local, el mismo que ve el Salón. Va agrupado como se vende (Facturas, Empanadas, Cremonas…): lo que manda producción se suma al producto de venta según los vínculos de <a href="#venta">Productos de venta</a>. Podés cargarlo desde un Excel, ponerlo todo en 0 o corregir a mano. Los cambios se ven en el Salón en menos de un minuto.</p>
   <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Productos</div><div class="val">${IS.rows.length}</div></div>
   <div class="card kpi"><div class="lbl">Con stock</div><div class="val">${conStock}</div></div>
   <div class="card kpi"><div class="lbl">Último inventario</div><div class="val" style="font-size:16px">${ult?new Date(ult.created_at).toLocaleString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}</div><div class="sub muted">${ult?esc(({excel:'desde Excel',manual:'a mano',cero:'todo en 0'})[ult.tipo]||ult.tipo)+' · '+(ult.detalle||[]).length+' productos':''}</div></div></div>
@@ -860,17 +864,18 @@ async function vInvSalon(){
     <select onchange="IS.sec=this.value;vInvSalon()" style="max-width:220px"><option value="">Todos los sectores</option>${sectores.map(s=>`<option value="${esc(s)}" ${IS.sec===s?'selected':''}>${esc(IS_SECT[s]||s)}</option>`).join('')}</select></div>
   <div class="card scroll"><table><tr><th>Producto</th><th>Sector</th><th>Unidad</th><th class="num">Stock actual</th><th class="num">Nuevo stock</th></tr>
   ${filas.map(r=>{const e=IS.edit[r.id];const camb=e!==undefined&&isNum(e)!==isNum(r.cantidad);
-    return `<tr style="${camb?'background:#fff7e0':''}"><td><b>${esc(r.nombre)}</b></td><td>${esc(IS_SECT[r.sector||'insumos']||r.sector)}</td><td>${esc(r.unidad||'')}</td><td class="num">${fnum(r.cantidad,3)}</td>
+    return `<tr style="${camb?'background:#fff7e0':''}"><td><b>${esc(r.nombre)}</b>${r.grupo?`<div class="muted" style="font-size:11px">ahora se agrupa en ${esc((pvPorCod(r.grupo)||{}).nombre||r.grupo)}: pasá este stock ahí y dejalo en 0</div>`:''}</td><td>${esc(IS_SECT[r.sector||'insumos']||r.sector)}</td><td>${r.sector==='venta'?`<select onchange="isUnidad('${esc(r.id)}',this.value)" style="width:auto;padding:3px 6px">${['u','kg'].map(u=>`<option ${r.unidad===u?'selected':''}>${u}</option>`).join('')}</select>`:esc(r.unidad||'')}</td><td class="num">${fnum(r.cantidad,3)}</td>
     <td class="num"><input class="mini" type="number" step="any" inputmode="decimal" value="${e!==undefined?e:isNum(r.cantidad)}" onchange="isSet('${esc(r.id)}',this.value)" style="${camb?'border-color:var(--oro);font-weight:700':''}"></td></tr>`}).join('')||'<tr><td colspan="5" class="muted">No hay productos con ese filtro.</td></tr>'}
   </table></div>
   ${cambios.length?`<div class="acciones" style="margin-top:10px"><button class="btn" onclick="isGuardar()">💾 Guardar ${cambios.length} cambio${cambios.length>1?'s':''}</button></div>`:''}`;
 }
 function isSet(id,v){IS.edit[id]=v===''?0:+v;vInvSalon()}
+async function isUnidad(id,u){const r=IS.rows.find(x=>x.id===id);if(!r)return;await sbUpd('salon_stock','id=eq.'+encodeURIComponent(id),{unidad:u});r.unidad=u;toast('Unidad actualizada ✅')}
 async function isGuardar(tipo,archivo){
   tipo=tipo||(IS.origen&&IS.origen.tipo)||'manual';archivo=archivo||(IS.origen&&IS.origen.archivo)||null;
   const cambios=isCambios();if(!cambios.length)return toast('No hay cambios para guardar');
   const ahora=new Date().toISOString();
-  const rows=cambios.map(r=>({...r,cantidad:isNum(IS.edit[r.id]),updated_at:ahora}));
+  const rows=cambios.map(({grupo,...r})=>({...r,cantidad:isNum(IS.edit[r.id]),updated_at:ahora}));
   for(let i=0;i<rows.length;i+=200)await sbIns('salon_stock?on_conflict=id',rows.slice(i,i+200),true);
   const det=cambios.map(r=>({id:r.id,nombre:r.nombre,antes:isNum(r.cantidad),despues:isNum(IS.edit[r.id])}));
   try{await sbIns('salon_inventarios',[{tipo,usuario:(window.POLY_USUARIO||{}).usuario||null,archivo,detalle:det}])}catch(e){}
@@ -986,12 +991,12 @@ async function vVenta(){
   }
   $('#app').innerHTML=html;
 }
-async function pvGuardarVinc(k){const l=PV._filas[k];const v=$('#pva'+k).value;const p=pvLeer(v);
+async function pvGuardarVinc(k){IS.cargado=false;const l=PV._filas[k];const v=$('#pva'+k).value;const p=pvLeer(v);
   if(v.trim()&&!p)return toast('No encontré ese producto. Elegilo de la lista.');
   if(!p){const a=pvAliasDe(l.k);if(a)return pvQuitarVinc(a.alias);return toast('Elegí un producto de venta');}
   const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:l.k,codigo:p.codigo}],true);
   PV.alias=PV.alias.filter(a=>a.alias!==l.k).concat([x]);toast('Vinculado ✅ '+l.nombre+' → '+p.nombre);vVenta()}
-async function pvQuitarVinc(alias){await sbDel('productos_venta_alias','alias=eq.'+encodeURIComponent(alias));PV.alias=PV.alias.filter(a=>a.alias!==alias);toast('Vínculo quitado');vVenta()}
+async function pvQuitarVinc(alias){IS.cargado=false;await sbDel('productos_venta_alias','alias=eq.'+encodeURIComponent(alias));PV.alias=PV.alias.filter(a=>a.alias!==alias);toast('Vínculo quitado');vVenta()}
 async function pvVincularNuevo(){const n=normV($('#pvNn').value);const p=pvLeer($('#pvNp').value);if(!n)return toast('Escribí el nombre');if(!p)return toast('Elegí el producto de venta de la lista');
   const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:n,codigo:p.codigo}],true);PV.alias=PV.alias.filter(a=>a.alias!==n).concat([x]);
   if(!PV.llegadas.find(l=>l.k===n))PV.llegadas.push({k:n,nombre:$('#pvNn').value.trim(),sectores:new Set(),veces:0});toast('Vinculado ✅');vVenta()}

@@ -565,9 +565,9 @@ function initStock() {
 let stockSync = null;
 async function syncStockServidor(inicial) {
   let rows = null;
-  try { rows = await sbSelect('salon_stock', '?select=id,cantidad'); } catch(e) {}
+  try { rows = await sbSelect('salon_stock', '?select=id,cantidad,unidad,nombre'); } catch(e) {}
   if (!Array.isArray(rows)) return; // sin conexión: queda lo local y se reintenta en un minuto
-  const srv = {}; rows.forEach(r => srv[r.id] = +r.cantidad || 0);
+  const srv = {}; rows.forEach(r => { srv[r.id] = +r.cantidad || 0; STOCK_META[r.id] = { unidad: r.unidad, nombre: r.nombre }; });
   const base = stockSync, nuevo = {};
   let cambio = false;
   Object.keys(srv).forEach(id => {
@@ -585,11 +585,11 @@ async function syncStockServidor(inicial) {
 function saveStock() {
   localStorage.setItem(STOCK_KEY, JSON.stringify(stockState));
   if (stockSync === null) return; // todavía no se leyó la base: no pisar
-  const allItems = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL];
+  const allItems = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA, ...INSUMOS_LOCAL, ...itemsVentaStock()];
   const rows = allItems.filter(item => (stockState[item.id]||0) !== stockSync[item.id]).map(item => ({
     id: item.id, nombre: item.nombre, cantidad: stockState[item.id]||0,
     unidad: item.unidad, sector: item.sector||'insumos', min_local: item.minLocal||0,
-    precio: getPrecio(item.id), updated_at: new Date().toISOString()
+    precio: item.precio != null ? item.precio : getPrecio(item.id), updated_at: new Date().toISOString()
   }));
   if (!rows.length) return;
   rows.forEach(r => stockSync[r.id] = r.cantidad);
@@ -698,13 +698,41 @@ function getStatus(item) {
 }
 
 // ── RENDER STOCK ──────────────────────────────────
+// ── STOCK AGRUPADO POR PRODUCTO DE VENTA ──────────
+// Lo que llega de producción se suma al producto con que se vende en el local (Facturas, Empanadas, Cremonas…),
+// según los vínculos de Gestión → Productos de venta. El id de stock es 'pv:<código>'.
+let STOCK_META = {};
+function codigoVentaDe(id, nombre) {
+  if (typeof id === 'string' && id.startsWith('pv:')) return id.slice(3);
+  if (!CATALOGO_VENTA_DB) return null;
+  const cat = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA].find(p => p.id === id);
+  const cands = [nombre, cat && cat.nombre, String(id || '').replace(/_/g, ' ')];
+  for (const n of cands) {
+    if (!n) continue;
+    const k = normCtrl(n);
+    if (ALIAS_INGRESO[k]) return ALIAS_INGRESO[k];
+    const pv = CONTROL_CATALOGO.find(x => normCtrl(x.n) === k);
+    if (pv) return pv.c;
+  }
+  return null;
+}
+function stockIdDe(id, nombre) { const c = codigoVentaDe(id, nombre); return c ? 'pv:' + c : id; }
+function itemsVentaStock() {
+  if (!CATALOGO_VENTA_DB) return [];
+  return CONTROL_CATALOGO.filter(p => stockState['pv:' + p.c] !== undefined)
+    .map(p => ({ id: 'pv:' + p.c, nombre: p.n, unidad: (STOCK_META['pv:' + p.c] || {}).unidad || 'u', sector: 'venta', minLocal: 0, paso: 1, precio: p.p }));
+}
+
 function renderStock(filterQ) {
   filterQ = (filterQ || '').toLowerCase().trim();
   const el = document.getElementById('stock-list');
   if (!el) return;
 
-  const allProds = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA];
+  const agrupado = p => CATALOGO_VENTA_DB && !(stockState[p.id] > 0) && codigoVentaDe(p.id, p.nombre);
+  const allProds = [...PRODUCTOS_LOCAL, ...PRODUCTOS_EXTRA].filter(p => !agrupado(p));
+  const ventaItems = itemsVentaStock().filter(p => stockState[p.id] > 0 || !filterQ || p.nombre.toLowerCase().includes(filterQ));
   const sectors = [
+    { key:'venta', label:'🏷️ Como se venden en el local', items: ventaItems.filter(p => stockState[p.id] > 0 || filterQ) },
     { key:'panaderia', label:'🍞 Panadería', items:allProds.filter(p=>p.sector==='panaderia') },
     { key:'pasteleria', label:'🍰 Pastelería', items:allProds.filter(p=>p.sector==='pasteleria') },
     { key:'cocina', label:'🍳 Cocina', items:allProds.filter(p=>p.sector==='cocina') },
@@ -735,8 +763,8 @@ function renderStock(filterQ) {
           </div>
           <div class="stock-min">Mínimo recomendado: ${item.minLocal} ${item.unidad}</div>
           <div class="stock-min" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-            💲 Precio: <strong>${fmtPrecio(getPrecio(item.id))}</strong>
-            <button onclick="editarPrecio('${item.id}')" style="background:#EDE7F6;color:#4A148C;border:none;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;">✏️ Editar</button>
+            💲 Precio: <strong>${fmtPrecio(item.precio != null ? item.precio : getPrecio(item.id))}</strong>
+            <button onclick="editarPrecio('${item.id}')" ${item.sector === 'venta' ? 'hidden' : ''} style="background:#EDE7F6;color:#4A148C;border:none;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;">✏️ Editar</button>
           </div>
         </div>
       </div>`;
@@ -1215,7 +1243,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initStock();
   initRecepcionSelect();
   initEgresosSelect();
-  cargarCatalogoVenta();
+  cargarCatalogoVenta().then(function(){ try { renderStock(); } catch(e){} });
   renderStock();
   renderInsumosPanel();
   renderRecepcionHistory();
@@ -1401,7 +1429,7 @@ const ALIAS_DESPACHO = {
   'sandwich_de_miga_jamon_crudo_y_rucula':'sandwich_jamon_crudo'
 };
 // Resuelve un despacho entrante a un id de producto del Salón (evita duplicados)
-function resolverProductoSalon(productoId, productoNombre){
+function resolverProductoSalonBase(productoId, productoNombre){
   const cat = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL);
   const nkNom = normKeySalon(productoNombre);
   const nkId = normKeySalon(productoId);
@@ -1417,13 +1445,18 @@ function resolverProductoSalon(productoId, productoNombre){
   // id estable derivado del nombre (un solo producto por receta, sin duplicar)
   return nkNom || nkId || ('rec_'+Date.now());
 }
+function resolverProductoSalon(productoId, productoNombre){
+  const pid = resolverProductoSalonBase(productoId, productoNombre);
+  return stockIdDe(pid, productoNombre);
+}
 
 async function confirmarDespacho(id){
   const r = despachosPend.find(function(x){ return String(x.id)===String(id); });
   if(!r) return;
+  try { await cargarCatalogoVenta(); } catch(e){}
   const pid = resolverProductoSalon(r.producto_id, r.producto_nombre);
   const cant = Number(r.cantidad)||0;
-  const known = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL).some(function(p){ return p.id===pid; });
+  const known = String(pid).startsWith('pv:') || [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL).some(function(p){ return p.id===pid; });
   if(!known){
     PRODUCTOS_EXTRA.push({ id:pid, nombre:(r.producto_nombre||pid), unidad:'u', sector:(r.sector_origen||'salon'), minLocal:0, paso:1 });
     localStorage.setItem('salon_extra_productos', JSON.stringify(PRODUCTOS_EXTRA));
@@ -1431,7 +1464,7 @@ async function confirmarDespacho(id){
   stockState[pid] = (stockState[pid]||0) + cant;
   saveStock();
   try { await sbFetch('PATCH','salon_recepciones',{ estado:'confirmado', confirmado_at:new Date().toISOString() }, '?id=eq.'+encodeURIComponent(id)); } catch(e){ console.warn(e); }
-  if (typeof addToLog==='function') addToLog('📥 Recepción confirmada: +'+cant+' '+(r.producto_nombre||pid)+' (de '+(r.sector_origen||'')+')');
+  if (typeof addToLog==='function') addToLog('📥 Recepción confirmada: +'+cant+' '+(r.producto_nombre||pid)+(String(pid).startsWith('pv:')?' → '+getItemName(pid):'')+' (de '+(r.sector_origen||'')+')');
   await loadDespachosPendientes();
   renderStock();
   showToast('✓ Sumado al stock');
