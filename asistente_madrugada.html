@@ -482,6 +482,8 @@
 
   <div id="tabs">
     <button class="tab active" onclick="switchTab('hornear')" id="tab-hornear"><i class="ti ti-flame"></i>A hornear</button>
+    <button class="tab" onclick="switchTab('produccion')" id="tab-produccion"><i class="ti ti-bread"></i>Producción</button>
+    <button class="tab" onclick="switchTab('churrero')" id="tab-churrero"><i class="ti ti-receipt"></i>Churrero</button>
     <button class="tab" onclick="switchTab('despachados')" id="tab-despachados"><i class="ti ti-send"></i>Despachados</button>
     <button class="tab" onclick="switchTab('mermas')" id="tab-mermas"><i class="ti ti-trash"></i>Mermas</button>
     <button class="tab" onclick="switchTab('registro')" id="tab-registro"><i class="ti ti-clipboard-list"></i>Registro</button>
@@ -494,6 +496,20 @@
       <button onclick="loadLeudando()" style="background:#E8F5E9;color:#1B5E20;border:none;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;"><i class="ti ti-refresh"></i> Actualizar</button>
     </div>
     <div id="hornear-list" style="flex:1;overflow-y:auto;padding:8px 14px 16px;"></div>
+  </div>
+
+  <!-- PRODUCCIÓN: cualquier receta, con lo que salió de verdad -->
+  <div class="panel" id="panel-produccion">
+    <div style="padding:10px 14px 4px;">
+      <input id="pr-bus" class="search-input" placeholder="Buscar receta…" oninput="renderRecetasMad()" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid #ddd;border-radius:10px;font-size:15px;">
+      <div id="pr-sect" style="display:flex;gap:6px;overflow-x:auto;margin-top:8px;"></div>
+    </div>
+    <div id="pr-list" style="flex:1;overflow-y:auto;padding:8px 14px 16px;"></div>
+  </div>
+
+  <!-- CHURRERO: boleta diaria -->
+  <div class="panel" id="panel-churrero">
+    <div id="ch-form" style="flex:1;overflow-y:auto;padding:12px 14px 16px;"></div>
   </div>
 
   <!-- DESPACHADOS -->
@@ -544,6 +560,31 @@
   </div>
 </div>
 
+<!-- MODAL PRODUCCIÓN -->
+<div id="prod-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-end;justify-content:center;">
+  <div style="background:#fff;width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:18px 18px 24px;max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+      <h2 style="margin:0;font-size:19px;color:#1B5E20;">🍞 Salió del horno</h2>
+      <button onclick="cerrarProd()" style="background:none;border:none;font-size:24px;color:#999;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <p style="margin:2px 0 4px;font-size:16px;font-weight:700;" id="pm-nombre"></p>
+    <p style="margin:0 0 12px;font-size:12px;color:#888;" id="pm-info"></p>
+    <div style="display:flex;gap:10px;">
+      <div style="flex:1"><label style="font-size:13px;font-weight:600;">Unidades que salieron</label>
+        <input type="number" id="pm-u" min="0" step="1" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
+      <div style="flex:1"><label style="font-size:13px;font-weight:600;">Kilos (si se pesa)</label>
+        <input type="number" id="pm-kg" min="0" step="0.01" inputmode="decimal" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
+    </div>
+    <div id="pm-esperado" style="font-size:12px;color:#666;margin-top:6px;"></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:12px;color:#333;"><input type="checkbox" id="pm-desc" style="width:20px;height:20px;margin-top:1px"> <span>La masa la hicimos en Madrugada: <b>descontar los ingredientes</b> del depósito. (Si la masa vino de Panadería, Cocina o Pastelería, dejalo sin marcar: ya se descontó allá.)</span></label>
+    <label style="font-size:13px;color:#333;font-weight:600;display:block;margin-top:12px;">Foto (opcional)</label>
+    <label style="display:block;background:#E8F5E9;color:#1B5E20;border-radius:8px;padding:11px;text-align:center;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px;">
+      <i class="ti ti-camera"></i> Sacar / elegir foto<input type="file" accept="image/*" capture="environment" onchange="prodFoto=this.files[0]||null;document.getElementById('pm-foto').textContent=prodFoto?'📷 '+prodFoto.name:''" style="display:none;"></label>
+    <div id="pm-foto" style="font-size:12px;color:#666;margin-top:4px;"></div>
+    <button onclick="confirmarProd()" id="pm-ok" style="width:100%;margin-top:16px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-send"></i> Despachar al Salón</button>
+  </div>
+</div>
+
 <div id="toast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B5E20;color:#fff;padding:12px 20px;border-radius:24px;font-size:14px;font-weight:600;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.25);"></div>
 
 <script>
@@ -587,6 +628,8 @@ function switchTab(name){
   if (_panel) _panel.classList.add('active');
   if(name==='hornear') loadLeudando();
   if(name==='despachados') loadDespachados();
+  if(name==='produccion') loadRecetasMad();
+  if(name==='churrero') loadChurrero();
   if(name==='mermas') loadMermas();
   if(name==='registro') loadRegistro();
 }
@@ -683,7 +726,8 @@ async function confirmHornear(){
     }
     await sbFetch('PATCH', 'cocina_leudado', { estado:'horneado', horneado_at:new Date().toISOString(), cantidad: horn }, '?id=eq.' + encodeURIComponent(pendingItem.id));
     await sbLog('madrugada','horneado','Horneado y despachado al Salón: '+horn+' '+(pendingItem.producto_nombre||pendingItem.producto_id)+(merma>0?(' (merma '+merma+')'):''), horn, pendingItem.producto_id, 'u');
-    toast('✅ Despachado al Salón'+(merma>0?(' · merma '+merma):''));
+    const rell = await descontarRelleno(pendingItem.producto_nombre || pendingItem.producto_id, horn);
+    toast('✅ Despachado al Salón'+(merma>0?(' · merma '+merma):'')+rell);
   } catch(e){ console.error(e); toast('⚠️ Hubo un error, probá de nuevo'); }
   btn.disabled = false; btn.style.opacity = '1';
   closeModal(); setStatus('Listo');
@@ -743,6 +787,129 @@ async function cerrarDia(){
   await sbLog('madrugada','cierre','🔒 Cierre de día de Madrugada');
   toast('✅ Día cerrado');
   loadRegistro();
+}
+
+
+// ── RELLENOS: al hornear lenguitas, popurrí, etc. se descuenta la crema pastelera (u otro relleno) del stock de Cocina.
+// Las reglas (qué producto, qué relleno, cuántos gramos por unidad) se cargan en Gestión → Depósitos.
+async function descontarRelleno(producto, unidades){
+  if (!(unidades > 0)) return '';
+  try {
+    const r = await polyRPC('madrugada_consumos', { p_producto: producto, p_unidades: unidades, p_usuario: (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null });
+    if (!r || !r.aplicado) return '';
+    await sbLog('madrugada', 'relleno', 'Se usaron ' + r.kg + ' kg de ' + r.insumo + ' (' + r.gramos + ' g × ' + unidades + ' ' + producto + '). Quedan ' + r.quedan + ' kg', r.kg, null, 'kg');
+    return ' · usaste ' + String(r.kg).replace('.', ',') + ' kg de ' + r.insumo.toLowerCase() + (r.quedan < 1 ? ' ⚠️ queda poca (' + String(r.quedan).replace('.', ',') + ' kg)' : '');
+  } catch (e) { console.warn('relleno', e); return ''; }
+}
+
+// ── PRODUCCIÓN: todas las recetas, cargando lo que salió de verdad ─────────
+let recetasMad = [], prodSel = null, prodFoto = null, prodSect = '';
+const SECT_MAD = { panaderia:'🍞 Panadería', pasteleria:'🍰 Pastelería', cocina:'🍳 Cocina' };
+function nrmMad(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+function escMad(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function loadRecetasMad(){
+  if (recetasMad.length) { renderRecetasMad(); return; }
+  setStatus('Cargando recetas…');
+  const rows = await sbSelect('recetas', '?select=id,nombre,sector,tipo,unidad_venta,unidades_tanda,peso_unidad_g&tipo=in.(PRODUCCION,BASE)&order=nombre.asc') || [];
+  const vistos = {};
+  recetasMad = rows.filter(r => { const n = nrmMad(r.nombre); if (!n || n.includes('mayorista') || n.includes('(nativo)') || vistos[n]) return false; vistos[n] = 1; return true; });
+  renderRecetasMad(); setStatus('Listo');
+}
+function renderRecetasMad(){
+  const q = nrmMad((document.getElementById('pr-bus')||{}).value);
+  const sects = [['', 'Todas']].concat(Object.entries(SECT_MAD));
+  document.getElementById('pr-sect').innerHTML = sects.map(([k,t]) => '<button onclick="prodSect=\''+k+'\';renderRecetasMad()" style="flex-shrink:0;border:1.5px solid #C8E6C9;border-radius:16px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;background:'+(prodSect===k?'#1B5E20;color:#fff':'#fff;color:#1B5E20')+'">'+t+'</button>').join('');
+  const L = recetasMad.filter(r => (!prodSect || r.sector === prodSect) && (!q || nrmMad(r.nombre).includes(q)));
+  const el = document.getElementById('pr-list');
+  if (!L.length) { el.innerHTML = emptyState(recetasMad.length ? 'No hay recetas con ese nombre.' : 'No se pudieron cargar las recetas.', ''); return; }
+  el.innerHTML = '<div style="font-size:12px;color:#888;margin-bottom:6px;">Tocá la receta que horneaste y cargá cuánto salió.</div>' + L.map(r =>
+    '<div onclick="abrirProd(\''+r.id+'\')" style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;">'
+    + '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:15px;">'+escMad(r.nombre)+'</div><div style="font-size:12px;color:#888;">'+(SECT_MAD[r.sector]||r.sector||'')+(r.unidades_tanda?' · rinde '+r.unidades_tanda+' '+(r.unidad_venta||'u')+' por tanda':'')+'</div></div>'
+    + '<i class="ti ti-chevron-right" style="color:#bbb;font-size:20px;"></i></div>').join('');
+}
+function abrirProd(id){
+  prodSel = recetasMad.find(r => String(r.id) === String(id)); if (!prodSel) return; prodFoto = null;
+  document.getElementById('pm-nombre').textContent = prodSel.nombre;
+  document.getElementById('pm-info').textContent = (SECT_MAD[prodSel.sector]||'') + ' · se vende por ' + (prodSel.unidad_venta === 'kg' ? 'kilo' : 'unidad');
+  document.getElementById('pm-u').value = ''; document.getElementById('pm-kg').value = ''; document.getElementById('pm-desc').checked = false; document.getElementById('pm-foto').textContent = '';
+  document.getElementById('pm-esperado').textContent = prodSel.unidades_tanda ? 'Una tanda suele rendir ' + prodSel.unidades_tanda + ' ' + (prodSel.unidad_venta||'u') + '. Cargá lo que salió de verdad, aunque sea más o menos.' : '';
+  document.getElementById('prod-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById(prodSel.unidad_venta === 'kg' ? 'pm-kg' : 'pm-u').focus(), 80);
+}
+function cerrarProd(){ document.getElementById('prod-modal').style.display = 'none'; prodSel = null; prodFoto = null; }
+async function confirmarProd(){
+  if (!prodSel) return;
+  const u = Number(document.getElementById('pm-u').value) || 0, kg = Number(document.getElementById('pm-kg').value) || 0;
+  const porKg = prodSel.unidad_venta === 'kg';
+  const cant = porKg ? (kg || u) : (u || 0);
+  if (!(cant > 0)) { toast(porKg ? 'Poné los kilos que salieron' : 'Poné cuántas unidades salieron'); return; }
+  const btn = document.getElementById('pm-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Despachando…');
+  let foto = null; if (prodFoto) { try { foto = await uploadFoto(prodFoto, { producto_id: 'rec_' + prodSel.id }); } catch (e) { console.warn('foto', e); } }
+  try {
+    await sbUpsert('salon_recepciones', [{ producto_id: 'rec_' + prodSel.id, producto_nombre: prodSel.nombre, cantidad: Math.round(cant * 1000) / 1000,
+      sector_origen: 'madrugada', destino: 'salon', estado: 'despachado', foto_url: foto }]);
+    if (document.getElementById('pm-desc').checked) {
+      try { await polyRPC('registrar_produccion', { p_sector: 'madrugada', p_producto: prodSel.nombre, p_tandas: 1, p_unidades: cant, p_unidades_por_tanda: null }); } catch (e) { console.warn('insumos', e); }
+    }
+    await sbLog('madrugada', 'produccion', 'Horneado y despachado al Salón: ' + (porKg ? cant + ' kg' : cant + ' u') + ' ' + prodSel.nombre + (kg && !porKg ? ' (' + kg + ' kg)' : '') + (u && porKg ? ' (' + u + ' u)' : ''), cant, 'rec_' + prodSel.id, porKg ? 'kg' : 'u');
+    const rell = porKg ? '' : await descontarRelleno(prodSel.nombre, cant);
+    toast('✅ Despachado al Salón: ' + cant + (porKg ? ' kg' : ' u') + rell);
+    cerrarProd();
+  } catch (e) { console.error(e); toast('⚠️ Hubo un error, probá de nuevo'); }
+  btn.disabled = false; btn.style.opacity = '1'; setStatus('Listo');
+}
+
+// ── CHURRERO: boleta del día (precios fijos cargados en Gestión) ─────────
+let chItems = [], chBoletas = [];
+function hoyMad(){ const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function pesos(n){ return '$ ' + Math.round(+n||0).toLocaleString('es-AR'); }
+async function loadChurrero(){
+  setStatus('Cargando…');
+  const [cfg, bol] = await Promise.all([sbSelect('config', '?clave=eq.churrero'), sbSelect('churrero_boletas', '?order=fecha.desc,id.desc&limit=14')]);
+  chItems = (((cfg||[])[0]||{}).valor||{}).items || []; chBoletas = bol || [];
+  renderChurrero(); setStatus('Listo');
+}
+function chCalcular(){
+  let t = 0; chItems.forEach((it, i) => { const q = Number((document.getElementById('ch-q' + i)||{}).value) || 0; t += q * (Number(it.precio)||0);
+    const s = document.getElementById('ch-s' + i); if (s) s.textContent = q ? pesos(q * (Number(it.precio)||0)) : ''; });
+  document.getElementById('ch-total').textContent = pesos(t);
+}
+function renderChurrero(){
+  const el = document.getElementById('ch-form');
+  if (!chItems.length) { el.innerHTML = emptyState('Todavía no hay productos del churrero.', 'Se cargan en Gestión → Churrero.'); return; }
+  const sinPrecio = chItems.some(it => !(Number(it.precio) > 0));
+  el.innerHTML = '<div style="font-size:15px;font-weight:800;color:#1B5E20;margin-bottom:4px;">🍩 Boleta del churrero</div>'
+    + '<div style="font-size:12px;color:#888;margin-bottom:10px;">Cargá lo que trajo hoy. Entra al Salón para confirmar: churros y donas como Facturas, pastelitos como Pastelitos.</div>'
+    + '<label style="font-size:13px;font-weight:600;">Fecha</label><input type="date" id="ch-fecha" value="' + hoyMad() + '" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;">'
+    + chItems.map((it, i) => '<div style="display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #eee;border-radius:10px;padding:10px;margin-bottom:8px;">'
+      + '<div style="flex:1;min-width:0;"><div style="font-weight:700;">' + escMad(it.nombre) + '</div><div style="font-size:12px;color:#888;">' + (Number(it.precio) > 0 ? pesos(it.precio) + ' por ' + (it.unidad === 'docena' ? 'docena' : 'unidad') : 'sin precio') + ' · al local: ' + escMad(it.destino||'Facturas') + '</div><div id="ch-s' + i + '" style="font-size:12px;color:#1B5E20;font-weight:700;"></div></div>'
+      + '<input type="number" id="ch-q' + i + '" min="0" step="1" inputmode="numeric" placeholder="0" oninput="chCalcular()" style="width:90px;padding:10px;font-size:18px;text-align:center;border:1.5px solid #C8E6C9;border-radius:8px;font-weight:700;">'
+      + '<span style="font-size:12px;color:#888;width:46px;">' + (it.unidad === 'docena' ? 'doc.' : 'u') + '</span></div>').join('')
+    + (sinPrecio ? '<div style="font-size:12px;color:#B71C1C;margin:4px 0 8px;">Hay productos sin precio: avisale a Poly para que los cargue en Gestión.</div>' : '')
+    + '<div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin:10px 2px;"><span>Total</span><span id="ch-total">$ 0</span></div>'
+    + '<button onclick="guardarBoleta()" id="ch-ok" style="width:100%;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-device-floppy"></i> Guardar boleta y mandar al Salón</button>'
+    + '<div style="font-size:14px;font-weight:700;color:#1B5E20;margin:18px 0 6px;">Últimas boletas</div>'
+    + (chBoletas.length ? chBoletas.map(b => '<div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:13px;"><div style="display:flex;justify-content:space-between;font-weight:700;"><span>' + new Date(b.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday:'short', day:'2-digit', month:'2-digit' }) + '</span><span>' + pesos(b.total) + (b.pago_id ? ' · ✅ pagada' : '') + '</span></div><div style="color:#666;">' + (b.items||[]).map(x => x.cantidad + ' ' + escMad(x.nombre)).join(' · ') + '</div></div>').join('') : '<div style="font-size:13px;color:#999;">Todavía no hay boletas.</div>');
+  chCalcular();
+}
+async function guardarBoleta(){
+  const fecha = document.getElementById('ch-fecha').value || hoyMad();
+  const items = chItems.map((it, i) => { const q = Number(document.getElementById('ch-q' + i).value) || 0; return q > 0 ? { id: it.id, nombre: it.nombre, cantidad: q, unidad: it.unidad || 'u', precio: Number(it.precio)||0, subtotal: Math.round(q * (Number(it.precio)||0) * 100) / 100, destino: it.destino || 'Facturas' } : null; }).filter(Boolean);
+  if (!items.length) { toast('Cargá al menos una cantidad'); return; }
+  if (chBoletas.some(b => b.fecha === fecha) && !confirm('Ya hay una boleta cargada para ese día. ¿Cargar otra igual?')) return;
+  const total = items.reduce((a, x) => a + x.subtotal, 0);
+  const btn = document.getElementById('ch-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Guardando…');
+  try {
+    const usr = (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null;
+    const res = await sbUpsert('churrero_boletas', [{ fecha, items, total, cargado_por: usr }]);
+    if (!res) throw new Error('No se pudo guardar');
+    const rec = await sbUpsert('salon_recepciones', items.map(x => ({ producto_id: 'churrero_' + x.id, producto_nombre: x.nombre, cantidad: x.cantidad * (x.unidad === 'docena' ? 12 : 1), sector_origen: 'churrero', destino: 'salon', estado: 'despachado' })));
+    if (!rec) toast('⚠️ La boleta se guardó pero no llegó al Salón: avisá para que lo carguen a mano');
+    await sbLog('madrugada', 'churrero', 'Boleta del churrero ' + fecha + ': ' + items.map(x => x.cantidad + ' ' + x.nombre).join(', ') + ' · ' + pesos(total), total, null, '$');
+    toast('✅ Boleta guardada y enviada al Salón');
+    await loadChurrero();
+  } catch (e) { console.error(e); toast('⚠️ ' + (e.message || 'Hubo un error, probá de nuevo')); btn.disabled = false; btn.style.opacity = '1'; }
+  setStatus('Listo');
 }
 
 // auto-refresh de lo que está leudando mientras se mira esa solapa

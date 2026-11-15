@@ -149,13 +149,16 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#produccion">🏭 Producción</a>
   <a href="#inventario">📦 Inventario</a>
   <a href="#depositos">🧊 Depósitos</a>
+  <a href="#churrero">🍩 Churrero</a>
   <a href="#invsalon">🏪 Inventario Salón</a>
   <a href="#venta">🏷️ Productos de venta</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#estadisticas">📊 Estadísticas</a>
   <a href="#mayoristas">🤝 Clientes</a>
+  <a href="#comunidad">⭐ Comunidad</a>
   <a href="#campanias">📣 Campañas</a>
+  <a href="#contenidos">📝 Contenidos</a>
   <a href="#rrhh">👥 RRHH</a>
   <a href="#usuarios">🔐 Usuarios</a>
 </nav>
@@ -492,11 +495,29 @@ async function vDepositos(){
   <div class="acciones" style="margin:10px 0">
     <input placeholder="Buscar producto…" value="${esc(DEP.f)}" id="depBus" style="max-width:260px" oninput="DEP.f=this.value;clearTimeout(window._tdep);window._tdep=setTimeout(()=>{vDepositos();const i=$('#depBus');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)">
     ${t!=='historial'?`<button class="btn sec" onclick="depCeroTab()">0️⃣ Poner esta pestaña en 0</button>`:''}
+    <button class="btn sec" onclick="rellAbrir()">🥄 Rellenos al hornear</button>
     <button class="btn sec" onclick="if(depCambios().length&&!confirm('Tenés cambios sin guardar. ¿Recargar igual?'))return;DEP.cargado=false;DEP.edit={};vDepositos()">🔄 Recargar</button>
   </div>
   ${cuerpo}
   ${cambios.length?`<div class="acciones" style="margin-top:10px"><button class="btn" onclick="depGuardar()">💾 Guardar ${cambios.length} cambio${cambios.length>1?'s':''}</button></div>`:''}`;
 }
+
+// Rellenos que Madrugada descuenta del stock de Cocina (heladera, en kg) al hornear: ej. 50 g de crema pastelera por lenguita.
+async function rellAbrir(){let cfg={reglas:[]};try{const c=await sbGet('config','clave=eq.consumos_horneado');cfg=((c||[])[0]||{}).valor||cfg}catch(e){}
+  window._rell=(cfg.reglas||[]).slice();rellPintar()}
+function rellPintar(){const R=window._rell;const cs=(DEP.cocina||[]).map(r=>r.nombre||r.id);
+  modal(`<h2>🥄 Rellenos al hornear</h2>
+  <p class="muted">Cuando Madrugada hornea un producto que contiene la palabra de la izquierda, se descuentan esos gramos por unidad del relleno en la <b>heladera de Cocina</b> (en kilos). Ej.: 30 lenguitas × 50 g = 1,5 kg de crema pastelera.</p>
+  <table><tr><th>Si el producto dice…</th><th>Relleno (stock de Cocina)</th><th class="num">g por unidad</th><th></th></tr>
+  ${R.map((r,i)=>`<tr><td><input id="rlP${i}" value="${esc(r.patron||'')}" placeholder="ej: lenguita"></td><td><input id="rlI${i}" value="${esc(r.insumo||'')}" list="rlL" placeholder="Crema pastelera"></td><td class="num"><input id="rlG${i}" type="number" min="0" value="${+r.gramos||''}" style="max-width:90px;text-align:right"></td><td><button class="btn peq sec" onclick="rellLeer();window._rell.splice(${i},1);rellPintar()">✕</button></td></tr>`).join('')}</table>
+  <datalist id="rlL">${cs.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
+  <p class="muted" style="font-size:12px">"Popurrí + Roll" lleva 24 g de promedio porque de cada 17 unidades, 8 son popurrí con crema y 9 son rolls. Si en un producto aparecen dos palabras, se usa la más larga.</p>
+  <div class="acciones" style="margin-top:8px"><button class="btn sec" onclick="rellLeer();window._rell.push({patron:'',insumo:'Crema pastelera',gramos:50});rellPintar()">➕ Agregar</button><button class="btn" onclick="rellGuardar()">💾 Guardar</button></div>`)}
+function rellLeer(){window._rell=window._rell.map((r,i)=>({patron:($('#rlP'+i)||{}).value?.trim()||'',insumo:($('#rlI'+i)||{}).value?.trim()||'',gramos:+(($('#rlG'+i)||{}).value)||0}))}
+async function rellGuardar(){rellLeer();const reglas=window._rell.filter(r=>r.patron&&r.insumo&&r.gramos>0);
+  await sbIns('config',[{clave:'consumos_horneado',valor:{reglas}}],true);
+  for(const r of reglas){if(!(DEP.cocina||[]).some(x=>norm(x.nombre||x.id)===norm(r.insumo))){try{await polyRPC('stock_sector_ajustar',{p_sector:'cocina',p_nombre:r.insumo,p_delta:{},p_motivo:'alta relleno',p_usuario:null})}catch(e){}}}
+  toast('Guardado ✅');cerrarModal();DEP.cargado=false;vDepositos()}
 function depCeroTab(){
   const t=DEP.tab,tb=DEP_TABLA[t];if(!tb)return;
   DEP[t].forEach(r=>{
@@ -520,7 +541,7 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,campanias:vCampanias,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,campanias:vCampanias,contenidos:vContenidos,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -560,6 +581,8 @@ function insights(){
   const out=[];const H=hoy();
   if(CRM.cargado){crmCalcular();const tar=CRM.clis.filter(c=>c._estado==='tarea'),con=CRM.clis.filter(c=>c._estado==='contactar'&&c.tipo==='mayorista');
     if(tar.length)out.push({r:1,t:`${tar.length} tarea${tar.length>1?'s':''} con clientes para hoy`,d:tar.slice(0,4).map(c=>c.nombre+': '+(c.proxima_accion||'')).join(' · '),a:'#mayoristas',al:'Ver'});
+    const pub=contHoy();if(pub.length)out.push({t:`Hoy toca publicar: ${pub.length} contenido${pub.length>1?'s':''}`,d:pub.slice(0,4).map(x=>(CONT_CANAL[x.canal]||[x.canal])[0]+' '+(x.titulo||'')).join(' · '),a:'#contenidos',al:'Ver'});
+    const cum=CRM.clis.filter(c=>c.activo!==false&&c.cumpleanos&&comDiasCumple(c.cumpleanos)===0);if(cum.length)out.push({t:`🎂 Hoy cumple${cum.length>1?'n':''} años: ${cum.slice(0,4).map(c=>c.nombre).join(', ')}`,d:'Mandale un saludo con su regalo de cumpleaños.',a:'#comunidad',al:'Saludar'});
     if(con.length)out.push({t:`${con.length} mayorista${con.length>1?'s':''} para contactar`,d:'Dejaron de comprar a su ritmo: '+con.slice(0,5).map(c=>c.nombre+' ('+c._dias+' d)').join(', '),a:'#mayoristas',al:'Ver'})}
   D.cierres.filter(c=>diaLocal(c.fecha)>=sumaDias(H,-14)&&difCaja(c)!=null&&Math.abs(difCaja(c))>tolCaja()).forEach(c=>{const d=difCaja(c);
     out.push({r:1,t:`Diferencia de caja · ${fechaCorta(diaLocal(c.fecha))} ${turnoTxt(c)}`,d:`Cobrado ${$$(c.total)} vs vendido en Ayres ${$$(c.total_articulos)}: ${d<0?'falta':'sobra'} ${$$(Math.abs(d))}${c.responsable?' · '+c.responsable:''}.`,a:'#finanzas',al:'Ver'})});
@@ -971,7 +994,96 @@ function nutCompartir(id){$('#nuCanvas').toBlob(async b=>{const f=new File([b],n
   if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f],title:recMap[id]?.nombre})}catch(e){}}
   else{nutDescargar(id);toast('Tu navegador no permite compartir directo: se descargó la imagen para que la mandes por WhatsApp')}},'image/png')}
 
+
+// ================= CHURRERO =================
+// Proveedor que trae churros, donas y pastelitos (vie/sáb/dom). Madrugada carga la boleta del día con precios fijos
+// (config 'churrero'); acá se ven las boletas por semana y se registra el pago semanal (queda como factura pagada).
+let CH={cargado:false,items:[],bol:[],pagos:[]};
+async function cargarCH(){const [c,b,p]=await Promise.all([sbGet('config','clave=eq.churrero'),sbGet('churrero_boletas','order=fecha.desc,id.desc&limit=400'),sbGet('churrero_pagos','order=pagado_at.desc&limit=100')]);
+  CH.items=(((c||[])[0]||{}).valor||{}).items||[];CH.bol=b||[];CH.pagos=p||[];CH.cargado=true}
+function lunesDe(f){const d=new Date(f+'T12:00:00');const w=(d.getDay()+6)%7;return sumaDias(f,-w)}
+async function vChurrero(){
+  if(!CH.cargado){$('#app').innerHTML='<div class="cargando">Cargando…</div>';await cargarCH()}
+  const sem={};CH.bol.forEach(b=>{const k=lunesDe(b.fecha);(sem[k]=sem[k]||[]).push(b)});
+  const semanas=Object.keys(sem).sort().reverse();
+  const pend=CH.bol.filter(b=>!b.pago_id),deuda=pend.reduce((a,b)=>a+(+b.total||0),0);
+  const fmtD=f=>new Date(f+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});
+  $('#app').innerHTML=`<h2>🍩 Churrero</h2>
+  <p class="muted">Madrugada carga la boleta cada día que viene (Madrugada → Churrero) con los precios de acá. Lo que trae entra al Salón: churros y donas como <b>Facturas</b>, pastelitos como <b>Pastelitos</b>. Acá ves cuánto le debés y registrás el pago semanal.</p>
+  <div class="grid g4" style="margin-bottom:12px">
+    <div class="card kpi"><div class="lbl">Le debés</div><div class="val" style="color:${deuda?'var(--rojo)':'var(--verde)'}">${$$(deuda)}</div><div class="sub muted">${pend.length} boleta${pend.length===1?'':'s'} sin pagar</div></div>
+    <div class="card kpi"><div class="lbl">Último pago</div><div class="val" style="font-size:20px">${CH.pagos[0]?$$(CH.pagos[0].total):'—'}</div><div class="sub muted">${CH.pagos[0]?fechaCorta(diaLocal(CH.pagos[0].pagado_at)):''}</div></div>
+  </div>
+  <div class="card" style="margin-bottom:12px"><h3>💲 Precios</h3>
+    <div class="scroll"><table><tr><th>Producto</th><th>Se cobra por</th><th class="num">Precio</th><th>Va al local como</th><th></th></tr>
+    ${CH.items.map((it,i)=>`<tr><td><input id="chN${i}" value="${esc(it.nombre)}"></td><td><select id="chU${i}" style="width:auto"><option value="u" ${it.unidad!=='docena'?'selected':''}>unidad</option><option value="docena" ${it.unidad==='docena'?'selected':''}>docena</option></select></td>
+      <td class="num"><input id="chP${i}" type="number" min="0" value="${+it.precio||''}" placeholder="0" style="max-width:110px;text-align:right"></td>
+      <td><select id="chD${i}" style="width:auto"><option ${it.destino!=='Pastelitos'?'selected':''}>Facturas</option><option ${it.destino==='Pastelitos'?'selected':''}>Pastelitos</option></select></td>
+      <td><button class="btn peq sec" onclick="chQuitar(${i})">✕</button></td></tr>`).join('')}</table></div>
+    <div class="acciones" style="margin-top:8px"><button class="btn" onclick="chGuardarPrecios()">💾 Guardar precios</button><button class="btn sec" onclick="chAgregar()">➕ Agregar producto</button><button class="btn sec" onclick="chBoletaManual()">🧾 Cargar una boleta desde acá</button></div></div>
+  ${semanas.map(k=>{const L=sem[k].sort((a,b)=>a.fecha.localeCompare(b.fecha)),tot=L.reduce((a,b)=>a+(+b.total||0),0),imp=L.filter(b=>!b.pago_id),timp=imp.reduce((a,b)=>a+(+b.total||0),0);
+    const res={};L.forEach(b=>(b.items||[]).forEach(x=>{res[x.nombre]=(res[x.nombre]||0)+(+x.cantidad||0)}));
+    return `<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h3 style="margin:0">Semana del ${fechaCorta(k)} al ${fechaCorta(sumaDias(k,6))}</h3>
+      ${imp.length?`<button class="btn oro" onclick="chPagar('${k}')">💸 Registrar pago ${$$(timp)}</button>`:'<span class="chip" style="background:#E8F5E9;color:#2E7D32">✅ Pagada</span>'}</div>
+      <div class="muted" style="font-size:13px;margin:4px 0 8px">${Object.entries(res).map(([n,q])=>fnum(q,0)+' '+esc(n)).join(' · ')}</div>
+      <table><tr><th>Día</th><th>Detalle</th><th class="num">Total</th><th></th></tr>${L.map(b=>`<tr><td>${fmtD(b.fecha)}</td><td style="font-size:13px">${(b.items||[]).map(x=>fnum(x.cantidad,0)+' '+esc(x.nombre)+(x.precio?' × '+$$(x.precio):'')).join('<br>')}</td><td class="num">${$$(b.total)}</td><td>${b.pago_id?'<span class="muted" style="font-size:12px">pagada</span>':`<button class="btn peq sec" onclick="confirmar('¿Borrar la boleta del ${fmtD(b.fecha)}? Lo que se mandó al Salón no se descuenta solo.',()=>chBorrar(${b.id}))">🗑️</button>`}</td></tr>`).join('')}
+      <tr><td colspan="2"><b>Total de la semana</b></td><td class="num"><b>${$$(tot)}</b></td><td></td></tr></table></div>`}).join('')||'<div class="card muted">Todavía no hay boletas cargadas.</div>'}`;
+}
+function chLeer(){return CH.items.map((it,i)=>({id:it.id||norm($('#chN'+i).value).replace(/[^a-z0-9]+/g,'_'),nombre:$('#chN'+i).value.trim(),unidad:$('#chU'+i).value,precio:+$('#chP'+i).value||0,destino:$('#chD'+i).value})).filter(x=>x.nombre)}
+async function chGuardarPrecios(){const items=chLeer();await sbIns('config',[{clave:'churrero',valor:{items}}],true);CH.items=items;
+  const alias=items.map(x=>norm(x.nombre).replace(/[^a-z0-9]+/g,' ').trim()).filter(Boolean);
+  try{const ya=await sb('productos_venta_alias?select=alias&alias=in.('+alias.map(a=>'"'+a+'"').join(',')+')');const nuevos=items.filter(x=>!(ya||[]).some(y=>y.alias===norm(x.nombre).replace(/[^a-z0-9]+/g,' ').trim()));
+    if(nuevos.length)await sbIns('productos_venta_alias',nuevos.map(x=>({alias:norm(x.nombre).replace(/[^a-z0-9]+/g,' ').trim(),codigo:x.destino==='Pastelitos'?'99':'53'})))}catch(e){console.warn('alias churrero',e)}
+  toast('Precios guardados ✅');vChurrero()}
+function chAgregar(){CH.items=chLeer();CH.items.push({id:'item_'+Date.now(),nombre:'',unidad:'u',precio:0,destino:'Facturas'});vChurrero()}
+function chQuitar(i){CH.items=chLeer();CH.items.splice(i,1);vChurrero()}
+async function chBorrar(id){await sbDel('churrero_boletas','id=eq.'+id);CH.bol=CH.bol.filter(b=>b.id!==id);toast('Boleta borrada');vChurrero()}
+function chPagar(lunes){const L=CH.bol.filter(b=>!b.pago_id&&lunesDe(b.fecha)===lunes),tot=L.reduce((a,b)=>a+(+b.total||0),0);
+  modal(`<h2>💸 Pago al churrero</h2><p>Semana del ${fechaCorta(lunes)} al ${fechaCorta(sumaDias(lunes,6))}: <b>${L.length} boleta${L.length>1?'s':''}</b> por <b>${$$(tot)}</b>.</p>
+  <div class="fila"><div><label>Monto pagado</label><input id="chPm" type="number" value="${Math.round(tot)}"></div><div><label>Medio de pago</label><select id="chPmed"><option>Efectivo</option><option>Transferencia</option><option>Mercado Pago</option></select></div></div>
+  <label>Nota (opcional)</label><input id="chPn">
+  <p class="muted" style="font-size:12px">Queda registrado como una factura pagada del proveedor "Churrero", así se suma a tus compras en Finanzas.</p>
+  <div class="acciones" style="margin-top:10px"><button class="btn" id="chPok">Registrar pago</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  $('#chPok').onclick=async()=>{const monto=+$('#chPm').value||0;if(!(monto>0))return toast('Poné el monto');
+    const res={};L.forEach(b=>(b.items||[]).forEach(x=>{const r=res[x.nombre]||(res[x.nombre]={descripcion:x.nombre,cantidad:0,precio_unitario:x.precio||0,subtotal:0});r.cantidad+=+x.cantidad||0;r.subtotal+=+x.subtotal||0}));
+    const hasta=L.reduce((a,b)=>b.fecha>a?b.fecha:a,lunes);
+    const [fa]=await sbIns('facturas',[{proveedor:'Churrero',numero:'Semana '+lunes,tipo:'X',fecha:hasta,subtotal:monto,impuestos:0,total:monto,condicion_pago:$('#chPmed').value,categoria:'ALIMENTOS',estado:'pagada',items:Object.values(res),impacta_stock:false}]);
+    const [pg]=await sbIns('churrero_pagos',[{desde:lunes,hasta:sumaDias(lunes,6),total:monto,medio:$('#chPmed').value,notas:$('#chPn').value.trim()||null,factura_id:fa?fa.id:null,usuario:(window.POLY_USUARIO||{}).usuario||null}]);
+    await sbUpd('churrero_boletas','id=in.('+L.map(b=>b.id).join(',')+')',{pago_id:pg.id});
+    if(typeof D!=='undefined'&&D.facturas&&fa)D.facturas.unshift(fa);
+    CH.cargado=false;cerrarModal();toast('Pago registrado ✅');vChurrero()}}
+function chBoletaManual(){if(!CH.items.length)return toast('Primero cargá los productos y precios');
+  modal(`<h2>🧾 Boleta del churrero</h2><label>Fecha</label><input id="chBf" type="date" value="${hoy()}">
+  ${CH.items.map((it,i)=>`<div class="fila" style="align-items:center"><div style="flex:2"><b>${esc(it.nombre)}</b><div class="muted" style="font-size:12px">${$$(it.precio)} por ${it.unidad==='docena'?'docena':'unidad'}</div></div><div><input id="chBq${i}" type="number" min="0" placeholder="0"></div></div>`).join('')}
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="chBs" checked style="width:auto"> Mandar al Salón para que lo confirmen</label>
+  <div class="acciones" style="margin-top:10px"><button class="btn" id="chBok">Guardar</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  $('#chBok').onclick=async()=>{const fecha=$('#chBf').value||hoy();const items=CH.items.map((it,i)=>{const q=+$('#chBq'+i).value||0;return q>0?{id:it.id,nombre:it.nombre,cantidad:q,unidad:it.unidad||'u',precio:+it.precio||0,subtotal:Math.round(q*(+it.precio||0)*100)/100,destino:it.destino||'Facturas'}:null}).filter(Boolean);
+    if(!items.length)return toast('Cargá al menos una cantidad');const total=items.reduce((a,x)=>a+x.subtotal,0);
+    await sbIns('churrero_boletas',[{fecha,items,total,cargado_por:(window.POLY_USUARIO||{}).usuario||null}]);
+    if($('#chBs').checked)await sbIns('salon_recepciones',items.map(x=>({producto_id:'churrero_'+x.id,producto_nombre:x.nombre,cantidad:x.cantidad*(x.unidad==='docena'?12:1),sector_origen:'churrero',destino:'salon',estado:'despachado'})));
+    CH.cargado=false;cerrarModal();toast('Boleta guardada ✅');vChurrero()}}
+
 // ================= INVENTARIO SALÓN =================
+// ───────── PRODUCTOS DEL DÍA ─────────
+// Productos frescos (chipa, facturas, libritos…) que se cocinan todos los días: a las 00:00 la base los pone en 0
+// sola (tarea programada) y lo que sobró queda registrado como merma "Sobrante del día".
+async function pdAbrir(){
+  let cfg={ids:[]},cierres=[];
+  try{const [c,h]=await Promise.all([sbGet('config','clave=eq.productos_del_dia'),sbGet('salon_cierres','order=fecha.desc&limit=10')]);cfg=((c||[])[0]||{}).valor||cfg;cierres=h||[]}catch(e){}
+  if(!IS.cargado){try{await cargarIS()}catch(e){}}
+  const sel=new Set(cfg.ids||[]);
+  const L=IS.rows.filter(r=>String(r.id).startsWith('pv:')).sort((a,b)=>(sel.has(b.id)-sel.has(a.id))||norm(a.nombre).localeCompare(norm(b.nombre)));
+  modal(`<h2>🌙 Productos del día</h2>
+  <p class="muted">Los productos marcados se ponen en 0 todos los días a las <b>00:00</b>, aunque haya sobrado. Lo que había queda registrado como merma ("Sobrante del día"), así ves cuánto sobra de cada uno.</p>
+  <input placeholder="Buscar producto…" oninput="document.querySelectorAll('#pdL label').forEach(l=>l.style.display=norm(l.textContent).includes(norm(this.value))?'':'none')">
+  <div id="pdL" style="max-height:45vh;overflow:auto;margin:8px 0;border:1px solid #eee;border-radius:8px;padding:6px 10px">${L.map(r=>`<label style="display:flex;gap:8px;align-items:center;font-weight:${sel.has(r.id)?700:400};padding:4px 0"><input type="checkbox" class="pdC" value="${esc(r.id)}" style="width:auto" ${sel.has(r.id)?'checked':''}> ${esc(r.nombre)} <span class="muted" style="font-size:12px;margin-left:auto">hay ${fnum(r.cantidad,2)}</span></label>`).join('')}</div>
+  <div class="acciones"><button class="btn" onclick="pdGuardar()">💾 Guardar</button><button class="btn sec" onclick="confirmar('¿Poner en 0 ahora los productos del día? Lo que hay pasa a merma.',pdAhora)">0️⃣ Ponerlos en 0 ahora</button></div>
+  <h3 style="margin-top:14px">Últimos cierres</h3>${cierres.length?`<table>${cierres.map(c=>`<tr><td style="white-space:nowrap">${new Date(c.fecha).toLocaleString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}<div class="muted" style="font-size:11px">${c.origen==='automatico'?'automático':esc(c.origen||'')}</div></td><td style="font-size:13px">${(c.detalle||[]).length?(c.detalle||[]).map(d=>esc(d.nombre)+': '+fnum(d.cantidad,2)).join(' · '):'<span class="muted">no sobró nada</span>'}</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hubo cierres.</p>'}`);
+}
+async function pdGuardar(){const ids=[...document.querySelectorAll('.pdC')].filter(e=>e.checked).map(e=>e.value);
+  await sbIns('config',[{clave:'productos_del_dia',valor:{ids}}],true);toast('Guardado ✅ · '+ids.length+' productos se ponen en 0 a medianoche',4000);cerrarModal()}
+async function pdAhora(){try{const r=await polyRPC('salon_cierre_diario',{p_origen:'manual'});toast('Listo: '+r.productos+' producto'+(r.productos===1?'':'s')+' en 0 ✅',4000);IS.cargado=false;cerrarModal();vInvSalon()}catch(e){toast('⚠️ '+e.message,6000)}}
+
 // Stock de lo que hay en el local (tabla salon_stock, la misma que usa el módulo Salón).
 // Se puede cargar desde un Excel, poner en 0 o corregir a mano. Cada carga queda registrada en salon_inventarios.
 let IS={rows:[],edit:{},cargado:false,f:'',sec:'',hist:[]};
@@ -997,6 +1109,7 @@ async function vInvSalon(){
   <div class="acciones" style="margin-bottom:10px">
     <button class="btn" onclick="$('#isArch').click()">📥 Subir Excel de stock</button><input type="file" id="isArch" accept=".xlsx,.xls,.xlsm,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none" onchange="isLeerExcel(this.files[0]);this.value=''">
     <button class="btn sec" onclick="isPlantilla()">⬇️ Descargar planilla para completar</button>
+    <button class="btn oro" onclick="pdAbrir()">🌙 Productos del día (a 0 a medianoche)</button>
     <button class="btn rojo" onclick="confirmar('¿Poner en 0 el stock de TODOS los productos del Salón?',isCero)">0️⃣ Poner todo en 0</button>
     <button class="btn sec" onclick="IS.cargado=false;vInvSalon()">🔄 Recargar</button>
   </div>
@@ -1162,7 +1275,7 @@ function estCSV(mes){const [m1,m2]=mesRango(mes);const cs=D.cierres.filter(c=>{c
 // Contactos/notas (crm_interacciones), pedidos (pedidos_clientes.cliente_id) y
 // campañas de WhatsApp / Instagram / anuncios pagos (crm_campanias + crm_campania_envios).
 // Sin conexión oficial con Meta: el sistema arma la lista y el mensaje, y cada envío se abre con un toque.
-let CRM={cargado:false,clis:[],inter:[],peds:[],camps:[],envs:[],f:'',est:'',orden:'estado',tipo:'',camp:null,cf:'',waLocal:''};
+let CRM={cargado:false,clis:[],inter:[],peds:[],camps:[],envs:[],compras:[],canjes:[],contenidos:[],com:null,f:'',est:'',orden:'estado',tipo:'',camp:null,cf:'',waLocal:''};
 const CRM_EST={tarea:['📌 Tarea para hoy','#6A1B9A'],contactar:['📞 Para contactar','#C62828'],inactivo:['💤 Inactivo','#757575'],nuevo:['🆕 Sin pedidos','#1565C0'],aldia:['✅ Al día','#2E7D32'],baja:['⛔ Dado de baja','#9E9E9E']};
 const CRM_TIPOS={whatsapp:'💬 WhatsApp',instagram:'📸 Instagram',llamada:'📞 Llamada',visita:'🚶 Visita',nota:'📝 Nota',reclamo:'⚠️ Reclamo',pedido:'🧾 Pedido',campania:'📣 Campaña'};
 const CRM_TCLI={mayorista:['🏪 Mayorista','#1565C0'],pedido:['🧾 Pedidos','#6A1B9A'],mostrador:['🛍️ Mostrador','#E65100'],instagram:['📸 Instagram','#C2185B']};
@@ -1174,9 +1287,12 @@ async function cargarCRM(){
     const [c,i,p,k,e,cfg]=await Promise.all([sbGet('crm_clientes','order=nombre'),sbGet('crm_interacciones','order=fecha.desc&limit=5000'),
       sb('pedidos_clientes?select=id,numero,cliente,fecha_retiro,total,sena,estado,lista_precios,cliente_id,created_at,pedidos_clientes_items(producto,cantidad,precio,unidad)&cliente_id=not.is.null&order=created_at.desc&limit=5000'),
       sbGet('crm_campanias','order=created_at.desc').catch(()=>[]),sbGet('crm_campania_envios','order=id&limit=50000').catch(()=>[]),
-      sbGet('config','clave=eq.whatsapp_local').catch(()=>[])]);
+      sbGet('config','clave=in.(whatsapp_local,comunidad)').catch(()=>[])]);
     CRM.clis=c||[];CRM.inter=i||[];CRM.peds=p||[];CRM.camps=k||[];CRM.envs=e||[];
-    CRM.waLocal=String(((cfg||[])[0]||{}).valor||'').replace(/\D/g,'');
+    const cv=k2=>((cfg||[]).find(x=>x.clave===k2)||{}).valor;
+    CRM.waLocal=String(cv('whatsapp_local')||'').replace(/\D/g,'');CRM.com=cv('comunidad')||null;
+    const [co,cj,ct]=await Promise.all([sbGet('crm_compras','order=fecha.desc&limit=50000').catch(()=>[]),sbGet('crm_canjes','order=fecha.desc&limit=20000').catch(()=>[]),sbGet('crm_contenidos','fecha=gte.'+sumaDias(hoy(),-60)+'&order=fecha').catch(()=>[])]);
+    CRM.compras=co||[];CRM.canjes=cj||[];CRM.contenidos=ct||[];
   }catch(e){console.warn('CRM',e)}
   CRM.cargado=true;crmCalcular();
 }
@@ -1213,7 +1329,7 @@ function crmWa(tel){const n=telNorm(tel);return n&&n.length===10?'549'+n:null}
 function igNorm(x){return (String(x||'').replace(/[?#].*$/,'').replace(/^\s*@|\s|https?:\/\/(www\.)?instagram\.com\/|\/.*$/g,'').toLowerCase())||null}
 function crmPrimerNombre(c){const base=c.tipo==='mayorista'?(c.contacto||''):(c.contacto||c.nombre||'');const w=base.trim().split(/\s+/)[0]||'';return w?w[0].toUpperCase()+w.slice(1).toLowerCase():''}
 function crmPersonalizar(txt,c){const n=crmPrimerNombre(c);return String(txt||'').replace(/\s?\{nombre\}/g,n?' '+n:'').replace(/\{negocio\}/g,c.nombre||'')}
-function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['campanias','📣 Campañas']].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
+function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['comunidad','⭐ Comunidad'],['campanias','📣 Campañas'],['contenidos','📝 Contenidos']].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
 
 // ───────── LISTA DE CLIENTES ─────────
 async function vMayoristas(){
@@ -1293,6 +1409,7 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
     <div class="card kpi"><div class="lbl">Este mes</div><div class="val" style="font-size:20px">${$$(c._mes)}</div></div>
     <div class="card kpi"><div class="lbl">Histórico</div><div class="val" style="font-size:20px">${$$(c._total)}</div><div class="sub muted">${c._n} pedidos${c._n?' · promedio '+$$(c._total/c._n):''}</div></div>
   </div>
+  ${c.comunidad?(()=>{const cfg=comCfg(),n=comCompras(c),cj=CRM.canjes.filter(x=>x.cliente_id===c.id);return `<div class="alerta" style="background:#fbf6e6">⭐ <b>Miembro de la ${esc(cfg.nombre)}</b>${c.comunidad_at?' desde '+fechaCorta(diaLocal(c.comunidad_at)):''} · ${n} compra${n===1?'':'s'} · ${cj.filter(x=>x.tipo==='fidelidad').length} beneficio(s) y ${cj.filter(x=>x.tipo==='cumple').length} regalo(s) de cumple entregados</div>`})():''}
   <div class="grid g4" style="margin-bottom:10px">${dato('Teléfono',c.telefono)}${dato('Instagram',c.instagram?'@'+c.instagram:'')}${dato('Email',c.email)}${dato('Cumpleaños',c.cumpleanos?new Date(c.cumpleanos+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long'}):'')}${dato('Nos conoció por',ori)}${dato('Contacto',c.contacto)}${dato('Rubro',c.rubro)}${dato('Dirección',[c.direccion,c.zona].filter(Boolean).join(' · '))}${dato('Entrega',c.dias_entrega)}${dato('Pago',c.condicion_pago)}${dato('CUIT',[c.cuit,c.razon_social].filter(Boolean).join(' · '))}</div>
   ${c.notas?`<div class="alerta" style="white-space:pre-wrap">${esc(c.notas)}</div>`:''}
   <div class="card" style="margin-bottom:10px"><h3>📌 Próxima acción</h3><div class="fila"><input id="crmPA" placeholder="ej: Ofrecer budines nuevos, pasar lista de precios…" value="${esc(c.proxima_accion||'')}"><input id="crmPF" type="date" value="${c.proxima_fecha||''}" style="max-width:170px"><button class="btn" onclick="crmProxima(${id})">Guardar</button>${c.proxima_accion?`<button class="btn sec" onclick="crmProxima(${id},true)">✔ Hecha</button>`:''}</div></div>
@@ -1514,6 +1631,196 @@ async function crmAltaAnuncio(kid){const k=CRM.camps.find(x=>x.id===kid);const n
   try{const r=await polyRPC('crm_alta_cliente',{p:{nombre,telefono:tel,instagram:ig,tipo:ig&&!tel?'instagram':'mostrador',origen:k.codigo}});
     if(!r.nuevo){const [x]=await sbUpd('crm_clientes','id=eq.'+r.id+'&origen=is.null',{origen:k.codigo});}
     CRM.cargado=false;await cargarCRM();toast(r.nuevo?'Cliente anotado ✅':'Ya existía: lo vinculé a este anuncio ✅');refrescar()}catch(e){toast('⚠️ '+e.message,5000)}}
+
+// ───────── COMUNIDAD POLY (programa de beneficios) ─────────
+// Página pública comunidad.html: el cliente se suma solo. En el Salón se suman compras y se canjean beneficios.
+const COM_DEF={nombre:'Comunidad Poly',cada:10,beneficio:'un café con medialuna de regalo',cumple:'10% de descuento en tu compra',cumple_dias:7};
+function comCfg(){return Object.assign({},COM_DEF,CRM.com||{})}
+function comLink(){return location.href.split('#')[0].replace(/[^\/]*$/,'')+'comunidad.html'}
+function comCompras(c){return (c._n||0)+CRM.compras.filter(x=>x.cliente_id===c.id).length}
+function comDiasCumple(f){if(!f)return null;const H=new Date(hoy()+'T12:00:00');let best=null;
+  for(const y of [H.getFullYear()-1,H.getFullYear(),H.getFullYear()+1]){const d=new Date(y,+f.slice(5,7)-1,1,12);d.setDate(+f.slice(8,10));const n=Math.round((d-H)/864e5);if(best===null||Math.abs(n)<Math.abs(best))best=n}return best}
+async function vComunidad(){
+  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando comunidad…</div>';await cargarCRM()}
+  crmCalcular();const cfg=comCfg(),link=comLink();
+  const miembros=CRM.clis.filter(c=>c.comunidad&&c.activo!==false);
+  const [m1]=mesRango(0);
+  const comprasMes=CRM.compras.filter(x=>diaLocal(x.fecha)>=m1).length;
+  const canjesMes=CRM.canjes.filter(x=>diaLocal(x.fecha)>=m1);
+  const nuevosMes=miembros.filter(c=>c.comunidad_at&&diaLocal(c.comunidad_at)>=m1).length;
+  const proximos=CRM.clis.filter(c=>c.activo!==false&&c.cumpleanos).map(c=>({c,d:comDiasCumple(c.cumpleanos)})).filter(x=>x.d>=-2&&x.d<=14).sort((a,b)=>a.d-b.d);
+  const ranking=miembros.map(c=>({c,n:comCompras(c)})).sort((a,b)=>b.n-a.n).slice(0,15);
+  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('comunidad')}
+  <p class="muted">Tus clientes se suman solos desde un link. En cada compra, en el Salón (Pedidos → ⭐ Comunidad) se busca el WhatsApp y se suma un sello; al completar la tarjeta tienen un beneficio, y en la semana de su cumple, un regalo. Los pedidos con teléfono también cuentan como compra.</p>
+  <div class="grid g4" style="margin-bottom:12px">
+    <div class="card kpi"><div class="lbl">Miembros</div><div class="val">${miembros.length}</div><div class="sub muted">${nuevosMes} nuevos este mes</div></div>
+    <div class="card kpi"><div class="lbl">Compras sumadas este mes</div><div class="val">${comprasMes}</div><div class="sub muted">en el mostrador</div></div>
+    <div class="card kpi"><div class="lbl">Beneficios entregados</div><div class="val">${canjesMes.filter(x=>x.tipo==='fidelidad').length}</div><div class="sub muted">${canjesMes.filter(x=>x.tipo==='cumple').length} regalos de cumple este mes</div></div>
+    <div class="card kpi"><div class="lbl">Cumpleaños próximos</div><div class="val">${proximos.length}</div><div class="sub muted">próximos 14 días</div></div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h3>🔗 Link para sumarse</h3><p class="muted" style="font-size:13px">Compartilo en la bio de Instagram, en historias, en el WhatsApp del local y en un cartel en el mostrador.</p>
+      <div class="fila"><input readonly value="${esc(link)}" onclick="this.select()"><button class="btn" onclick="crmCopiar(${esc(JSON.stringify(link))}).then(()=>toast('Link copiado 📋'))">📋 Copiar</button></div>
+      <div class="acciones" style="margin-top:8px"><a class="btn sec" href="${esc(link)}" target="_blank" style="text-decoration:none">👀 Ver la página</a><button class="btn sec" onclick="comPlacaMostrador()">🖼️ Placa para el mostrador</button>
+      <button class="btn sec" onclick="crmCopiar(${esc(JSON.stringify(`🥐 ¡Sumate a la ${cfg.nombre}! Cada ${cfg.cada} compras te regalamos ${cfg.beneficio}, y en tu cumple tenés ${cfg.cumple}. Es gratis: ${link}`))}).then(()=>toast('Mensaje copiado 📋'))">💬 Copiar mensaje de invitación</button></div>
+      <p class="muted" style="font-size:12px;margin-top:6px">Para un código QR: pegá el link en cualquier generador de QR (por ejemplo, desde Canva) y sumalo a la placa.</p></div>
+    <div class="card"><h3>⚙️ Reglas del programa</h3>
+      <label>Nombre</label><input id="cmN" value="${esc(cfg.nombre)}">
+      <div class="fila"><div style="max-width:140px"><label>Cada cuántas compras</label><input id="cmC" type="number" min="2" value="${esc(cfg.cada)}"></div><div><label>Beneficio</label><input id="cmB" value="${esc(cfg.beneficio)}"></div></div>
+      <div class="fila"><div><label>Regalo de cumpleaños</label><input id="cmR" value="${esc(cfg.cumple)}"></div><div style="max-width:160px"><label>Vale (días antes/después)</label><input id="cmD" type="number" min="0" max="31" value="${esc(cfg.cumple_dias)}"></div></div>
+      <button class="btn" style="margin-top:8px" onclick="comGuardar()">💾 Guardar reglas</button>
+      <p class="muted" style="font-size:12px">Si cambiás la cantidad de compras, las tarjetas se recalculan con la nueva regla.</p></div>
+  </div>
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card"><h3>🎂 Cumpleaños próximos</h3>${proximos.length?`<table>${proximos.map(({c,d})=>`<tr><td><a href="javascript:crmFicha(${c.id})"><b>${esc(c.nombre)}</b></a><div class="muted" style="font-size:12px">${d===0?'¡Hoy!':d>0?'en '+d+' día'+(d>1?'s':''):'hace '+(-d)+' día'+(d<-1?'s':'')} · ${new Date(c.cumpleanos+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long'})}</div></td>
+      <td style="white-space:nowrap">${crmWa(c.telefono)&&c.acepta_promos!==false?`<button class="btn peq" onclick="comSaludar(${c.id})">💬 Saludar</button>`:''}${c.instagram?` <button class="btn peq sec" onclick="crmIG(${c.id},${esc(JSON.stringify(comMsgCumple(c)))})">📸</button>`:''}</td></tr>`).join('')}</table>`:'<p class="muted">No hay cumpleaños en las próximas 2 semanas.</p>'}</div>
+    <div class="card"><h3>🏆 Los que más compran</h3>${ranking.length?`<table>${ranking.map(({c,n})=>`<tr><td><a href="javascript:crmFicha(${c.id})">${esc(c.nombre)}</a></td><td class="num">${n} compra${n===1?'':'s'}</td><td class="num muted" style="font-size:12px">${n%cfg.cada}/${cfg.cada}</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hay miembros. ¡Compartí el link!</p>'}</div>
+  </div>`;
+}
+function comPlacaMostrador(){const cfg=comCfg();placaAbrir({titulo:'Sumate a la '+cfg.nombre,subtitulo:'Cada '+cfg.cada+' compras: '+cfg.beneficio+' · En tu cumple: '+cfg.cumple,pie:'Es gratis: pedí el link en caja o entrá desde @polyartesanal',formato:'post'})}
+function comMsgCumple(c){const cfg=comCfg();const n=crmPrimerNombre(c);return `¡Feliz cumpleaños${n?' '+n:''}! 🎂 En Poly Artesanal queremos festejarte: esta semana tenés ${cfg.cumple}. ¡Te esperamos en Galván 3512! 🥐`}
+function comSaludar(id){const c=CRM.clis.find(x=>x.id===id);const wa=crmWa(c.telefono);if(!wa)return;const t=comMsgCumple(c);
+  window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank');crmNota(id,'whatsapp','🎂 Saludo de cumpleaños',true)}
+async function comGuardar(){const v={nombre:$('#cmN').value.trim()||COM_DEF.nombre,cada:Math.max(2,Math.round(+$('#cmC').value||10)),beneficio:$('#cmB').value.trim()||COM_DEF.beneficio,cumple:$('#cmR').value.trim()||COM_DEF.cumple,cumple_dias:Math.max(0,Math.min(31,Math.round(+$('#cmD').value||7)))};
+  await sbIns('config',[{clave:'comunidad',valor:v}],true);CRM.com=v;toast('Reglas guardadas ✅');vComunidad()}
+
+// ───────── PLACAS CON LA MARCA (imágenes para Instagram / WhatsApp) ─────────
+let PLACA={titulo:'',subtitulo:'',pie:'',formato:'post',foto:null};
+function placaAbrir(o){PLACA=Object.assign({titulo:'',subtitulo:'',pie:'',formato:'post',foto:null},o||{});
+  modal(`<h2>🖼️ Placa</h2>
+  <div class="grid g2"><div>
+    <label>Título</label><input id="plT" value="${esc(PLACA.titulo)}" oninput="PLACA.titulo=this.value;placaDibujar()">
+    <label>Texto</label><textarea id="plS" rows="3" oninput="PLACA.subtitulo=this.value;placaDibujar()">${esc(PLACA.subtitulo)}</textarea>
+    <label>Pie (opcional)</label><input id="plP" value="${esc(PLACA.pie||'')}" oninput="PLACA.pie=this.value;placaDibujar()">
+    <label>Formato</label><select onchange="PLACA.formato=this.value;placaDibujar()"><option value="post" ${PLACA.formato==='post'?'selected':''}>Publicación (4:5)</option><option value="historia" ${PLACA.formato==='historia'?'selected':''}>Historia (9:16)</option><option value="cuadrado" ${PLACA.formato==='cuadrado'?'selected':''}>Cuadrado (1:1)</option></select>
+    <label>Foto de fondo (opcional)</label><input type="file" accept="image/*" onchange="placaFoto(this.files[0])">
+    <div class="acciones" style="margin-top:12px"><button class="btn" onclick="placaBajar()">⬇️ Descargar</button><button class="btn sec" onclick="placaCompartir()">📤 Compartir</button></div>
+  </div><div style="text-align:center"><canvas id="plCv" style="width:100%;max-width:340px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.15)"></canvas></div></div>`);
+  placaDibujar()}
+function placaFoto(f){if(!f)return;const img=new Image();img.onload=()=>{PLACA.foto=img;placaDibujar()};img.src=URL.createObjectURL(f)}
+async function placaDibujar(){const cv=$('#plCv');if(!cv)return;
+  try{await Promise.all([document.fonts.load('700 60px "Playfair Display"'),document.fonts.load('400 30px Lato'),document.fonts.load('700 30px Lato')])}catch(e){}
+  const W=1080,H=PLACA.formato==='historia'?1920:PLACA.formato==='cuadrado'?1080:1350;cv.width=W;cv.height=H;const c=cv.getContext('2d');
+  const V='#0C461F',V2='#186B34',CR='#F5F0E9',OR='#C9A84C';
+  c.fillStyle=CR;c.fillRect(0,0,W,H);
+  let yTxt;
+  if(PLACA.foto){const fh=Math.round(H*0.58),img=PLACA.foto,k=Math.max(W/img.width,fh/img.height),w=img.width*k,h=img.height*k;
+    c.save();c.beginPath();c.rect(0,0,W,fh);c.clip();c.drawImage(img,(W-w)/2,(fh-h)/2,w,h);c.restore();
+    const g=c.createLinearGradient(0,fh-260,0,fh);g.addColorStop(0,'rgba(12,70,31,0)');g.addColorStop(1,'rgba(12,70,31,.85)');c.fillStyle=g;c.fillRect(0,fh-260,W,260);
+    c.fillStyle=OR;c.fillRect(0,fh,W,10);yTxt=fh+110;
+    c.textAlign='left';c.fillStyle=CR;c.font='700 46px "Playfair Display", serif';c.fillText('Poly',50,fh-40);c.fillStyle=OR;c.font='italic 700 46px "Playfair Display", serif';c.fillText('Artesanal',160,fh-40);
+  }else{c.fillStyle=V;c.fillRect(0,0,W,210);c.fillStyle=OR;c.fillRect(0,210,W,10);c.textAlign='center';
+    c.fillStyle=CR;c.font='700 74px "Playfair Display", serif';c.fillText('Poly',W/2-155,128);c.fillStyle=OR;c.font='italic 700 74px "Playfair Display", serif';c.fillText('Artesanal',W/2+110,128);
+    c.fillStyle=CR;c.font='400 26px Lato, sans-serif';c.fillText('PANADERÍA DE AUTOR',W/2,180);
+    yTxt=PLACA.formato==='historia'?560:PLACA.formato==='cuadrado'?360:420;
+    c.fillStyle=OR;c.font='700 64px serif';c.fillText('✦',W/2,yTxt-110)}
+  c.textAlign='center';c.fillStyle=V;
+  let fs=PLACA.formato==='cuadrado'?74:84;c.font=`700 ${fs}px "Playfair Display", serif`;
+  let L=partirTexto(c,PLACA.titulo||'Título',W-140);while(L.length>3&&fs>50){fs-=6;c.font=`700 ${fs}px "Playfair Display", serif`;L=partirTexto(c,PLACA.titulo,W-140)}
+  L.forEach(l=>{c.fillText(l,W/2,yTxt);yTxt+=fs*1.15});
+  yTxt+=20;c.fillStyle=OR;c.fillRect(W/2-60,yTxt-30,120,6);yTxt+=40;
+  c.fillStyle='#333';c.font='400 40px Lato, sans-serif';
+  String(PLACA.subtitulo||'').split(/\n|·/).map(x=>x.trim()).filter(Boolean).forEach(par=>{partirTexto(c,par,W-160).forEach(l=>{if(yTxt<H-170){c.fillText(l,W/2,yTxt);yTxt+=54}});yTxt+=14});
+  if(PLACA.pie){c.fillStyle=V2;c.font='700 34px Lato, sans-serif';partirTexto(c,PLACA.pie,W-160).slice(0,2).forEach((l,i)=>c.fillText(l,W/2,H-150+i*42))}
+  c.fillStyle=V;c.fillRect(0,H-70,W,70);c.fillStyle=CR;c.font='700 28px Lato, sans-serif';c.fillText('@polyartesanal  ·  Galván 3512, Villa Urquiza  ·  24 hs',W/2,H-25);
+}
+function placaNombre(){return 'poly-'+(norm(PLACA.titulo||'placa').replace(/[^a-z0-9]+/g,'-').slice(0,40)||'placa')+'.png'}
+function placaBajar(){const a=document.createElement('a');a.href=$('#plCv').toDataURL('image/png');a.download=placaNombre();a.click()}
+function placaCompartir(){$('#plCv').toBlob(async b=>{const f=new File([b],placaNombre(),{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){try{await navigator.share({files:[f]})}catch(e){}}else{placaBajar();toast('Se descargó la imagen para que la subas')}},'image/png')}
+
+// ───────── ASISTENTE DE CONTENIDOS (IA) ─────────
+const CONT_CANAL={post:['🖼️ Publicación','#1565C0'],reel:['🎬 Reel','#C2185B'],historia:['⭕ Historia','#E65100'],whatsapp:['💬 WhatsApp','#2E7D32']};
+let CONT={f:'pend',gen:false};
+function contHoy(){return CRM.contenidos.filter(x=>x.estado==='pendiente'&&x.fecha<=hoy())}
+async function contProductos(){try{const r=await sb('productos_venta?select=nombre&activo=eq.true&order=nombre');return (r||[]).map(x=>x.nombre)}catch(e){return []}}
+async function vContenidos(){
+  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando contenidos…</div>';await cargarCRM()}
+  const H=hoy();const L=CRM.contenidos.filter(x=>CONT.f==='todos'?true:CONT.f==='pub'?x.estado==='publicado':x.estado==='pendiente').sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.id-b.id);
+  const porDia={};L.forEach(x=>(porDia[x.fecha]=porDia[x.fecha]||[]).push(x));
+  const atras=CRM.contenidos.filter(x=>x.estado==='pendiente'&&x.fecha<H).length;
+  const diaTxt=f=>f===H?'Hoy':f===sumaDias(H,1)?'Mañana':new Date(f+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('contenidos')}
+  <p class="muted">Un asistente con IA te arma el calendario de qué publicar y qué mandar: el texto listo para copiar, qué foto o video sacar y el guion de los reels. Las placas con la marca se generan acá mismo. Publicar lo hacés vos desde Instagram (sin conexión oficial no se puede publicar automático).</p>
+  <div class="card" style="margin-bottom:12px"><h3>✨ Armar calendario</h3>
+    <div class="fila" style="flex-wrap:wrap">
+      <div style="max-width:170px"><label>Para</label><select id="ctP"><option value="7">la próxima semana</option><option value="14" selected>las próximas 2 semanas</option><option value="30">el próximo mes</option></select></div>
+      <div style="max-width:120px"><label>Publicaciones/sem</label><input id="ctPo" type="number" min="0" max="7" value="3"></div>
+      <div style="max-width:110px"><label>Reels/sem</label><input id="ctRe" type="number" min="0" max="7" value="1"></div>
+      <div style="max-width:120px"><label>Historias/sem</label><input id="ctHi" type="number" min="0" max="14" value="4"></div>
+      <div style="max-width:120px"><label>WhatsApp/sem</label><input id="ctWa" type="number" min="0" max="3" value="1"></div>
+      <div style="max-width:200px"><label>Tono</label><select id="ctTo"><option>cálido y cercano</option><option>divertido y canchero</option><option>elegante, de panadería de autor</option></select></div>
+    </div>
+    <label>Objetivos</label><div>${[['comunidad','Sumar gente a la Comunidad Poly'],['ventas','Vender más los productos que elija'],['proceso','Mostrar el proceso artesanal y el equipo'],['pedidos','Que encarguen tortas y pedidos'],['mayoristas','Conseguir mayoristas']].map(([k,t],i)=>`<label style="display:inline-flex;gap:5px;align-items:center;margin-right:12px;font-weight:400"><input type="checkbox" class="ctO" value="${t}" style="width:auto" ${i<3?'checked':''}> ${t}</label>`).join('')}</div>
+    <label>Productos a destacar</label><input id="ctPr" placeholder="ej: medialunas de manteca, pan de masa madre, budines…" list="ctPrL"><datalist id="ctPrL"></datalist>
+    <label>Novedades, fechas o promos que quieras incluir</label><input id="ctNo" placeholder="ej: lanzamos pan dulce el 1/12, promo 2x1 en budines los martes…">
+    <div class="acciones" style="margin-top:10px"><button class="btn oro" id="ctGen" onclick="contGenerar()" ${CONT.gen?'disabled':''}>${CONT.gen?'⏳ Armando…':'✨ Armar calendario'}</button>
+      <input id="ctUno" placeholder="o pedí algo puntual: ej. un reel del pan dulce, un texto para el feriado…" style="max-width:420px"><button class="btn sec" onclick="contGenerar(true)" ${CONT.gen?'disabled':''}>Pedir</button></div>
+    ${apiKey()?'':'<p class="muted" style="font-size:12px">Necesita la API key de Anthropic (la misma que usás para leer facturas): cargala en ⚙️ Ajustes.</p>'}
+  </div>
+  <div class="tabs2" style="margin-bottom:8px">${[['pend','Por publicar ('+CRM.contenidos.filter(x=>x.estado==='pendiente').length+')'],['pub','Publicados'],['todos','Todos']].map(([k,t])=>`<button class="${CONT.f===k?'on':''}" onclick="CONT.f='${k}';vContenidos()">${t}</button>`).join('')}</div>
+  ${atras&&CONT.f==='pend'?`<div class="alerta">Tenés ${atras} contenido${atras>1?'s':''} atrasado${atras>1?'s':''}: publicalo${atras>1?'s':''} o pasalo${atras>1?'s':''} a otro día.</div>`:''}
+  ${Object.keys(porDia).map(f=>`<h3 style="margin:14px 0 6px;${f<H&&CONT.f==='pend'?'color:var(--rojo)':''}">${diaTxt(f)}</h3>${porDia[f].map(contCard).join('')}`).join('')||'<div class="card muted">No hay contenidos. Tocá "✨ Armar calendario".</div>'}`;
+  contProductos().then(ps=>{const d=$('#ctPrL');if(d)d.innerHTML=ps.map(p=>`<option value="${esc(p)}">`).join('')});
+}
+function contCard(x){const [t,col]=CONT_CANAL[x.canal]||[x.canal,'#999'];
+  return `<div class="card" style="margin-bottom:10px;border-left:5px solid ${col};${x.estado==='publicado'?'opacity:.7':''}">
+  <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><div>${crmChip(x.canal,CONT_CANAL)} <b>${esc(x.titulo||'')}</b>${x.estado==='publicado'?' <span class="chip" style="background:#E8F5E9;color:#2E7D32">✔ Publicado</span>':''}</div>
+    <input type="date" value="${x.fecha}" style="width:auto;padding:4px 6px" onchange="contUpd(${x.id},{fecha:this.value})"></div>
+  <label style="margin-top:8px">${x.canal==='whatsapp'?'Mensaje':'Texto para publicar'}</label><textarea rows="${Math.min(10,Math.max(3,String(x.texto||'').split('\n').length+1))}" onchange="contUpd(${x.id},{texto:this.value},true)">${esc(x.texto||'')}</textarea>
+  ${x.visual?`<div style="margin-top:8px;background:#f7f4ee;border-radius:8px;padding:8px 10px;font-size:14px"><b>📷 ${x.canal==='reel'?'Qué grabar':'Qué foto sacar'}:</b> ${esc(x.visual)}</div>`:''}
+  ${x.guion?`<div style="margin-top:6px;background:#fdf0f5;border-radius:8px;padding:8px 10px;font-size:14px;white-space:pre-wrap"><b>🎬 Guion:</b>\n${esc(x.guion)}</div>`:''}
+  <div class="acciones" style="margin-top:8px"><button class="btn peq" onclick="contCopiar(${x.id})">📋 Copiar texto</button>
+    ${x.placa&&x.placa.titulo?`<button class="btn peq sec" onclick="contPlaca(${x.id})">🖼️ Placa</button>`:x.canal!=='whatsapp'?`<button class="btn peq sec" onclick="contPlaca(${x.id})">🖼️ Hacer placa</button>`:''}
+    ${x.canal==='whatsapp'?`<button class="btn peq sec" onclick="contCampania(${x.id})">📣 Mandar como campaña</button>`:''}
+    ${x.estado==='publicado'?`<button class="btn peq sec" onclick="contUpd(${x.id},{estado:'pendiente'})">↩️ No publicado</button>`:`<button class="btn peq oro" onclick="contUpd(${x.id},{estado:'publicado'})">✔ ${x.canal==='whatsapp'?'Enviado':'Publicado'}</button>`}
+    <button class="btn peq sec" onclick="confirmar('¿Borrar este contenido?',()=>contBorrar(${x.id}))">🗑️</button></div></div>`}
+async function contUpd(id,patch,silencio){const x=CRM.contenidos.find(y=>y.id===id);patch.updated_at=new Date().toISOString();const [r]=await sbUpd('crm_contenidos','id=eq.'+id,patch);Object.assign(x,r||patch);if(!silencio){toast('Guardado ✅');vContenidos()}}
+async function contBorrar(id){await sbDel('crm_contenidos','id=eq.'+id);CRM.contenidos=CRM.contenidos.filter(x=>x.id!==id);vContenidos()}
+function contCopiar(id){const x=CRM.contenidos.find(y=>y.id===id);crmCopiar(x.texto||'').then(ok=>toast(ok?'Texto copiado 📋':'No se pudo copiar'))}
+function contPlaca(id){const x=CRM.contenidos.find(y=>y.id===id);const p=x.placa||{};placaAbrir({titulo:p.titulo||x.titulo||'',subtitulo:p.subtitulo||'',pie:p.pie||'',formato:x.canal==='historia'?'historia':'post'})}
+function contCampania(id){const x=CRM.contenidos.find(y=>y.id===id);crmNuevaCampania();setTimeout(()=>{if($('#kN'))$('#kN').value=x.titulo||'';if($('#kM'))$('#kM').value=x.texto||''},50)}
+function contExtraerJSON(txt){const a=txt.indexOf('{'),b=txt.lastIndexOf('}');if(a<0||b<0)throw new Error('La IA no devolvió el calendario. Probá de nuevo.');return JSON.parse(txt.slice(a,b+1))}
+async function contGenerar(puntual){
+  const key=apiKey();if(!key){abrirAjustes();return toast('Cargá la API key de Anthropic en Ajustes',5000)}
+  const pedido=puntual?$('#ctUno').value.trim():'';if(puntual&&!pedido)return toast('Escribí qué necesitás');
+  const dias=+$('#ctP').value||14,desde=sumaDias(hoy(),1),hasta=sumaDias(hoy(),dias);
+  const obj=[...document.querySelectorAll('.ctO')].filter(e=>e.checked).map(e=>e.value);
+  const cfg=comCfg(),prods=(await contProductos()).slice(0,120);
+  const yaHay=CRM.contenidos.filter(x=>x.fecha>=hoy()).map(x=>x.fecha+' '+x.canal+': '+x.titulo).slice(0,40);
+  const prompt=`Sos la community manager de Poly Artesanal, una panadería de autor en Galván 3512, Villa Urquiza (CABA, Argentina), abierta las 24 horas. Instagram: @polyartesanal. Hacen panes de fermentación natural con harina orgánica, facturas, budines, tortas, cookies (también sin TACC, keto y veganas), empanadas, sándwiches de miga y más. Tienen un programa de fidelidad: la "${cfg.nombre}" (cada ${cfg.cada} compras: ${cfg.beneficio}; en el cumpleaños: ${cfg.cumple}), al que la gente se suma con este link: ${comLink()}.
+Hoy es ${hoy()} (${new Date(hoy()+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long'})}).
+Productos que venden: ${prods.join(', ')||'(sin lista)'}.
+${puntual?`Necesito esto puntual: "${pedido}". Devolvé entre 1 y 3 contenidos para eso, con fechas entre ${desde} y ${hasta}.`:
+`Armá el calendario de contenidos desde ${desde} hasta ${hasta}: por semana ${+$('#ctPo').value||0} publicaciones (post), ${+$('#ctRe').value||0} reels, ${+$('#ctHi').value||0} historias y ${+$('#ctWa').value||0} mensajes de WhatsApp para clientes.
+Objetivos: ${obj.join('; ')||'mostrar la panadería'}.
+Productos a destacar: ${$('#ctPr').value.trim()||'los que te parezcan mejores para la época'}.
+Novedades o promos a incluir: ${$('#ctNo').value.trim()||'ninguna en particular'}.`}
+${yaHay.length?'Ya está programado (no repitas): '+yaHay.join(' | ')+'.':''}
+Tono: ${$('#ctTo').value}. Escribí en español rioplatense (voseo), natural, sin exagerar con los emojis.
+Reglas:
+- No inventes precios, descuentos, horarios ni promociones que no te di: si hace falta un dato, dejalo entre [corchetes] para completar.
+- Fechas especiales: incluí solo las que sepas con certeza para Argentina en ese rango (Día de la Madre, Navidad, feriados, etc.). Si no estás segura de una fecha, no la uses.
+- "post" y "reel": texto con un gancho en la primera línea, cuerpo corto, llamado a la acción y 5 a 10 hashtags al final (#panaderia #villaurquiza #masamadre, etc.).
+- "historia": texto muy corto para poner sobre la imagen y una idea de sticker (encuesta, pregunta, link).
+- "whatsapp": mensaje corto y personal que empiece con "Hola{nombre}!" (así, pegado) y termine con "Si no querés recibir más mensajes, respondé BAJA."
+- "visual": qué foto o video sacar con el celular, concreto: qué producto, encuadre, luz, fondo, manos, detalles. Que sea fácil de hacer en la panadería.
+- "guion" solo para reels: escenas numeradas con segundos, qué se ve, texto en pantalla y tipo de audio (sin nombres de canciones). 15 a 30 segundos.
+- "placa": para post e historia, si conviene una imagen con texto de la marca: {"titulo": máx 6 palabras, "subtitulo": máx 20 palabras, "pie": opcional}. Si no conviene, null.
+- Repartí bien los días y los horarios de la semana. Variá productos y formatos.
+Devolvé SOLO un JSON así: {"items":[{"fecha":"YYYY-MM-DD","canal":"post|reel|historia|whatsapp","titulo":"título corto interno","texto":"...","visual":"...","guion":"... o null","placa":{"titulo":"...","subtitulo":"...","pie":"..."} o null}]}`;
+  CONT.gen=true;vContenidos();
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:MODELO_IA,max_tokens:16000,messages:[{role:'user',content:prompt}]})});
+    const j=await r.json();if(j.error)throw new Error(j.error.message);
+    const out=contExtraerJSON(j.content.map(c=>c.text||'').join(''));
+    const items=(out.items||[]).filter(x=>x&&x.texto&&CONT_CANAL[x.canal]).map(x=>({fecha:/^\d{4}-\d{2}-\d{2}$/.test(x.fecha||'')?x.fecha:desde,canal:x.canal,titulo:String(x.titulo||'').slice(0,120),texto:x.texto,visual:x.visual||null,guion:x.canal==='reel'?(x.guion||null):null,placa:x.placa&&x.placa.titulo?x.placa:null}));
+    if(!items.length)throw new Error('La IA no devolvió contenidos. Probá de nuevo.');
+    const rows=await sbIns('crm_contenidos',items);CRM.contenidos.push(...(rows||[]));
+    CONT.gen=false;CONT.f='pend';vContenidos();toast('Listo: '+items.length+' contenido'+(items.length>1?'s':'')+' en el calendario ✅',4000);
+  }catch(e){CONT.gen=false;vContenidos();toast('⚠️ '+e.message,7000)}
+}
 
 // ================= PRODUCTOS DE VENTA =================
 // Lista de productos que se venden en el local (mismos códigos que la caja) y

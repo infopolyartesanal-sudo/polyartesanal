@@ -1395,7 +1395,7 @@ function renderDespachosPendientes(){
   const el = document.getElementById('despachos-pendientes-wrap');
   if(!el) return;
   if(!despachosPend.length){ el.innerHTML=''; return; }
-  const icons={panaderia:'🍞',pasteleria:'🍰',cocina:'🍳',madrugada:'🌅',deposito:'🏭'};
+  const icons={panaderia:'🍞',pasteleria:'🍰',cocina:'🍳',madrugada:'🌅',deposito:'🏭',churrero:'🍩'};
   el.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--primary-dark);margin-bottom:8px;">📥 Despachos por confirmar ('+despachosPend.length+')</div>' +
     despachosPend.map(function(r){
       const hora = new Date(r.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
@@ -2127,7 +2127,7 @@ function renderTareas(){
     if (ref && !document.getElementById('pcs-seccion')) {
       // Sección de pedidos de clientes arriba de todo, en la misma solapa "Pedidos"
       var p = document.createElement('div'); p.id = 'pcs-seccion';
-      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#4A148C;border:1px solid #CE93D8" onclick="pcsAnotarCliente()">📇 Anotar cliente para promos</button><div id="pcs-lista"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
+      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#4A148C;border:1px solid #CE93D8" onclick="pcsAnotarCliente()">📇 Anotar cliente para promos</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#C9A84C;color:#fff" onclick="pcsComunidad()">⭐ Comunidad: sumar compra o canjear</button><div id="pcs-lista"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
       ref.insertBefore(p, ref.firstChild);
     }
     if (!document.getElementById('pcs-pill')) {
@@ -2374,13 +2374,78 @@ function renderTareas(){
       if (!p.telefono && !p.instagram) return aviso('Poné el WhatsApp o el Instagram');
       if (p.telefono && p.telefono.replace(/\D/g, '').length < 8) return aviso('El teléfono parece incompleto');
       b.disabled = true; b.textContent = 'Guardando…';
-      fetch(SB + 'rpc/crm_alta_cliente', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ p: p }) })
+      var fn = p.telefono && p.telefono.replace(/\D/g, '').length >= 10 ? 'comunidad_unirse' : 'crm_alta_cliente';
+      fetch(SB + 'rpc/' + fn, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ p: p }) })
         .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Error'); return j; }); })
         .then(function (j) { cerrar(); aviso(j.nuevo ? '✅ Cliente anotado' : '✅ Ya estaba: actualicé sus datos'); })
         .catch(function (e) { b.disabled = false; b.textContent = 'Guardar'; aviso('⚠️ ' + e.message); });
     };
     setTimeout(function () { var n = document.getElementById('pac-n'); if (n) n.focus(); }, 50);
   };
+})();
+</script>
+
+<script>
+/* ── COMUNIDAD POLY en el mostrador: buscar por WhatsApp, sumar compra, canjear beneficio o regalo de cumple ── */
+(function () {
+  var SB = 'https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/rpc/';
+  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  function rpc(fn, body) {
+    return fetch(SB + fn, { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Error'); return j; }); });
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function usr() { try { return (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null; } catch (e) { return null; } }
+  function aviso(m) { if (typeof showToast === 'function') showToast(m); else alert(m); }
+  function cerrar() { var o = document.getElementById('pcm-ov'); if (o) o.remove(); }
+  function caja(html) {
+    var ov = document.getElementById('pcm-ov');
+    if (!ov) { ov = document.createElement('div'); ov.id = 'pcm-ov'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:14px 8px';
+      ov.onclick = function (e) { if (e.target === ov) cerrar(); }; document.body.appendChild(ov); }
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:16px;font-family:system-ui,sans-serif;color:#222">' + html + '</div>';
+  }
+  var tel = '';
+  window.pcsComunidad = function () {
+    caja('<div style="font-size:17px;font-weight:800;color:#0C461F;margin-bottom:8px">⭐ Comunidad Poly</div>' +
+      '<div class="pcs-lb">WhatsApp del cliente</div><input class="pcs-in" id="pcm-t" type="tel" inputmode="tel" placeholder="ej: 11 2345 6789" value="' + esc(tel) + '">' +
+      '<div style="display:flex;gap:8px"><button class="pcs-b" style="flex:1;padding:13px;background:#0C461F" id="pcm-b">Buscar</button><button class="pcs-b" style="flex:1;padding:13px;background:#eee;color:#333" id="pcm-x">Cerrar</button></div><div id="pcm-r" style="margin-top:12px"></div>');
+    document.getElementById('pcm-x').onclick = cerrar;
+    var b = document.getElementById('pcm-b'), t = document.getElementById('pcm-t');
+    t.onkeydown = function (e) { if (e.key === 'Enter') b.click(); };
+    b.onclick = function () { tel = t.value.trim(); if (tel.replace(/\D/g, '').length < 8) return aviso('Poné el WhatsApp completo'); buscar(); };
+    setTimeout(function () { t.focus(); }, 50);
+  };
+  function buscar() {
+    var r = document.getElementById('pcm-r'); if (r) r.innerHTML = '<div style="color:#888">Buscando…</div>';
+    rpc('comunidad_estado', { p_tel: tel }).then(mostrar).catch(function (e) { aviso('⚠️ ' + e.message); });
+  }
+  function mostrar(e) {
+    var r = document.getElementById('pcm-r'); if (!r) return;
+    if (!e.encontrado) {
+      r.innerHTML = '<div style="background:#fff7e0;border:1px solid #C9A84C;border-radius:10px;padding:10px;margin-bottom:10px">No está en la comunidad. Anotalo así empieza a sumar:</div>' +
+        '<div class="pcs-lb">Nombre *</div><input class="pcs-in" id="pcm-n"><div class="pcs-lb">Cumpleaños (opcional)</div><input class="pcs-in" id="pcm-c" type="date">' +
+        '<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:4px 0 10px"><input type="checkbox" id="pcm-ok" checked style="width:20px;height:20px"> Acepta recibir promos</label>' +
+        '<button class="pcs-b" style="width:100%;padding:13px;background:#0C461F" id="pcm-a">Anotar y sumar esta compra</button>';
+      document.getElementById('pcm-a').onclick = function () {
+        var n = document.getElementById('pcm-n').value.trim(); if (!n) return aviso('Falta el nombre');
+        this.disabled = true;
+        rpc('comunidad_unirse', { p: { nombre: n, telefono: tel, cumpleanos: document.getElementById('pcm-c').value || null, acepta_promos: document.getElementById('pcm-ok').checked, origen: 'salon' } })
+          .then(function (x) { return rpc('comunidad_sumar_compra', { p_cliente: x.id, p_usuario: usr() }); })
+          .then(function (x) { aviso('✅ Anotado y compra sumada'); mostrar(x); }).catch(function (err) { aviso('⚠️ ' + err.message); });
+      };
+      return;
+    }
+    var sellos = ''; for (var i = 0; i < e.cada; i++) sellos += '<span style="display:inline-flex;width:26px;height:26px;border-radius:50%;margin:2px;align-items:center;justify-content:center;font-size:14px;' + (i < e.en_tarjeta ? 'background:#C9A84C' : 'border:2px dashed #ccc') + '">' + (i < e.en_tarjeta ? '🥐' : '') + '</span>';
+    r.innerHTML = '<div style="background:#0C461F;color:#F5F0E9;border-radius:12px;padding:12px"><div style="font-size:18px;font-weight:800">' + esc(e.nombre) + '</div>' +
+      '<div style="margin:6px 0">' + sellos + '</div><div style="font-size:13px">' + e.compras + ' compras · ' + (e.beneficios > 0 ? '<b>🎁 tiene ' + e.beneficios + ' beneficio' + (e.beneficios > 1 ? 's' : '') + '</b>' : 'le faltan ' + e.faltan + ' para el beneficio') + '</div></div>' +
+      (e.beneficios > 0 ? '<div style="background:#E8F5E9;border:1px solid #66BB6A;border-radius:10px;padding:10px;margin-top:10px"><b>🎁 Beneficio:</b> ' + esc(e.beneficio) + '</div><button class="pcs-b" style="width:100%;padding:13px;margin-top:8px;background:#2E7D32" id="pcm-cj">🎁 Entregar beneficio</button>' : '') +
+      (e.cumple_disponible ? '<div style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:10px;padding:10px;margin-top:10px"><b>🎂 ' + (e.cumple_dias === 0 ? '¡Hoy es su cumple!' : e.cumple_dias > 0 ? 'Cumple en ' + e.cumple_dias + ' días' : 'Cumplió hace ' + (-e.cumple_dias) + ' días') + '</b><br>Regalo: ' + esc(e.regalo_cumple) + '</div><button class="pcs-b" style="width:100%;padding:13px;margin-top:8px;background:#C2185B" id="pcm-cc">🎂 Entregar regalo de cumple</button>' : '') +
+      (!e.tiene_cumple ? '<div style="font-size:12px;color:#888;margin-top:8px">No tenemos su cumpleaños: preguntale y cargalo en "📇 Anotar cliente".</div>' : '') +
+      '<button class="pcs-b" style="width:100%;padding:14px;margin-top:12px;background:#C9A84C;font-size:15px" id="pcm-s">➕ Sumar esta compra</button>';
+    document.getElementById('pcm-s').onclick = function () { this.disabled = true; rpc('comunidad_sumar_compra', { p_cliente: e.id, p_usuario: usr() }).then(function (x) { aviso(x.beneficios > e.beneficios ? '🎉 ¡Completó la tarjeta! Tiene un beneficio' : '✅ Compra sumada'); mostrar(x); }).catch(function (err) { aviso('⚠️ ' + err.message); }); };
+    var cj = document.getElementById('pcm-cj'); if (cj) cj.onclick = function () { if (!confirm('¿Entregar ' + e.beneficio + '?')) return; this.disabled = true; rpc('comunidad_canjear', { p_cliente: e.id, p_tipo: 'fidelidad', p_usuario: usr() }).then(function (x) { aviso('🎁 Beneficio entregado'); mostrar(x); }).catch(function (err) { aviso('⚠️ ' + err.message); }); };
+    var cc = document.getElementById('pcm-cc'); if (cc) cc.onclick = function () { if (!confirm('¿Entregar el regalo de cumpleaños?')) return; this.disabled = true; rpc('comunidad_canjear', { p_cliente: e.id, p_tipo: 'cumple', p_usuario: usr() }).then(function (x) { aviso('🎂 Regalo entregado'); mostrar(x); }).catch(function (err) { aviso('⚠️ ' + err.message); }); };
+  }
 })();
 </script>
 </body>
