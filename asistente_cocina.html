@@ -1366,7 +1366,7 @@ function filterLog(q) {
 
 
 // ── FREEZER → LEUDADO ────────────────────────────────
-const LEUDADO_KEY = 'cocina_leudado_' + new Date().toISOString().split('T')[0];
+const LEUDADO_KEY = 'cocina_leudado_' + new Date(Date.now() - 3*3600*1000).toISOString().split('T')[0]; // fecha de Argentina
 const ALARMA_HORA = 14; // 14:00hs
 
 const LEUDADO_SEMANAL = {
@@ -1484,7 +1484,31 @@ function getDayKeyLeudado() {
 
 function loadLeudado() {
   try { leudadoState = JSON.parse(localStorage.getItem(LEUDADO_KEY) || '{}'); } catch(e){ leudadoState = {}; }
+  syncLeudadoBase();
 }
+function slugLeudado(n) { return 'leud_' + String(n).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
+// La base manda: está "sacado" solo lo que sigue leudando. Lo que Madrugada ya horneó se destilda solo
+// y se puede cargar la tanda siguiente (antes quedaba tildado lo de la madrugada).
+let _syncLeudOk = false;
+async function syncLeudadoBase() {
+  let filas;
+  try { filas = await sbSelect('cocina_leudado', '?origen=eq.freezer&estado=eq.leudando&select=id,producto_id,cantidad&order=created_at.asc'); }
+  catch (e) { return; }  // sin conexión: queda lo que había en el dispositivo
+  if (!Array.isArray(filas)) return;
+  const items = LEUDADO_SEMANAL[getDayKeyLeudado()] || [];
+  let cambio = false;
+  items.forEach(def => {
+    const fila = filas.find(f => f.producto_id === slugLeudado(def.nombre));
+    const it = leudadoState[def.id];
+    if (fila) {
+      if (!it || !it.sacado || it.leudadoRowId !== fila.id) { leudadoState[def.id] = Object.assign({ cantidad: def.cantidad }, it || {}, { sacado: true, leudadoRowId: fila.id, cantidad: +fila.cantidad }); cambio = true; }
+    } else if (it && it.sacado) { it.sacado = false; it.leudadoRowId = null; it.cantidad = def.cantidad; cambio = true; }
+  });
+  _syncLeudOk = true;
+  if (cambio) { saveLeudado(); if (typeof renderLeudado === 'function') renderLeudado(); }
+}
+setInterval(syncLeudadoBase, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncLeudadoBase(); });
 
 function saveLeudado() { localStorage.setItem(LEUDADO_KEY, JSON.stringify(leudadoState)); }
 
@@ -1510,7 +1534,7 @@ async function toggleSacado(id) {
     } catch(e) { console.warn('toggleSacado freezer error:', e); }
     // ── AVISAR A MADRUGADA: crear el leudado para que lo horneen ──
     try {
-      const slug = 'leud_' + String(def.nombre).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+      const slug = slugLeudado(def.nombre);
       const res = await sbUpsert('cocina_leudado', [{ producto_id: slug, producto_nombre: def.nombre, cantidad: item.cantidad, origen: 'freezer', estado: 'leudando' }]);
       if (res && res[0] && res[0].id != null) { item.leudadoRowId = res[0].id; saveLeudado(); }
     } catch(e) { console.warn('toggleSacado leudado→madrugada error:', e); }
