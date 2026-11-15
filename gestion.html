@@ -152,6 +152,7 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#venta">🏷️ Productos de venta</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
+  <a href="#estadisticas">📊 Estadísticas</a>
   <a href="#rrhh">👥 RRHH</a>
   <a href="#usuarios">🔐 Usuarios</a>
 </nav>
@@ -390,7 +391,7 @@ Reglas:
 - Números sin separador de miles, con punto decimal. Si algo no figura, ponelo en 0.`;
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,venta:vVenta,compras:vCompras,finanzas:vFinanzas,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -472,7 +473,7 @@ function vInicio(){
     <div class="barras">${dias.map(([d,v])=>`<div class="${d===H?'hoy':''}" style="height:${v/max*100}%" data-t="${fechaCorta(d)}: ${$$(v)}"></div>`).join('')}</div>
     <div class="fila muted" style="justify-content:space-between;display:flex"><span>${fechaCorta(dias[0][0])}</span><span>hoy</span></div></div>
   <div class="grid g2" style="margin-top:12px">
-    <div class="card"><h3>🏆 Más vendidos del mes</h3>${top.length?`<table>${top.map(([n,v],i)=>`<tr><td>${i+1}. ${esc(n)}</td><td class="num">${$$(v)}</td><td class="num muted">${fnum(v/vm*100,1)}%</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hay ventas por producto este mes.</p>'}</div>
+    <div class="card"><h3>🏆 Más vendidos del mes <a href="#estadisticas" style="font-size:13px;color:var(--verde2)">ver todo →</a></h3>${top.length?`<table>${top.map(([n,v],i)=>`<tr><td>${i+1}. ${esc(n)}</td><td class="num">${$$(v)}</td><td class="num muted">${fnum(v/vm*100,1)}%</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no hay ventas por producto este mes.</p>'}</div>
     <div class="card"><h3>📅 Ventas por día de la semana <span class="muted">(últimas 8 semanas)</span></h3>${ventasPorDiaSemana()}</div>
   </div>`;
 }
@@ -942,6 +943,86 @@ function isAplicar(){
   IS.origen={tipo:'excel',archivo:IS_IMP.archivo};cerrarModal();IS.f='';IS.sec='';vInvSalon();
   toast('Revisá los cambios marcados en amarillo y tocá "Guardar cambios"',6000);
 }
+
+// ================= ESTADÍSTICAS =================
+// Sale de las ventas cargadas por turno (Finanzas → Venta del día). Cada producto se agrupa por su código de Ayres;
+// las ventas viejas sin código se agrupan por nombre.
+let EST={mes:0,orden:'plata',ver:'todos'};
+// ventas viejas sin código: se busca el producto de venta por nombre o por los vínculos de Productos de venta
+function estCodDe(nombre){if(!nombre||!PV.prods)return null;const k=normV(nombre);const a=pvAliasDe(k);if(a)return a.codigo;const p=PV.prods.find(p=>normV(p.nombre)===k);return p?p.codigo:null}
+function estAgrupar(cierres){
+  const P={};let conDetalle=0;
+  cierres.forEach(c=>{const its=c.items||[];if(its.length)conDetalle++;
+    its.forEach(i=>{const cod=i.codigo||estCodDe(i.producto);const k=cod?('c:'+cod):('n:'+norm(i.producto||''));if(k==='n:')return;
+      const pv=cod&&PV.prods?pvPorCod(String(cod)):null;
+      const x=P[k]||(P[k]={k,codigo:cod||null,nombre:pv?pv.nombre:(i.producto||'?'),unidad:i.unidad||'un',cant:0,plata:0,turnos:0});
+      x.cant+=+i.cantidad||0;x.plata+=+i.total||0;x.turnos++;if(i.unidad==='kg')x.unidad='kg'})});
+  return {P,conDetalle};
+}
+async function vEstadisticas(){
+  if(!PV.cargado){$('#app').innerHTML='<div class="cargando">Cargando…</div>';try{await cargarPV()}catch(e){}}
+  const [m1,m2]=mesRango(EST.mes);let [p1,p2]=mesRango(EST.mes-1);
+  const parcial=EST.mes===0;if(parcial){const dia=+hoy().slice(8,10);p2=sumaDias(p1,dia-1)}
+  const enRango=(a,b)=>D.cierres.filter(c=>{const d=diaLocal(c.fecha);return d>=a&&d<=b});
+  const cs=enRango(m1,m2),cp=enRango(p1,p2);
+  const {P,conDetalle}=estAgrupar(cs),{P:Pp}=estAgrupar(cp);
+  const venta=cs.reduce((a,c)=>a+(+c.total||0),0),ventaAnt=cp.reduce((a,c)=>a+(+c.total||0),0);
+  const conTk=cs.filter(c=>+c.tickets>0),tk=conTk.reduce((a,c)=>a+(+c.tickets),0),vTk=conTk.reduce((a,c)=>a+(+c.total||0),0);
+  const dias=new Set(cs.map(c=>diaLocal(c.fecha))).size;
+  const lista=Object.values(P).filter(x=>x.plata>0||x.cant>0);
+  const totProd=lista.reduce((a,x)=>a+x.plata,0)||1;
+  const ord=EST.orden==='unidades'?(a,b)=>b.cant-a.cant:(a,b)=>b.plata-a.plata;
+  lista.sort(ord);
+  const top=lista.slice(0,5),bottom=[...lista].sort((a,b)=>-ord(a,b)).slice(0,5);
+  const nombreMes=new Date(m1+'T12:00:00').toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  const fmtCant=x=>fnum(x.cant,x.unidad==='kg'?2:0)+' '+(x.unidad==='kg'?'kg':'u');
+  const varTxt=x=>{const a=Pp[x.k];if(!a||!a.plata)return '<span class="muted">nuevo</span>';const v=(x.plata-a.plata)/a.plata*100;return `<span class="${v>=0?'up':'down'}">${pct(v)}</span>`};
+  // turnos
+  const tur={};cs.forEach(c=>{const t=/ma[ñn]/i.test(c.turno||'')?'Mañana':/tarde/i.test(c.turno||'')?'Tarde':(c.turno||'Sin turno');const x=tur[t]||(tur[t]={v:0,n:0,tk:0});x.v+=+c.total||0;x.n++;x.tk+=+c.tickets||0});
+  // días de la semana (promedio por día con venta)
+  const DS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],ds=DS.map(()=>({v:0,d:new Set()}));
+  cs.forEach(c=>{const d=diaLocal(c.fecha),w=new Date(d+'T12:00:00').getDay();ds[w].v+=+c.total||0;ds[w].d.add(d)});
+  const prom=ds.map(x=>x.d.size?x.v/x.d.size:0),maxP=Math.max(1,...prom);
+  // productos de venta que no se vendieron (solo si el mes tiene detalle con código)
+  const vendidos=new Set(lista.filter(x=>x.codigo).map(x=>String(x.codigo)));
+  const sinVenta=lista.some(x=>x.codigo)?(PV.prods||[]).filter(p=>p.activo&&!vendidos.has(String(p.codigo))&&!/articulo libre/i.test(p.nombre)):[];
+  const filas=EST.ver==='todos'?lista:EST.ver==='top'?lista.slice(0,20):[...lista].sort((a,b)=>-ord(a,b)).slice(0,20);
+  $('#app').innerHTML=`<h2>📊 Estadísticas</h2>
+  <div class="acciones"><select style="max-width:220px" onchange="EST.mes=+this.value;vEstadisticas()">${[0,-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11].map(o=>{const [x]=mesRango(o);return `<option value="${o}" ${o===EST.mes?'selected':''}>${new Date(x+'T12:00:00').toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</option>`}).join('')}</select>
+  <span class="muted">${cs.length} turnos cargados en ${dias} días · ${conDetalle} con detalle de productos</span></div>
+  <div class="grid g4" style="margin-top:8px">
+    <div class="card kpi"><div class="lbl">Ventas · ${nombreMes}</div><div class="val">${$$(venta)}</div><div class="sub ${venta>=ventaAnt?'up':'down'}">${ventaAnt?pct((venta-ventaAnt)/ventaAnt*100)+(parcial?' vs mismos días del mes anterior':' vs mes anterior'):'mes anterior sin datos'}</div></div>
+    <div class="card kpi"><div class="lbl">Promedio por día</div><div class="val">${$$(dias?venta/dias:0)}</div><div class="sub muted">${dias} días con venta</div></div>
+    <div class="card kpi"><div class="lbl">Tickets</div><div class="val">${tk?fnum(tk):'—'}</div><div class="sub muted">${tk?'ticket promedio '+$$(vTk/tk):'se cargan con el Excel de artículos'}</div></div>
+    <div class="card kpi"><div class="lbl">Productos vendidos</div><div class="val">${lista.length}</div><div class="sub muted">${sinVenta.length?sinVenta.length+' de la lista sin ventas':''}</div></div>
+  </div>
+  ${!conDetalle?`<div class="card" style="margin-top:12px"><p class="muted">Este mes no tiene detalle por producto. Para ver los más y menos vendidos, cargá la venta del día con el Excel "Control de artículos" de Ayres.</p></div>`:`
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card"><h3>🏆 Más vendidos <span class="muted">· por ${EST.orden==='unidades'?'unidades':'plata'}</span></h3><table>${top.map((x,i)=>`<tr><td>${i+1}. <b>${esc(x.nombre)}</b></td><td class="num">${fmtCant(x)}</td><td class="num"><b>${$$(x.plata)}</b></td></tr>`).join('')}</table></div>
+    <div class="card"><h3>🐢 Menos vendidos <span class="muted">· de los que tuvieron venta</span></h3><table>${bottom.map((x,i)=>`<tr><td>${i+1}. ${esc(x.nombre)}</td><td class="num">${fmtCant(x)}</td><td class="num">${$$(x.plata)}</td></tr>`).join('')}</table></div>
+  </div>
+  <div class="card" style="margin-top:12px"><h3>📋 Ranking completo</h3>
+    <div class="tabs2">${[['plata','Por plata'],['unidades','Por unidades']].map(([k,n])=>`<button class="${EST.orden===k?'on':''}" onclick="EST.orden='${k}';vEstadisticas()">${n}</button>`).join('')}
+    <span style="width:12px"></span>${[['todos','Todos'],['top','Top 20'],['bottom','Últimos 20']].map(([k,n])=>`<button class="${EST.ver===k?'on':''}" onclick="EST.ver='${k}';vEstadisticas()">${n}</button>`).join('')}</div>
+    <div class="scroll"><table><tr><th>#</th><th>Producto</th><th class="num">Vendido</th><th class="num">Plata</th><th class="num">% de la venta</th><th class="num">Precio prom.</th><th class="num">${EST.mes===0?'vs mismos días mes ant.':'vs mes ant.'}</th></tr>
+    ${filas.map(x=>{const pos=lista.indexOf(x)+1;return `<tr><td class="muted">${pos}</td><td><b>${esc(x.nombre)}</b>${x.codigo?` <span class="muted" style="font-size:11px">#${esc(x.codigo)}</span>`:''}</td><td class="num">${fmtCant(x)}</td><td class="num">${$$(x.plata)}</td>
+      <td class="num"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><div style="background:var(--verde2);height:8px;border-radius:4px;width:${Math.max(2,x.plata/totProd*120)}px"></div>${fnum(x.plata/totProd*100,1)}%</div></td>
+      <td class="num">${x.cant?$$(x.plata/x.cant):'—'}</td><td class="num">${varTxt(x)}</td></tr>`}).join('')}</table></div>
+    <div class="acciones" style="margin-top:8px"><button class="btn sec peq" onclick="estCSV(${EST.mes})">⬇️ Descargar ranking (Excel/CSV)</button></div>
+  </div>`}
+  <div class="grid g2" style="margin-top:12px">
+    <div class="card"><h3>🌅 Mañana vs 🌇 Tarde</h3><table><tr><th>Turno</th><th class="num">Turnos</th><th class="num">Venta</th><th class="num">Promedio por turno</th><th class="num">Tickets</th></tr>
+      ${Object.entries(tur).map(([t,x])=>`<tr><td><b>${esc(t)}</b></td><td class="num">${x.n}</td><td class="num">${$$(x.v)}</td><td class="num">${$$(x.v/x.n)}</td><td class="num">${x.tk||'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">Sin datos</td></tr>'}</table></div>
+    <div class="card"><h3>📅 Día de la semana <span class="muted">· venta promedio</span></h3>
+      <div style="display:flex;align-items:flex-end;gap:8px;height:120px;margin-top:8px">${[1,2,3,4,5,6,0].map(w=>`<div style="flex:1;text-align:center"><div style="font-size:11px" class="muted">${prom[w]?$$(prom[w]/1000).replace(/,\d+/,'')+'k':''}</div><div style="background:${prom[w]===maxP&&prom[w]?'var(--oro)':'var(--verde2)'};height:${prom[w]/maxP*90}px;border-radius:4px 4px 0 0"></div><div style="font-size:12px;font-weight:700">${DS[w]}</div></div>`).join('')}</div></div>
+  </div>
+  ${sinVenta.length?`<div class="card" style="margin-top:12px"><h3>😴 Sin ventas en ${nombreMes} <span class="muted">· ${sinVenta.length} productos de la lista de precios</span></h3><p class="muted" style="margin-top:0">${sinVenta.map(p=>esc(p.nombre)).join(' · ')}</p></div>`:''}`;
+}
+function estCSV(mes){const [m1,m2]=mesRango(mes);const cs=D.cierres.filter(c=>{const d=diaLocal(c.fecha);return d>=m1&&d<=m2});const {P}=estAgrupar(cs);
+  const L=Object.values(P).sort((a,b)=>b.plata-a.plata);const tot=L.reduce((a,x)=>a+x.plata,0)||1;
+  const f=[['Puesto','Código','Producto','Cantidad','Unidad','Plata','% de la venta']].concat(L.map((x,i)=>[i+1,x.codigo||'',x.nombre,String(Math.round(x.cant*100)/100).replace('.',','),x.unidad,Math.round(x.plata),String(Math.round(x.plata/tot*1000)/10).replace('.',',')]));
+  const csv='﻿'+f.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='ranking_productos_'+m1.slice(0,7)+'.csv';a.click()}
 
 // ================= PRODUCTOS DE VENTA =================
 // Lista de productos que se venden en el local (mismos códigos que la caja) y
