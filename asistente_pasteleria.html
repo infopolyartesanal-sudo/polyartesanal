@@ -2195,17 +2195,26 @@ adjustStock = async function(name, dep, delta) {
 
   // 2) Recetas nuevas creadas en Gestión para este sector
   function linea(i) { var q = +i.cantidad || 0, u = (i.unidad || '').toLowerCase(); if (u === 'kg' && q < 1) return Math.round(q * 1000) + 'gm ' + i.nombre; if ((u.indexOf('litro') === 0) && q < 1) return Math.round(q * 1000) + 'cc ' + i.nombre; return q + ' ' + (i.unidad || '') + ' ' + i.nombre; }
+  function nrm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
   function slug(s) { return 'g_' + (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40); }
   function cargar() {
     Promise.all([
-      fetch(SB + 'recetas?select=id,nombre,ingredientes,pasos,unidades_tanda,cuota_semanal,unidad_venta,tipo&sector=eq.' + SECTOR + '&unidades_tanda=gt.0', { headers: H }).then(function (r) { return r.json(); }),
+      fetch(SB + 'recetas?select=id,nombre,ingredientes,pasos,unidades_tanda,cuota_semanal,unidad_venta,tipo&sector=eq.' + SECTOR + '&tipo=in.(PRODUCCION,BASE)&order=nombre.asc', { headers: H }).then(function (r) { return r.json(); }),
       fetch(SB + 'produccion_mapeo?select=producto,receta_id&sector=eq.' + SECTOR, { headers: H }).then(function (r) { return r.json(); })
     ]).then(function (res) {
       var recs = res[0] || [], mapeo = res[1] || [];
+      // Todas las recetas del sector (no solo las que tienen rendimiento cargado).
+      // Se dejan afuera las variantes MAYORISTA / (nativo), que son el mismo producto, y los nombres repetidos.
+      var vistos = {};
+      recs = recs.filter(function (r) {
+        var n = nrm(r.nombre);
+        if (!n || n.indexOf('mayorista') >= 0 || n.indexOf('(nativo)') >= 0 || vistos[n]) return false;
+        vistos[n] = 1; return true;
+      });
       // las que ya tienen un producto propio en el sector (catálogo original) no se duplican
       var yaVinculadas = {};
       mapeo.forEach(function (m) { if (m.receta_id && m.producto.toLowerCase() !== '') yaVinculadas[m.receta_id] = (yaVinculadas[m.receta_id] || []).concat(m.producto.toLowerCase()); });
-      var nuevas = recs.filter(function (r) { var v = yaVinculadas[r.id] || []; return v.every(function (p) { return p === r.nombre.toLowerCase(); }); });
+      var nuevas = recs.filter(function (r) { var v = yaVinculadas[r.id] || []; return v.every(function (p) { return nrm(p) === nrm(r.nombre); }); });
       if (!nuevas.length) return;
       if (SECTOR === 'panaderia' && typeof PROD_CATALOG !== 'undefined') {
         nuevas.forEach(function (r) {
@@ -2221,9 +2230,9 @@ adjustStock = async function(name, dep, delta) {
       } else if (typeof recipes !== 'undefined') {
         var base = 900000;
         nuevas.forEach(function (r, k) {
-          if (recipes.some(function (x) { return (x.name || '').toLowerCase() === r.nombre.toLowerCase(); })) return;
+          if (recipes.some(function (x) { return nrm(x.name) === nrm(r.nombre); })) return;
           recipes.push({ id: base + k, name: r.nombre, ingredients: (r.ingredientes || []).map(linea), steps: r.pasos || [],
-            cookTime: null, rendimiento: (+r.unidades_tanda) + ' ' + (r.unidad_venta || 'u') + ' por tanda', deposito: 'local', _gestion: true });
+            cookTime: null, rendimiento: (+r.unidades_tanda > 0) ? (+r.unidades_tanda) + ' ' + (r.unidad_venta || 'u') + ' por tanda' : '', deposito: 'local', _gestion: true });
         });
         if (typeof renderRecipes === 'function') renderRecipes();
       }

@@ -404,6 +404,29 @@ async function cargarDEP(){
   const [f,c,co,pa]=await Promise.all([sbGet('freezer_panaderia','order=nombre.asc'),sbGet('camara_panaderia','order=nombre.asc'),sbGet('cocina_stock','order=nombre.asc'),sbGet('pasteleria_stock','order=nombre.asc')]);
   DEP.freezer=f||[];DEP.camara=c||[];DEP.cocina=co||[];DEP.pasteleria=pa||[];
   try{DEP.mov=await sbGet('movimientos_terminados','order=fecha.desc&limit=150')||[]}catch(e){DEP.mov=[]}
+  // Todas las recetas de cada sector tienen que poder cargarse, aunque el sector todavía no las haya producido
+  try{
+    const [recs,map]=await Promise.all([sb('recetas?select=id,nombre,tipo,sector,unidad_venta&sector=in.(panaderia,cocina,pasteleria)&tipo=in.(PRODUCCION,BASE)&order=nombre.asc'),sb('produccion_mapeo?select=sector,producto,receta_id')]);
+    const nd=x=>(x||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+    const slugP=x=>'g_'+(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,40);
+    const vinc={};(map||[]).forEach(m=>{if(m.receta_id)(vinc[m.receta_id]=vinc[m.receta_id]||[]).push(nd(m.producto))});
+    const vistos={};
+    (recs||[]).forEach(r=>{
+      const n=nd(r.nombre),k=r.sector+'|'+n;
+      if(!n||n.includes('mayorista')||n.includes('(nativo)')||vistos[k])return;vistos[k]=1;
+      if((vinc[r.id]||[]).some(p=>p!==n))return;           // ya está vinculada a un producto del sector con otro nombre
+      if(r.sector==='panaderia'){
+        const id=slugP(r.nombre),u=r.unidad_venta||'u';
+        if(!DEP.freezer.some(x=>x.id===id||nd(x.nombre)===n))DEP.freezer.push({id,nombre:r.nombre,total:0,subtipos:{},unidad:u,def:[],_nuevo:1});
+        if(!DEP.camara.some(x=>x.id===id||nd(x.nombre)===n))DEP.camara.push({id,nombre:r.nombre,cantidad:0,unidad:u,_nuevo:1});
+      }else{
+        const L=DEP[r.sector];
+        if(!L.some(x=>nd(x.nombre||x.id)===n))L.push({id:r.nombre,nombre:r.nombre,local:0,heladera:0,freezer:0,estante:0,_nuevo:1});
+      }
+    });
+    const orden=(a,b)=>nd(a.nombre||a.id).localeCompare(nd(b.nombre||b.id));
+    ['freezer','camara','cocina','pasteleria'].forEach(t=>DEP[t].sort(orden));
+  }catch(e){console.warn('recetas para depósitos',e)}
   DEP.cargado=true;
 }
 // Cada campo editable tiene una clave: tabla|id|campo

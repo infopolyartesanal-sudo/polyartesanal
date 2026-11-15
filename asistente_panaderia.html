@@ -1712,19 +1712,40 @@ const PROD_TO_RECIPE = {
   'pan_hamburguesa': 'Pan de Hamburguesa',
 };
 
+// Suma unidades sueltas al depósito elegido (para recetas sin rendimiento por tanda cargado)
+function sumarUnidadesDeposito(id, uds) {
+  if (getProdDestino(id) === 'camara') {
+    camaraPanState[id] = Math.max(0, Math.round(((camaraPanState[id] || 0) + uds) * 10) / 10);
+    saveCamaraPan();
+  } else {
+    const fp = getFreezerProduct(id);
+    fp.total = Math.max(0, Math.round(((fp.total || 0) + uds) * 10) / 10);
+    saveFreezerPan(); renderFreezer();
+  }
+}
+
 async function addTanda(id) {
   const item = getProdItem(id);
   const t = getTamanoTanda(id);
+  const cat = PROD_CATALOG.find(c => c.id === id);
+  let uds = null;
+  if (!(cat && cat.rendimiento > 0)) {
+    const v = prompt('¿Cuántas unidades (' + ((cat && cat.unidad) || 'u') + ') salieron de esta ' + (t === 0.5 ? 'media tanda' : 'tanda') + ' de ' + ((cat && cat.nombre) || id) + '?');
+    if (v === null) return;
+    uds = parseFloat(String(v).replace(',', '.'));
+    if (!(uds > 0)) { alert('Poné un número mayor a 0.'); return; }
+  }
   item.tandasHechas = Math.round((item.tandasHechas + t) * 2) / 2;
   item.hist = (item.hist || []).concat([t]).slice(-30);
-  const cat = PROD_CATALOG.find(c => c.id === id);
-  if (getProdDestino(id) === 'camara') { addToCamara(id, t); } else { updateFreezerFromTanda(id, t); }
+  item.histU = (item.histU || []).concat([uds]).slice(-30);
+  if (uds !== null) { sumarUnidadesDeposito(id, uds); }
+  else if (getProdDestino(id) === 'camara') { addToCamara(id, t); } else { updateFreezerFromTanda(id, t); }
   saveProdState();
   renderProduccion();
-  addToLog('🏭 ' + (t === 0.5 ? 'Media tanda' : 'Tanda') + ' completada: ' + cat.nombre + ' (' + fmtTandas(item.tandasHechas) + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
+  addToLog('🏭 ' + (t === 0.5 ? 'Media tanda' : 'Tanda') + ' completada: ' + cat.nombre + (uds !== null ? ' → ' + uds + ' ' + (cat.unidad || 'u') : '') + ' (' + fmtTandas(item.tandasHechas) + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
 
   // ── INTEGRACIÓN: descontar ingredientes del inventario (función central) ──
-  registrarProduccion('panaderia', cat.nombre, t, null, cat.rendimiento);
+  registrarProduccion('panaderia', cat.nombre, t, uds, cat.rendimiento || null);
 }
 
 function removeTanda(id) {
@@ -1732,14 +1753,16 @@ function removeTanda(id) {
   if (item.tandasHechas <= 0) return;
   // deshace lo último que se sumó (media o completa)
   let t = (item.hist && item.hist.length) ? item.hist.pop() : getTamanoTanda(id);
+  const uds = (item.histU && item.histU.length) ? item.histU.pop() : null;
   if (t > item.tandasHechas) t = item.tandasHechas;
   item.tandasHechas = Math.max(0, Math.round((item.tandasHechas - t) * 2) / 2);
-  if (getProdDestino(id) === 'camara') { addToCamara(id, -t); } else { updateFreezerFromTanda(id, -t); }
+  if (uds) { sumarUnidadesDeposito(id, -uds); }
+  else if (getProdDestino(id) === 'camara') { addToCamara(id, -t); } else { updateFreezerFromTanda(id, -t); }
   saveProdState();
   renderProduccion();
   // Deshacer tanda: devuelve los ingredientes al inventario
   const catR = PROD_CATALOG.find(c => c.id === id);
-  if (catR) registrarProduccion('panaderia', catR.nombre, -t, null, catR.rendimiento);
+  if (catR) registrarProduccion('panaderia', catR.nombre, -t, uds || null, catR.rendimiento || null);
 }
 
 function renderProduccion() {
@@ -2360,6 +2383,13 @@ function getCamaraTotal(id) { return Math.round((camaraPanState[id] || 0) * 10) 
 
 function loadProdDestino() {
   try { prodDestino = JSON.parse(localStorage.getItem(DESTINO_KEY) || '{}'); } catch(e){ prodDestino = {}; }
+  // El destino de cada producto se comparte entre todos los dispositivos (y Gestión)
+  sbSelect('produccion_destino', '?select=producto_id,destino&sector=eq.panaderia').then(rows => {
+    if (!rows) return;
+    rows.forEach(r => { prodDestino[r.producto_id] = r.destino; });
+    localStorage.setItem(DESTINO_KEY, JSON.stringify(prodDestino));
+    renderProduccion();
+  }).catch(() => {});
 }
 const DESTINO_DEFAULT_CAMARA = ['pan_blanco','pan_boniato','pan_integral_sinsal'];
 function getProdDestino(id) {
@@ -2369,6 +2399,7 @@ function getProdDestino(id) {
 function setProdDestino(id, dest) {
   prodDestino[id] = (dest === 'camara') ? 'camara' : 'freezer';
   localStorage.setItem(DESTINO_KEY, JSON.stringify(prodDestino));
+  sbUpsert('produccion_destino', [{ sector: 'panaderia', producto_id: id, destino: prodDestino[id], updated_at: new Date().toISOString() }]).catch(() => {});
   renderProduccion();
 }
 
@@ -3006,24 +3037,34 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
 
   // 2) Recetas nuevas creadas en Gestión para este sector
   function linea(i) { var q = +i.cantidad || 0, u = (i.unidad || '').toLowerCase(); if (u === 'kg' && q < 1) return Math.round(q * 1000) + 'gm ' + i.nombre; if ((u.indexOf('litro') === 0) && q < 1) return Math.round(q * 1000) + 'cc ' + i.nombre; return q + ' ' + (i.unidad || '') + ' ' + i.nombre; }
+  function nrm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
   function slug(s) { return 'g_' + (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40); }
   function cargar() {
     Promise.all([
-      fetch(SB + 'recetas?select=id,nombre,ingredientes,pasos,unidades_tanda,cuota_semanal,unidad_venta,tipo&sector=eq.' + SECTOR + '&unidades_tanda=gt.0', { headers: H }).then(function (r) { return r.json(); }),
+      fetch(SB + 'recetas?select=id,nombre,ingredientes,pasos,unidades_tanda,cuota_semanal,unidad_venta,tipo&sector=eq.' + SECTOR + '&tipo=in.(PRODUCCION,BASE)&order=nombre.asc', { headers: H }).then(function (r) { return r.json(); }),
       fetch(SB + 'produccion_mapeo?select=producto,receta_id&sector=eq.' + SECTOR, { headers: H }).then(function (r) { return r.json(); })
     ]).then(function (res) {
       var recs = res[0] || [], mapeo = res[1] || [];
+      // Todas las recetas del sector (no solo las que tienen rendimiento cargado).
+      // Se dejan afuera las variantes MAYORISTA / (nativo), que son el mismo producto, y los nombres repetidos.
+      var vistos = {};
+      recs = recs.filter(function (r) {
+        var n = nrm(r.nombre);
+        if (!n || n.indexOf('mayorista') >= 0 || n.indexOf('(nativo)') >= 0 || vistos[n]) return false;
+        vistos[n] = 1; return true;
+      });
       // las que ya tienen un producto propio en el sector (catálogo original) no se duplican
       var yaVinculadas = {};
       mapeo.forEach(function (m) { if (m.receta_id && m.producto.toLowerCase() !== '') yaVinculadas[m.receta_id] = (yaVinculadas[m.receta_id] || []).concat(m.producto.toLowerCase()); });
-      var nuevas = recs.filter(function (r) { var v = yaVinculadas[r.id] || []; return v.every(function (p) { return p === r.nombre.toLowerCase(); }); });
+      var nuevas = recs.filter(function (r) { var v = yaVinculadas[r.id] || []; return v.every(function (p) { return nrm(p) === nrm(r.nombre); }); });
       if (!nuevas.length) return;
       if (SECTOR === 'panaderia' && typeof PROD_CATALOG !== 'undefined') {
         nuevas.forEach(function (r) {
           var id = slug(r.nombre);
-          if (PROD_CATALOG.some(function (c) { return c.id === id || c.nombre.toLowerCase() === r.nombre.toLowerCase(); })) return;
-          var rinde = +r.unidades_tanda, cuota = +r.cuota_semanal || 0, unidad = r.unidad_venta || 'u';
-          PROD_CATALOG.push({ id: id, nombre: r.nombre, unidad: unidad, rendimiento: rinde, cuota: cuota, tandas: cuota ? Math.max(1, Math.ceil(cuota / rinde)) : 0, pedidoOnly: !cuota, dias: {} });
+          if (PROD_CATALOG.some(function (c) { return c.id === id || nrm(c.nombre) === nrm(r.nombre); })) return;
+          var rinde = +r.unidades_tanda || 0, cuota = +r.cuota_semanal || 0, unidad = r.unidad_venta || 'u';
+          var conCuota = cuota > 0 && rinde > 0;
+          PROD_CATALOG.push({ id: id, nombre: r.nombre, unidad: unidad, rendimiento: rinde, cuota: conCuota ? cuota : null, tandas: conCuota ? Math.max(1, Math.ceil(cuota / rinde)) : null, pedidoOnly: !conCuota, dias: {}, _gestion: true });
           if (typeof FREEZER_CATALOG !== 'undefined' && !FREEZER_CATALOG.some(function (c) { return c.id === id; })) FREEZER_CATALOG.push({ id: id, nombre: r.nombre, unidad: unidad, unidadesPorTanda: rinde, subtipos: [] });
           if (typeof PROD_TO_FREEZER !== 'undefined') PROD_TO_FREEZER[id] = { id: id };
         });
@@ -3032,9 +3073,9 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
       } else if (typeof recipes !== 'undefined') {
         var base = 900000;
         nuevas.forEach(function (r, k) {
-          if (recipes.some(function (x) { return (x.name || '').toLowerCase() === r.nombre.toLowerCase(); })) return;
+          if (recipes.some(function (x) { return nrm(x.name) === nrm(r.nombre); })) return;
           recipes.push({ id: base + k, name: r.nombre, ingredients: (r.ingredientes || []).map(linea), steps: r.pasos || [],
-            cookTime: null, rendimiento: (+r.unidades_tanda) + ' ' + (r.unidad_venta || 'u') + ' por tanda', deposito: 'local', _gestion: true });
+            cookTime: null, rendimiento: (+r.unidades_tanda > 0) ? (+r.unidades_tanda) + ' ' + (r.unidad_venta || 'u') + ' por tanda' : '', deposito: 'local', _gestion: true });
         });
         if (typeof renderRecipes === 'function') renderRecipes();
       }
