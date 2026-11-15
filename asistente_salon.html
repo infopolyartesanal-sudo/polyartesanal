@@ -2127,7 +2127,7 @@ function renderTareas(){
     if (ref && !document.getElementById('pcs-seccion')) {
       // Sección de pedidos de clientes arriba de todo, en la misma solapa "Pedidos"
       var p = document.createElement('div'); p.id = 'pcs-seccion';
-      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><div id="pcs-lista"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
+      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#4A148C;border:1px solid #CE93D8" onclick="pcsAnotarCliente()">📇 Anotar cliente para promos</button><div id="pcs-lista"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
       ref.insertBefore(p, ref.firstChild);
     }
     if (!document.getElementById('pcs-pill')) {
@@ -2147,7 +2147,7 @@ function renderTareas(){
   // ── Listas de precios (Gestión → Productos de venta) ──
   var LISTAS = { minorista: ['Minorista', 'precio_lpu', '#6A1B9A'], mayorista: ['Mayorista', 'precio_may', '#1565C0'], pedidosya: ['PedidosYa', 'precio_pey', '#E53935'] };
   var lista = 'minorista', pvMap = {}, mayoristas = [], cliId = null;
-  function cargarMayoristas() { return api('crm_clientes?select=id,nombre,telefono,direccion,contacto&activo=eq.true&order=nombre').then(function (r) { mayoristas = r || []; var dl = document.getElementById('pcs-may'); if (dl) dl.innerHTML = mayoristas.map(function (m) { return '<option value="' + esc(m.nombre) + '">'; }).join(''); }).catch(function () {}); }
+  function cargarMayoristas() { return api('crm_clientes?select=id,nombre,telefono,direccion,contacto&activo=eq.true&tipo=eq.mayorista&order=nombre').then(function (r) { mayoristas = r || []; var dl = document.getElementById('pcs-may'); if (dl) dl.innerHTML = mayoristas.map(function (m) { return '<option value="' + esc(m.nombre) + '">'; }).join(''); }).catch(function () {}); }
   // Pedido mayorista: el cliente se elige de la lista de mayoristas (Gestión → Mayoristas) y el pedido queda en su ficha
   window.pcsCliente = function () {
     var el = document.getElementById('pcs-cli'), h = document.getElementById('pcs-clih'); if (!el) return;
@@ -2340,6 +2340,48 @@ function renderTareas(){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', iniciar); else iniciar();
 })();
 
+</script>
+
+<script>
+/* ── ANOTAR CLIENTE DEL MOSTRADOR (para promos por WhatsApp / Instagram) ──
+   Queda en Gestión → Clientes como "Mostrador". Si el teléfono o el @ ya existe, completa los datos. */
+(function () {
+  var SB = 'https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
+  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  function aviso(m) { if (typeof showToast === 'function') showToast(m); else alert(m); }
+  function cerrar() { var o = document.getElementById('pac-ov'); if (o) o.remove(); }
+  window.pcsAnotarCliente = function () {
+    cerrar();
+    var ov = document.createElement('div'); ov.id = 'pac-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:14px 8px';
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:480px;width:100%;padding:16px;font-family:system-ui,sans-serif;color:#222">' +
+      '<div style="font-size:17px;font-weight:800;color:#4A148C;margin-bottom:4px">📇 Anotar cliente</div>' +
+      '<div style="font-size:12px;color:#777;margin-bottom:10px">Para mandarle promos y novedades. Preguntale si quiere recibirlas.</div>' +
+      '<div class="pcs-lb">Nombre *</div><input class="pcs-in" id="pac-n" autocomplete="off">' +
+      '<div class="pcs-lb">WhatsApp</div><input class="pcs-in" id="pac-t" inputmode="tel" placeholder="ej: 11 2345 6789">' +
+      '<div class="pcs-lb">Instagram</div><input class="pcs-in" id="pac-i" placeholder="@usuario" autocapitalize="off">' +
+      '<div class="pcs-lb">Cumpleaños (opcional)</div><input class="pcs-in" id="pac-c" type="date">' +
+      '<div class="pcs-lb">¿Cómo nos conoció?</div><select class="pcs-in" id="pac-o"><option value="salon">Pasó por el local</option><option value="instagram">Instagram</option><option value="recomendacion">Recomendación</option><option value="web">Google / web</option><option value="otro">Otro</option></select>' +
+      '<label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:4px 0 12px"><input type="checkbox" id="pac-ok" checked style="width:20px;height:20px"> Acepta recibir promos</label>' +
+      '<div style="display:flex;gap:8px"><button class="pcs-b" style="flex:1;padding:13px" id="pac-g">Guardar</button><button class="pcs-b" style="flex:1;padding:13px;background:#eee;color:#333" id="pac-x">Cancelar</button></div></div>';
+    document.body.appendChild(ov);
+    document.getElementById('pac-x').onclick = cerrar;
+    ov.onclick = function (e) { if (e.target === ov) cerrar(); };
+    document.getElementById('pac-g').onclick = function () {
+      var b = this, v = function (id) { return document.getElementById(id).value.trim(); };
+      var p = { nombre: v('pac-n'), telefono: v('pac-t'), instagram: v('pac-i'), cumpleanos: v('pac-c') || null, origen: v('pac-o'), tipo: 'mostrador', acepta_promos: document.getElementById('pac-ok').checked };
+      if (!p.nombre) return aviso('Falta el nombre');
+      if (!p.telefono && !p.instagram) return aviso('Poné el WhatsApp o el Instagram');
+      if (p.telefono && p.telefono.replace(/\D/g, '').length < 8) return aviso('El teléfono parece incompleto');
+      b.disabled = true; b.textContent = 'Guardando…';
+      fetch(SB + 'rpc/crm_alta_cliente', { method: 'POST', headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ p: p }) })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error((j && j.message) || 'Error'); return j; }); })
+        .then(function (j) { cerrar(); aviso(j.nuevo ? '✅ Cliente anotado' : '✅ Ya estaba: actualicé sus datos'); })
+        .catch(function (e) { b.disabled = false; b.textContent = 'Guardar'; aviso('⚠️ ' + e.message); });
+    };
+    setTimeout(function () { var n = document.getElementById('pac-n'); if (n) n.focus(); }, 50);
+  };
+})();
 </script>
 </body>
 </html>

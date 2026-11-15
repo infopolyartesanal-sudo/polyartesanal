@@ -154,7 +154,8 @@ label{font-size:13px;color:var(--gris);display:block;margin:8px 0 3px}
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#estadisticas">📊 Estadísticas</a>
-  <a href="#mayoristas">🤝 Mayoristas</a>
+  <a href="#mayoristas">🤝 Clientes</a>
+  <a href="#campanias">📣 Campañas</a>
   <a href="#rrhh">👥 RRHH</a>
   <a href="#usuarios">🔐 Usuarios</a>
 </nav>
@@ -519,7 +520,7 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,campanias:vCampanias,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -557,8 +558,8 @@ function difCaja(c){return c.total_articulos==null?null:Math.round((+c.total||0)
 function turnoTxt(c){return (c.turno||'')}
 function insights(){
   const out=[];const H=hoy();
-  if(CRM.cargado){crmCalcular();const tar=CRM.clis.filter(c=>c._estado==='tarea'),con=CRM.clis.filter(c=>c._estado==='contactar');
-    if(tar.length)out.push({r:1,t:`${tar.length} tarea${tar.length>1?'s':''} con mayoristas para hoy`,d:tar.slice(0,4).map(c=>c.nombre+': '+(c.proxima_accion||'')).join(' · '),a:'#mayoristas',al:'Ver'});
+  if(CRM.cargado){crmCalcular();const tar=CRM.clis.filter(c=>c._estado==='tarea'),con=CRM.clis.filter(c=>c._estado==='contactar'&&c.tipo==='mayorista');
+    if(tar.length)out.push({r:1,t:`${tar.length} tarea${tar.length>1?'s':''} con clientes para hoy`,d:tar.slice(0,4).map(c=>c.nombre+': '+(c.proxima_accion||'')).join(' · '),a:'#mayoristas',al:'Ver'});
     if(con.length)out.push({t:`${con.length} mayorista${con.length>1?'s':''} para contactar`,d:'Dejaron de comprar a su ritmo: '+con.slice(0,5).map(c=>c.nombre+' ('+c._dias+' d)').join(', '),a:'#mayoristas',al:'Ver'})}
   D.cierres.filter(c=>diaLocal(c.fecha)>=sumaDias(H,-14)&&difCaja(c)!=null&&Math.abs(difCaja(c))>tolCaja()).forEach(c=>{const d=difCaja(c);
     out.push({r:1,t:`Diferencia de caja · ${fechaCorta(diaLocal(c.fecha))} ${turnoTxt(c)}`,d:`Cobrado ${$$(c.total)} vs vendido en Ayres ${$$(c.total_articulos)}: ${d<0?'falta':'sobra'} ${$$(Math.abs(d))}${c.responsable?' · '+c.responsable:''}.`,a:'#finanzas',al:'Ver'})});
@@ -1156,16 +1157,26 @@ function estCSV(mes){const [m1,m2]=mesRango(mes);const cs=D.cierres.filter(c=>{c
   const csv='﻿'+f.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\r\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='ranking_productos_'+m1.slice(0,7)+'.csv';a.click()}
 
-// ================= CRM MAYORISTAS =================
-// Clientes mayoristas (crm_clientes), notas/contactos (crm_interacciones) y sus pedidos (pedidos_clientes.cliente_id).
-let CRM={cargado:false,clis:[],inter:[],peds:[],f:'',est:'',orden:'estado'};
+// ================= CRM: CLIENTES Y CAMPAÑAS =================
+// Clientes (crm_clientes) de todo tipo: mayoristas, pedidos, mostrador e Instagram.
+// Contactos/notas (crm_interacciones), pedidos (pedidos_clientes.cliente_id) y
+// campañas de WhatsApp / Instagram / anuncios pagos (crm_campanias + crm_campania_envios).
+// Sin conexión oficial con Meta: el sistema arma la lista y el mensaje, y cada envío se abre con un toque.
+let CRM={cargado:false,clis:[],inter:[],peds:[],camps:[],envs:[],f:'',est:'',orden:'estado',tipo:'',camp:null,cf:'',waLocal:''};
 const CRM_EST={tarea:['📌 Tarea para hoy','#6A1B9A'],contactar:['📞 Para contactar','#C62828'],inactivo:['💤 Inactivo','#757575'],nuevo:['🆕 Sin pedidos','#1565C0'],aldia:['✅ Al día','#2E7D32'],baja:['⛔ Dado de baja','#9E9E9E']};
-const CRM_TIPOS={whatsapp:'💬 WhatsApp',llamada:'📞 Llamada',visita:'🚶 Visita',nota:'📝 Nota',reclamo:'⚠️ Reclamo',pedido:'🧾 Pedido'};
+const CRM_TIPOS={whatsapp:'💬 WhatsApp',instagram:'📸 Instagram',llamada:'📞 Llamada',visita:'🚶 Visita',nota:'📝 Nota',reclamo:'⚠️ Reclamo',pedido:'🧾 Pedido',campania:'📣 Campaña'};
+const CRM_TCLI={mayorista:['🏪 Mayorista','#1565C0'],pedido:['🧾 Pedidos','#6A1B9A'],mostrador:['🛍️ Mostrador','#E65100'],instagram:['📸 Instagram','#C2185B']};
+const CRM_CANAL={whatsapp:['💬 WhatsApp','#2E7D32'],instagram:['📸 Instagram','#C2185B'],anuncio:['📢 Anuncio pago','#1565C0']};
+const CRM_ENV={pendiente:['⏳ Pendiente','#9E9E9E'],enviado:['📤 Enviado','#1565C0'],respondio:['💬 Respondió','#6A1B9A'],compro:['🛒 Compró','#2E7D32'],no_interesa:['🙅 No le interesa','#757575'],baja:['⛔ Pidió la baja','#C62828']};
+const CRM_ORIGEN={salon:'Salón (pedido o mostrador)',instagram:'Instagram',recomendacion:'Recomendación',web:'Web / Google',otro:'Otro'};
 async function cargarCRM(){
   try{
-    const [c,i,p]=await Promise.all([sbGet('crm_clientes','order=nombre'),sbGet('crm_interacciones','order=fecha.desc&limit=3000'),
-      sb('pedidos_clientes?select=id,numero,cliente,fecha_retiro,total,sena,estado,lista_precios,cliente_id,created_at,pedidos_clientes_items(producto,cantidad,precio,unidad)&cliente_id=not.is.null&order=created_at.desc&limit=3000')]);
-    CRM.clis=c||[];CRM.inter=i||[];CRM.peds=p||[];
+    const [c,i,p,k,e,cfg]=await Promise.all([sbGet('crm_clientes','order=nombre'),sbGet('crm_interacciones','order=fecha.desc&limit=5000'),
+      sb('pedidos_clientes?select=id,numero,cliente,fecha_retiro,total,sena,estado,lista_precios,cliente_id,created_at,pedidos_clientes_items(producto,cantidad,precio,unidad)&cliente_id=not.is.null&order=created_at.desc&limit=5000'),
+      sbGet('crm_campanias','order=created_at.desc').catch(()=>[]),sbGet('crm_campania_envios','order=id&limit=50000').catch(()=>[]),
+      sbGet('config','clave=eq.whatsapp_local').catch(()=>[])]);
+    CRM.clis=c||[];CRM.inter=i||[];CRM.peds=p||[];CRM.camps=k||[];CRM.envs=e||[];
+    CRM.waLocal=String(((cfg||[])[0]||{}).valor||'').replace(/\D/g,'');
   }catch(e){console.warn('CRM',e)}
   CRM.cargado=true;crmCalcular();
 }
@@ -1173,6 +1184,7 @@ const diasEntre=(a,b)=>Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00
 function crmCalcular(){
   const H=hoy(),[m1]=mesRango(0);
   CRM.clis.forEach(c=>{
+    c.tipo=c.tipo||'mayorista';
     const ps=CRM.peds.filter(p=>p.cliente_id===c.id&&!/cancel/i.test(p.estado||''));
     const fechas=ps.map(p=>(p.fecha_retiro||diaLocal(p.created_at))).sort();
     c._peds=ps;c._n=ps.length;c._total=ps.reduce((a,p)=>a+(+p.total||0),0);
@@ -1183,51 +1195,85 @@ function crmCalcular(){
     c._freqCalc=fc;c._freq=+c.frecuencia_dias||fc||7;
     c._dias=c._ultima?Math.max(0,diasEntre(c._ultima,H)):null;
     const ult=CRM.inter.find(i=>i.cliente_id===c.id);c._ultContacto=ult?diaLocal(ult.fecha):null;
-    c._estado=c.activo===false?'baja':(c.proxima_fecha&&c.proxima_fecha<=H)?'tarea':!c._ultima?'nuevo':c._dias>Math.max(30,c._freq*3)?'inactivo':c._dias>Math.max(c._freq*1.5,c._freq+2)?'contactar':'aldia';
+    c._cumpleMes=!!(c.cumpleanos&&c.cumpleanos.slice(5,7)===H.slice(5,7));
+    if(c.activo===false)c._estado='baja';
+    else if(c.proxima_fecha&&c.proxima_fecha<=H)c._estado='tarea';
+    else if(!c._ultima)c._estado='nuevo';
+    else if(c.tipo==='mayorista')c._estado=c._dias>Math.max(30,c._freq*3)?'inactivo':c._dias>Math.max(c._freq*1.5,c._freq+2)?'contactar':'aldia';
+    else c._estado=c._dias>60?'inactivo':'aldia';   // clientes particulares: inactivo a los 2 meses sin comprar
   });
 }
-function crmChip(e){const [t,col]=CRM_EST[e]||[e,'#999'];return `<span class="chip" style="background:${col}1a;color:${col};border:1px solid ${col}55">${t}</span>`}
-function crmWa(tel){let d=String(tel||'').replace(/\D/g,'');if(!d)return null;if(d.startsWith('54')){if(!d.startsWith('549'))d='549'+d.slice(2)}else{d=d.replace(/^0/,'');if(d.length===10)d='549'+d;else if(d.length===12&&d.slice(2,4)==='15')d='549'+d.slice(0,2)+d.slice(4);else d='549'+d}return d}
+function crmChip(e,M){const [t,col]=(M||CRM_EST)[e]||[e,'#999'];return `<span class="chip" style="background:${col}1a;color:${col};border:1px solid ${col}55">${t}</span>`}
+// Teléfono argentino → 10 dígitos (característica + número, sin 0 ni 15). Igual que tel_norm() en la base.
+function telNorm(t){let d=String(t||'').replace(/\D/g,'');if(!d)return null;
+  if(d.startsWith('54')&&d.length>=12)d=d.slice(2);if(d.startsWith('9')&&d.length===11)d=d.slice(1);if(d.startsWith('0'))d=d.slice(1);
+  if(d.length===12){if(d.startsWith('11')&&d.slice(2,4)==='15')d=d.slice(0,2)+d.slice(4);else if(d.slice(3,5)==='15')d=d.slice(0,3)+d.slice(5);else if(d.slice(4,6)==='15')d=d.slice(0,4)+d.slice(6)}
+  if(d.length===10&&d.startsWith('15'))d='11'+d.slice(2);if(d.length===8)d='11'+d;return d.slice(-10)}
+function crmWa(tel){const n=telNorm(tel);return n&&n.length===10?'549'+n:null}
+function igNorm(x){return (String(x||'').replace(/[?#].*$/,'').replace(/^\s*@|\s|https?:\/\/(www\.)?instagram\.com\/|\/.*$/g,'').toLowerCase())||null}
+function crmPrimerNombre(c){const base=c.tipo==='mayorista'?(c.contacto||''):(c.contacto||c.nombre||'');const w=base.trim().split(/\s+/)[0]||'';return w?w[0].toUpperCase()+w.slice(1).toLowerCase():''}
+function crmPersonalizar(txt,c){const n=crmPrimerNombre(c);return String(txt||'').replace(/\s?\{nombre\}/g,n?' '+n:'').replace(/\{negocio\}/g,c.nombre||'')}
+function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['campanias','📣 Campañas']].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
+
+// ───────── LISTA DE CLIENTES ─────────
 async function vMayoristas(){
-  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando mayoristas…</div>';await cargarCRM()}
+  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando clientes…</div>';await cargarCRM()}
   crmCalcular();
   const q=norm(CRM.f);const orden={tarea:0,contactar:1,inactivo:2,nuevo:3,aldia:4,baja:5};
-  let L=CRM.clis.filter(c=>(CRM.est?c._estado===CRM.est:c._estado!=='baja')&&(!q||norm([c.nombre,c.razon_social,c.contacto,c.zona,c.telefono,c.rubro].join(' ')).includes(q)));
+  let L=CRM.clis.filter(c=>(!CRM.tipo||c.tipo===CRM.tipo)&&(CRM.est==='cumple'?c._cumpleMes&&c._estado!=='baja':CRM.est?c._estado===CRM.est:c._estado!=='baja')&&(!q||norm([c.nombre,c.razon_social,c.contacto,c.zona,c.telefono,c.rubro,c.instagram].join(' ')).includes(q)));
   L.sort(CRM.orden==='compras'?(a,b)=>b._mes-a._mes||b._total-a._total:CRM.orden==='nombre'?(a,b)=>norm(a.nombre).localeCompare(norm(b.nombre)):(a,b)=>(orden[a._estado]-orden[b._estado])||((b._dias??-1)-(a._dias??-1)));
-  const act=CRM.clis.filter(c=>c._estado!=='baja');const cnt=k=>act.filter(c=>c._estado===k).length;
+  const act=CRM.clis.filter(c=>c._estado!=='baja'&&(!CRM.tipo||c.tipo===CRM.tipo));const cnt=k=>act.filter(c=>c._estado===k).length;
   const mes=act.reduce((a,c)=>a+c._mes,0),compraron=act.filter(c=>c._mes>0).length;
-  $('#app').innerHTML=`<h2>🤝 Mayoristas</h2>
-  <p class="muted">Tus clientes mayoristas: datos, pedidos y seguimiento. Los pedidos se vinculan solos cuando en el Salón se elige el cliente con la lista Mayorista.</p>
+  const promos=act.filter(c=>c.acepta_promos!==false&&(crmWa(c.telefono)||c.instagram)).length,cumple=act.filter(c=>c._cumpleMes).length;
+  const porTipo=k=>CRM.clis.filter(c=>c._estado!=='baja'&&c.tipo===k).length;
+  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('mayoristas')}
+  <p class="muted">Todos tus clientes: mayoristas, los que encargan pedidos, los del mostrador y los que llegan por Instagram. Los clientes de pedidos se suman solos cuando el Salón carga un pedido con teléfono. Los del mostrador se anotan desde el Salón (Pedidos → 📇 Anotar cliente).</p>
+  <div class="tabs2" style="margin-bottom:10px"><button class="${!CRM.tipo?'on':''}" onclick="CRM.tipo='';vMayoristas()">Todos (${CRM.clis.filter(c=>c._estado!=='baja').length})</button>${Object.entries(CRM_TCLI).map(([k,[t]])=>`<button class="${CRM.tipo===k?'on':''}" onclick="CRM.tipo='${k}';vMayoristas()">${t} (${porTipo(k)})</button>`).join('')}</div>
   <div class="grid g4" style="margin-bottom:12px">
-    <div class="card kpi"><div class="lbl">Clientes activos</div><div class="val">${act.length}</div><div class="sub muted">${cnt('nuevo')?cnt('nuevo')+' todavía sin pedidos':''}</div></div>
+    <div class="card kpi"><div class="lbl">Clientes activos</div><div class="val">${act.length}</div><div class="sub muted">${promos} reciben promos</div></div>
     <div class="card kpi"><div class="lbl">Compraron este mes</div><div class="val">${compraron}</div><div class="sub muted">${$$(mes)} en pedidos</div></div>
-    <div class="card kpi"><div class="lbl">Para contactar</div><div class="val" style="color:${cnt('contactar')+cnt('tarea')?'var(--rojo)':'var(--verde)'}">${cnt('contactar')+cnt('tarea')}</div><div class="sub muted">${cnt('tarea')?cnt('tarea')+' con tarea para hoy':'dejaron de comprar a su ritmo'}</div></div>
-    <div class="card kpi"><div class="lbl">Inactivos</div><div class="val">${cnt('inactivo')}</div><div class="sub muted">más de un mes sin comprar</div></div>
+    <div class="card kpi"><div class="lbl">Para contactar</div><div class="val" style="color:${cnt('contactar')+cnt('tarea')?'var(--rojo)':'var(--verde)'}">${cnt('contactar')+cnt('tarea')}</div><div class="sub muted">${cnt('tarea')?cnt('tarea')+' con tarea para hoy':cnt('inactivo')+' inactivos'}</div></div>
+    <div class="card kpi"><div class="lbl">Cumplen años este mes</div><div class="val">${cumple}</div><div class="sub muted">${cumple?'<a href="javascript:CRM.est=\'cumple\';vMayoristas()">ver quiénes</a>':'cargá el cumpleaños en la ficha'}</div></div>
   </div>
-  <div class="acciones" style="margin-bottom:8px"><button class="btn" onclick="crmEditar()">➕ Nuevo mayorista</button>
+  <div class="acciones" style="margin-bottom:8px"><button class="btn" onclick="crmEditar()">➕ Nuevo cliente</button>
+    <button class="btn oro" onclick="crmNuevaCampania()">📣 Nueva campaña</button>
     <button class="btn sec" onclick="$('#crmArch').click()">📥 Importar desde Excel</button><input type="file" id="crmArch" accept=".xlsx,.xls,.csv" style="display:none" onchange="crmImportar(this.files[0]);this.value=''">
     <button class="btn sec" onclick="CRM.cargado=false;vMayoristas()">🔄 Recargar</button></div>
-  <div class="acciones" style="margin-bottom:8px"><input id="crmBus" placeholder="Buscar por nombre, zona, contacto…" value="${esc(CRM.f)}" style="max-width:280px" oninput="CRM.f=this.value;clearTimeout(window._tcrm);window._tcrm=setTimeout(()=>{vMayoristas();const i=$('#crmBus');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
-    <select style="max-width:200px" onchange="CRM.est=this.value;vMayoristas()"><option value="">Todos (activos)</option>${Object.entries(CRM_EST).map(([k,[t]])=>`<option value="${k}" ${CRM.est===k?'selected':''}>${t}</option>`).join('')}</select>
+  <div class="acciones" style="margin-bottom:8px"><input id="crmBus" placeholder="Buscar por nombre, teléfono, @instagram…" value="${esc(CRM.f)}" style="max-width:280px" oninput="CRM.f=this.value;clearTimeout(window._tcrm);window._tcrm=setTimeout(()=>{vMayoristas();const i=$('#crmBus');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)">
+    <select style="max-width:200px" onchange="CRM.est=this.value;vMayoristas()"><option value="">Todos (activos)</option>${Object.entries(CRM_EST).map(([k,[t]])=>`<option value="${k}" ${CRM.est===k?'selected':''}>${t}</option>`).join('')}<option value="cumple" ${CRM.est==='cumple'?'selected':''}>🎂 Cumplen este mes</option></select>
     <select style="max-width:200px" onchange="CRM.orden=this.value;vMayoristas()">${[['estado','Ordenar: prioridad'],['compras','Ordenar: más compras'],['nombre','Ordenar: nombre']].map(([k,t])=>`<option value="${k}" ${CRM.orden===k?'selected':''}>${t}</option>`).join('')}</select></div>
   <div class="card scroll"><table><tr><th>Cliente</th><th>Estado</th><th>Última compra</th><th class="num">Este mes</th><th class="num">Histórico</th><th>Próxima acción</th><th></th></tr>
-  ${L.map(c=>{const wa=crmWa(c.telefono);return `<tr><td><a href="javascript:crmFicha(${c.id})" style="font-weight:700;color:var(--verde)">${esc(c.nombre)}</a><div class="muted" style="font-size:12px">${esc([c.rubro,c.zona,c.contacto].filter(Boolean).join(' · '))}</div></td>
+  ${L.map(c=>{const wa=crmWa(c.telefono);return `<tr><td><a href="javascript:crmFicha(${c.id})" style="font-weight:700;color:var(--verde)">${esc(c.nombre)}</a> ${crmChip(c.tipo,CRM_TCLI)}${c.acepta_promos===false?' <span class="muted" style="font-size:11px">sin promos</span>':''}<div class="muted" style="font-size:12px">${esc([c.instagram?'@'+c.instagram:'',c.rubro,c.zona,c.contacto,c._cumpleMes?'🎂 '+fechaCorta(c.cumpleanos):''].filter(Boolean).join(' · '))}</div></td>
     <td>${crmChip(c._estado)}</td>
-    <td>${c._ultima?`${fechaCorta(c._ultima)} <span class="muted">· hace ${c._dias} d</span><div class="muted" style="font-size:11px">suele comprar cada ${c._freq} d</div>`:'<span class="muted">—</span>'}</td>
+    <td>${c._ultima?`${fechaCorta(c._ultima)} <span class="muted">· hace ${c._dias} d</span>${c.tipo==='mayorista'?`<div class="muted" style="font-size:11px">suele comprar cada ${c._freq} d</div>`:''}`:'<span class="muted">—</span>'}</td>
     <td class="num">${c._mes?$$(c._mes):'—'}</td><td class="num">${c._total?$$(c._total):'—'}<div class="muted" style="font-size:11px">${c._n} pedido${c._n===1?'':'s'}</div></td>
     <td>${c.proxima_accion?`<b style="font-size:13px">${esc(c.proxima_accion)}</b><div class="muted" style="font-size:11px">${c.proxima_fecha?fechaCorta(c.proxima_fecha):''}</div>`:'<span class="muted">—</span>'}</td>
-    <td style="white-space:nowrap">${wa?`<button class="btn peq sec" onclick="crmMensaje(${c.id})">💬</button> `:''}<button class="btn peq" onclick="crmFicha(${c.id})">Ver</button></td></tr>`}).join('')||`<tr><td colspan="7" class="muted">${CRM.clis.length?'No hay clientes con ese filtro.':'Todavía no cargaste mayoristas. Empezá con "➕ Nuevo mayorista" o importalos desde un Excel.'}</td></tr>`}
+    <td style="white-space:nowrap">${wa?`<button class="btn peq sec" title="WhatsApp" onclick="crmMensaje(${c.id})">💬</button> `:''}${c.instagram?`<button class="btn peq sec" title="Instagram" onclick="crmIG(${c.id})">📸</button> `:''}<button class="btn peq" onclick="crmFicha(${c.id})">Ver</button></td></tr>`}).join('')||`<tr><td colspan="7" class="muted">${CRM.clis.length?'No hay clientes con ese filtro.':'Todavía no hay clientes. Empezá con "➕ Nuevo cliente" o importalos desde un Excel.'}</td></tr>`}
   </table></div>`;
 }
-const CRM_CAMPOS=[['nombre','Nombre del negocio *'],['razon_social','Razón social'],['cuit','CUIT'],['rubro','Rubro (cafetería, almacén, colegio…)'],['contacto','Persona de contacto'],['telefono','Teléfono / WhatsApp'],['email','Email'],['direccion','Dirección'],['zona','Zona / barrio'],['dias_entrega','Días y horario de entrega'],['condicion_pago','Condición de pago (contado, 7 días…)'],['frecuencia_dias','Suele comprar cada (días)']];
-function crmEditar(id){const c=id?CRM.clis.find(x=>x.id===id):{activo:true};
-  modal(`<h2>${id?'✏️ Editar':'➕ Nuevo'} mayorista</h2><div class="fila" style="flex-wrap:wrap">${CRM_CAMPOS.map(([k,l])=>`<div style="min-width:230px;flex:1"><label>${l}</label><input id="crm_${k}" ${k==='frecuencia_dias'?'type="number" placeholder="se calcula sola si lo dejás vacío"':''}${k==='telefono'?' inputmode="tel" placeholder="ej: 11 2345 6789"':''} value="${esc(c[k]??'')}"></div>`).join('')}</div>
+const CRM_CAMPOS_MAY=[['razon_social','Razón social'],['cuit','CUIT'],['rubro','Rubro (cafetería, almacén, colegio…)'],['contacto','Persona de contacto'],['direccion','Dirección'],['zona','Zona / barrio'],['dias_entrega','Días y horario de entrega'],['condicion_pago','Condición de pago (contado, 7 días…)'],['frecuencia_dias','Suele comprar cada (días)']];
+function crmOrigenes(){const cods=CRM.camps.filter(k=>k.canal==='anuncio'&&k.codigo).map(k=>[k.codigo,'📢 Anuncio: '+k.nombre]);return [...Object.entries(CRM_ORIGEN),...cods]}
+function crmEditar(id,tipoIni){const c=id?CRM.clis.find(x=>x.id===id):{activo:true,acepta_promos:true,tipo:tipoIni||CRM.tipo||'mostrador'};
+  const inp=(k,l,extra='')=>`<div style="min-width:220px;flex:1"><label>${l}</label><input id="crm_${k}" value="${esc(c[k]??'')}" ${extra}></div>`;
+  modal(`<h2>${id?'✏️ Editar':'➕ Nuevo'} cliente</h2>
+  <div class="fila" style="flex-wrap:wrap">
+    <div style="min-width:220px;flex:1"><label>Tipo de cliente</label><select id="crm_tipo" onchange="$('#crmMay').style.display=this.value==='mayorista'?'':'none'">${Object.entries(CRM_TCLI).map(([k,[t]])=>`<option value="${k}" ${c.tipo===k?'selected':''}>${t}</option>`).join('')}</select></div>
+    ${inp('nombre','Nombre *')}${inp('telefono','Teléfono / WhatsApp','inputmode="tel" placeholder="ej: 11 2345 6789"')}${inp('instagram','Instagram','placeholder="@usuario"')}${inp('email','Email','type="email"')}
+    <div style="min-width:220px;flex:1"><label>Cumpleaños</label><input id="crm_cumpleanos" type="date" value="${esc(c.cumpleanos||'')}"></div>
+    <div style="min-width:220px;flex:1"><label>¿Cómo nos conoció?</label><select id="crm_origen"><option value="">—</option>${crmOrigenes().map(([k,t])=>`<option value="${esc(k)}" ${c.origen===k?'selected':''}>${esc(t)}</option>`).join('')}${c.origen&&!crmOrigenes().some(([k])=>k===c.origen)?`<option selected value="${esc(c.origen)}">${esc(c.origen)}</option>`:''}</select></div>
+  </div>
+  <div id="crmMay" style="${c.tipo==='mayorista'?'':'display:none'}"><h3 style="margin-top:10px">Datos de mayorista</h3><div class="fila" style="flex-wrap:wrap">${CRM_CAMPOS_MAY.map(([k,l])=>inp(k,l,k==='frecuencia_dias'?'type="number" placeholder="se calcula sola si lo dejás vacío"':'')).join('')}</div></div>
   <label>Notas</label><textarea id="crm_notas" rows="3">${esc(c.notas||'')}</textarea>
-  ${id?`<label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crm_baja" style="width:auto" ${c.activo===false?'checked':''}> Dado de baja (no aparece en la lista)</label>`:''}
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crm_promos" style="width:auto" ${c.acepta_promos!==false?'checked':''}> Acepta recibir promociones por WhatsApp / Instagram</label>
+  ${id?`<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="crm_baja" style="width:auto" ${c.activo===false?'checked':''}> Dado de baja (no aparece en la lista)</label>`:''}
   <div class="acciones" style="margin-top:12px"><button class="btn" id="crmG">💾 Guardar</button><button class="btn sec" onclick="${id?`crmFicha(${id})`:'cerrarModal()'}">Cancelar</button></div>`);
-  $('#crmG').onclick=async()=>{const row={};CRM_CAMPOS.forEach(([k])=>{const v=$('#crm_'+k).value.trim();row[k]=k==='frecuencia_dias'?(v===''?null:Math.max(1,Math.round(+v))):(v||null)});
-    row.notas=$('#crm_notas').value.trim()||null;if(!row.nombre)return toast('Falta el nombre');
-    if(!id&&CRM.clis.some(x=>norm(x.nombre)===norm(row.nombre)))return toast('Ya existe un mayorista con ese nombre');
+  $('#crmG').onclick=async()=>{const row={};const v=k=>{const e=$('#crm_'+k);return e?e.value.trim():''};
+    ['nombre','telefono','email','cumpleanos','origen','tipo'].forEach(k=>row[k]=v(k)||null);row.instagram=igNorm(v('instagram'));
+    const tipo=row.tipo||'mostrador';row.tipo=tipo;
+    CRM_CAMPOS_MAY.forEach(([k])=>{const x=v(k);row[k]=k==='frecuencia_dias'?(x===''?null:Math.max(1,Math.round(+x))):(x||null)});
+    row.notas=$('#crm_notas').value.trim()||null;row.acepta_promos=$('#crm_promos').checked;if(!row.nombre)return toast('Falta el nombre');
+    if(!id){const tn=telNorm(row.telefono);const dup=CRM.clis.find(x=>(tn&&telNorm(x.telefono)===tn)||(row.instagram&&x.instagram===row.instagram)||(tipo==='mayorista'&&x.tipo==='mayorista'&&norm(x.nombre)===norm(row.nombre)));
+      if(dup)return toast('Ya existe: '+dup.nombre+' (mismo '+(tn&&telNorm(dup.telefono)===tn?'teléfono':row.instagram&&dup.instagram===row.instagram?'Instagram':'nombre')+')',5000)}
     row.updated_at=new Date().toISOString();if(id)row.activo=!$('#crm_baja').checked;
     if(id){const [x]=await sbUpd('crm_clientes','id=eq.'+id,row);Object.assign(c,x||row)}else{const [x]=await sbIns('crm_clientes',[row]);CRM.clis.push(x);id=x.id}
     toast('Guardado ✅');crmCalcular();crmFicha(id);if(location.hash.startsWith('#mayoristas'))vMayoristas()};
@@ -1236,57 +1282,238 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
   const prods={};c._peds.forEach(p=>(p.pedidos_clientes_items||[]).forEach(i=>{const k=norm(i.producto);const x=prods[k]||(prods[k]={n:i.producto,q:0,v:0,u:i.unidad||'u'});x.q+=+i.cantidad||0;x.v+=(+i.cantidad||0)*(+i.precio||0)}));
   const top=Object.values(prods).sort((a,b)=>b.v-a.v||b.q-a.q).slice(0,8);
   const ints=CRM.inter.filter(i=>i.cliente_id===id);const wa=crmWa(c.telefono);
+  const envs=CRM.envs.filter(e=>e.cliente_id===id).map(e=>({e,k:CRM.camps.find(k=>k.id===e.campania_id)})).filter(x=>x.k);
+  const ori=c.origen?(crmOrigenes().find(([k])=>k===c.origen)||[0,c.origen])[1]:null;
   const dato=(l,v)=>v?`<div><span class="muted" style="font-size:12px">${l}</span><div><b>${esc(v)}</b></div></div>`:'';
-  modal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap"><div><h2 style="margin-bottom:4px">${esc(c.nombre)}</h2>${crmChip(c._estado)}</div>
-    <div class="acciones">${wa?`<button class="btn" onclick="crmMensaje(${id})">💬 WhatsApp</button><a class="btn sec" href="tel:+${wa}" style="text-decoration:none">📞 Llamar</a>`:''}<button class="btn sec" onclick="crmEditar(${id})">✏️ Editar</button></div></div>
+  modal(`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap"><div><h2 style="margin-bottom:4px">${esc(c.nombre)}</h2>${crmChip(c.tipo,CRM_TCLI)} ${crmChip(c._estado)}${c.acepta_promos===false?' <span class="chip" style="background:#eee;color:#666">No recibe promos</span>':''}</div>
+    <div class="acciones">${wa?`<button class="btn" onclick="crmMensaje(${id})">💬 WhatsApp</button><a class="btn sec" href="tel:+${wa}" style="text-decoration:none">📞 Llamar</a>`:''}${c.instagram?`<button class="btn sec" onclick="crmIG(${id})">📸 Instagram</button>`:''}<button class="btn sec" onclick="crmEditar(${id})">✏️ Editar</button></div></div>
   <div class="grid g4" style="margin:12px 0">
     <div class="card kpi"><div class="lbl">Última compra</div><div class="val" style="font-size:20px">${c._ultima?fechaCorta(c._ultima):'—'}</div><div class="sub muted">${c._dias!=null?'hace '+c._dias+' días':''}</div></div>
-    <div class="card kpi"><div class="lbl">Ritmo de compra</div><div class="val" style="font-size:20px">cada ${c._freq} d</div><div class="sub muted">${c.frecuencia_dias?'lo cargaste vos':c._freqCalc?'calculado de sus pedidos':'estimado'}</div></div>
+    ${c.tipo==='mayorista'?`<div class="card kpi"><div class="lbl">Ritmo de compra</div><div class="val" style="font-size:20px">cada ${c._freq} d</div><div class="sub muted">${c.frecuencia_dias?'lo cargaste vos':c._freqCalc?'calculado de sus pedidos':'estimado'}</div></div>`:`<div class="card kpi"><div class="lbl">Campañas recibidas</div><div class="val" style="font-size:20px">${envs.filter(x=>x.e.estado!=='pendiente').length}</div></div>`}
     <div class="card kpi"><div class="lbl">Este mes</div><div class="val" style="font-size:20px">${$$(c._mes)}</div></div>
     <div class="card kpi"><div class="lbl">Histórico</div><div class="val" style="font-size:20px">${$$(c._total)}</div><div class="sub muted">${c._n} pedidos${c._n?' · promedio '+$$(c._total/c._n):''}</div></div>
   </div>
-  <div class="grid g4" style="margin-bottom:10px">${dato('Contacto',c.contacto)}${dato('Teléfono',c.telefono)}${dato('Email',c.email)}${dato('Rubro',c.rubro)}${dato('Dirección',[c.direccion,c.zona].filter(Boolean).join(' · '))}${dato('Entrega',c.dias_entrega)}${dato('Pago',c.condicion_pago)}${dato('CUIT',[c.cuit,c.razon_social].filter(Boolean).join(' · '))}</div>
+  <div class="grid g4" style="margin-bottom:10px">${dato('Teléfono',c.telefono)}${dato('Instagram',c.instagram?'@'+c.instagram:'')}${dato('Email',c.email)}${dato('Cumpleaños',c.cumpleanos?new Date(c.cumpleanos+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long'}):'')}${dato('Nos conoció por',ori)}${dato('Contacto',c.contacto)}${dato('Rubro',c.rubro)}${dato('Dirección',[c.direccion,c.zona].filter(Boolean).join(' · '))}${dato('Entrega',c.dias_entrega)}${dato('Pago',c.condicion_pago)}${dato('CUIT',[c.cuit,c.razon_social].filter(Boolean).join(' · '))}</div>
   ${c.notas?`<div class="alerta" style="white-space:pre-wrap">${esc(c.notas)}</div>`:''}
   <div class="card" style="margin-bottom:10px"><h3>📌 Próxima acción</h3><div class="fila"><input id="crmPA" placeholder="ej: Ofrecer budines nuevos, pasar lista de precios…" value="${esc(c.proxima_accion||'')}"><input id="crmPF" type="date" value="${c.proxima_fecha||''}" style="max-width:170px"><button class="btn" onclick="crmProxima(${id})">Guardar</button>${c.proxima_accion?`<button class="btn sec" onclick="crmProxima(${id},true)">✔ Hecha</button>`:''}</div></div>
   <div class="grid g2">
     <div class="card"><h3>🗒️ Contactos y notas</h3>
-      <div class="fila"><select id="crmIT" style="max-width:140px">${Object.entries(CRM_TIPOS).filter(([k])=>k!=='pedido').map(([k,t])=>`<option value="${k}" ${k==='nota'?'selected':''}>${t}</option>`).join('')}</select><input id="crmID" placeholder="Qué hablaron, qué pidió, quedó en…"><button class="btn" onclick="crmNota(${id})">Agregar</button></div>
+      <div class="fila"><select id="crmIT" style="max-width:140px">${Object.entries(CRM_TIPOS).filter(([k])=>k!=='pedido'&&k!=='campania').map(([k,t])=>`<option value="${k}" ${k==='nota'?'selected':''}>${t}</option>`).join('')}</select><input id="crmID" placeholder="Qué hablaron, qué pidió, quedó en…"><button class="btn" onclick="crmNota(${id})">Agregar</button></div>
       <div style="max-height:260px;overflow:auto;margin-top:8px">${ints.map(i=>`<div style="padding:6px 0;border-bottom:1px solid #eee"><span class="muted" style="font-size:12px">${new Date(i.fecha).toLocaleString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${CRM_TIPOS[i.tipo]||esc(i.tipo)}${i.usuario?' · '+esc(i.usuario):''}</span><div>${esc(i.detalle||'')}</div></div>`).join('')||'<p class="muted">Todavía no hay contactos registrados.</p>'}</div></div>
     <div class="card"><h3>🥐 Lo que más compra</h3>${top.length?`<table>${top.map(x=>`<tr><td>${esc(x.n)}</td><td class="num">${fnum(x.q,x.u==='kg'?2:0)} ${esc(x.u)}</td><td class="num">${x.v?$$(x.v):''}</td></tr>`).join('')}</table>`:'<p class="muted">Sin pedidos vinculados todavía.</p>'}</div>
   </div>
+  ${envs.length?`<div class="card" style="margin-top:10px"><h3>📣 Campañas</h3><table>${envs.map(({e,k})=>`<tr><td><a href="javascript:cerrarModal();CRM.camp=${k.id};location.hash='#campanias'">${esc(k.nombre)}</a> ${crmChip(k.canal,CRM_CANAL)}</td><td>${e.enviado_at?fechaCorta(diaLocal(e.enviado_at)):''}</td><td>${crmChip(e.estado,CRM_ENV)}</td></tr>`).join('')}</table></div>`:''}
   <div class="card" style="margin-top:10px"><h3>🧾 Pedidos</h3>${c._peds.length?`<div class="scroll" style="max-height:280px"><table><tr><th>#</th><th>Fecha</th><th>Productos</th><th class="num">Total</th><th>Estado</th></tr>
-    ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando en el Salón se elige este cliente al cargar un pedido con lista Mayorista.</p>'}</div>`);
+    ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando el Salón carga un pedido con este teléfono (o elige este mayorista).</p>'}</div>`);
 }
-async function crmNota(id,tipo,detalle){tipo=tipo||$('#crmIT').value;detalle=detalle??$('#crmID').value.trim();if(!detalle)return toast('Escribí qué hablaron');
-  const [x]=await sbIns('crm_interacciones',[{cliente_id:id,tipo,detalle,usuario:(window.POLY_USUARIO||{}).usuario||null}]);CRM.inter.unshift(x);toast('Agregado ✅');crmFicha(id)}
+async function crmNota(id,tipo,detalle,silencio){tipo=tipo||$('#crmIT').value;detalle=detalle??$('#crmID').value.trim();if(!detalle)return toast('Escribí qué hablaron');
+  const [x]=await sbIns('crm_interacciones',[{cliente_id:id,tipo,detalle,usuario:(window.POLY_USUARIO||{}).usuario||null}]);CRM.inter.unshift(x);if(silencio)return;toast('Agregado ✅');crmFicha(id)}
 async function crmProxima(id,hecha){const c=CRM.clis.find(x=>x.id===id);
   if(hecha){const t=c.proxima_accion;const [x]=await sbUpd('crm_clientes','id=eq.'+id,{proxima_accion:null,proxima_fecha:null,updated_at:new Date().toISOString()});Object.assign(c,x);await crmNota(id,'nota','✔ Hecho: '+t);return}
   const patch={proxima_accion:$('#crmPA').value.trim()||null,proxima_fecha:$('#crmPF').value||null,updated_at:new Date().toISOString()};
   const [x]=await sbUpd('crm_clientes','id=eq.'+id,patch);Object.assign(c,x||patch);toast('Guardado ✅');crmFicha(id)}
-function crmMensaje(id){const c=CRM.clis.find(x=>x.id===id);const wa=crmWa(c.telefono);if(!wa)return toast('Este cliente no tiene teléfono cargado');
-  const nom=(c.contacto||'').split(' ')[0]||'';
-  const P={hola:`Hola${nom?' '+nom:''}! ¿Cómo andás? Te escribo de Poly Artesanal 🥐 ¿Te preparo el pedido de esta semana?`,
+function crmMensaje(id){const c=CRM.clis.find(x=>x.id===id);const wa=crmWa(c.telefono);if(!wa)return toast('Este cliente no tiene un teléfono válido cargado');
+  const nom=crmPrimerNombre(c);
+  const P=c.tipo==='mayorista'?{hola:`Hola${nom?' '+nom:''}! ¿Cómo andás? Te escribo de Poly Artesanal 🥐 ¿Te preparo el pedido de esta semana?`,
     extrano:`Hola${nom?' '+nom:''}! Te escribo de Poly Artesanal. Hace unos días que no te vemos, ¿cómo vienen las ventas? Si querés te paso lo que tenemos esta semana 😊`,
-    lista:`Hola${nom?' '+nom:''}! Te comparto la lista de precios mayorista actualizada de Poly Artesanal. Cualquier consulta, avisame.`};
-  modal(`<h2>💬 WhatsApp a ${esc(c.nombre)}</h2><div class="tabs2">${[['hola','Tomar pedido'],['extrano','Hace mucho que no compra'],['lista','Lista de precios']].map(([k,t])=>`<button onclick="$('#crmMsg').value=${esc(JSON.stringify(P[k]))}">${t}</button>`).join('')}</div>
+    lista:`Hola${nom?' '+nom:''}! Te comparto la lista de precios mayorista actualizada de Poly Artesanal. Cualquier consulta, avisame.`}
+   :{hola:`Hola${nom?' '+nom:''}! Te escribimos de Poly Artesanal 🥐 ¿Cómo estás?`,
+    extrano:`Hola${nom?' '+nom:''}! Hace un tiempito que no te vemos por Poly Artesanal 🥐 Esta semana tenemos novedades, ¡te esperamos!`,
+    lista:`Hola${nom?' '+nom:''}! ¿Querés encargar algo para el finde? Avisame y te lo dejamos listo 😊`};
+  const T=c.tipo==='mayorista'?[['hola','Tomar pedido'],['extrano','Hace mucho que no compra'],['lista','Lista de precios']]:[['hola','Saludo'],['extrano','Hace mucho que no viene'],['lista','Ofrecer pedido']];
+  modal(`<h2>💬 WhatsApp a ${esc(c.nombre)}</h2><div class="tabs2">${T.map(([k,t])=>`<button onclick="$('#crmMsg').value=${esc(JSON.stringify(P[k]))}">${t}</button>`).join('')}</div>
   <textarea id="crmMsg" rows="5">${esc(c._estado==='contactar'||c._estado==='inactivo'?P.extrano:P.hola)}</textarea>
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crmReg" checked style="width:auto"> Registrarlo en sus contactos</label>
   <div class="acciones" style="margin-top:12px"><button class="btn" id="crmEnv">Abrir WhatsApp</button><button class="btn sec" onclick="crmFicha(${id})">Volver</button></div>`);
   $('#crmEnv').onclick=async()=>{const t=$('#crmMsg').value;window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank');if($('#crmReg').checked)await crmNota(id,'whatsapp',t.length>140?t.slice(0,140)+'…':t);else crmFicha(id)}}
+async function crmCopiar(t){try{await navigator.clipboard.writeText(t);return true}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();let ok=false;try{ok=document.execCommand('copy')}catch(_){}a.remove();return ok}}
+function crmIG(id,texto){const c=CRM.clis.find(x=>x.id===id);if(!c||!c.instagram)return toast('Este cliente no tiene Instagram cargado');
+  const t=texto||`Hola${crmPrimerNombre(c)?' '+crmPrimerNombre(c):''}! Te escribimos de Poly Artesanal 🥐`;
+  modal(`<h2>📸 Instagram a ${esc(c.nombre)} (@${esc(c.instagram)})</h2><p class="muted">Instagram no deja escribir el mensaje automáticamente: lo copiamos y lo pegás en el chat.</p>
+  <textarea id="crmMsgIG" rows="5">${esc(t)}</textarea>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="crmRegIG" checked style="width:auto"> Registrarlo en sus contactos</label>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="crmEnvIG">Copiar y abrir Instagram</button><button class="btn sec" onclick="crmFicha(${id})">Volver</button></div>`);
+  $('#crmEnvIG').onclick=async()=>{const t=$('#crmMsgIG').value;const w=window.open('https://ig.me/m/'+encodeURIComponent(c.instagram),'_blank');await crmCopiar(t);toast('Mensaje copiado: pegalo en el chat de Instagram 📋',4000);if($('#crmRegIG').checked)await crmNota(id,'instagram',t.length>140?t.slice(0,140)+'…':t);else crmFicha(id)}}
 async function crmImportar(file){if(!file)return;if(!CRM.cargado)await cargarCRM();
   let hojas;try{hojas=await planillaAHojas(file)}catch(e){return toast('⚠️ '+e.message,6000)}
-  const MAP={nombre:/^(nombre|cliente|negocio|comercio|razon social|denominacion|nombre fantasia)$/,telefono:/^(telefono|tel|celular|cel|whatsapp|movil)$/,direccion:/^(direccion|domicilio)$/,cuit:/^(cuit|cuil|dni|cuit cuil)$/,email:/^(email|mail|e mail|correo)$/,zona:/^(zona|barrio|localidad)$/,contacto:/^(contacto|encargado|responsable)$/,rubro:/^(rubro|tipo|categoria)$/,condicion_pago:/^(condicion|condicion de pago|pago)$/};
+  const MAP={nombre:/^(nombre|cliente|negocio|comercio|razon social|denominacion|nombre fantasia|nombre y apellido)$/,telefono:/^(telefono|tel|celular|cel|whatsapp|movil)$/,instagram:/^(instagram|ig|usuario instagram|@)$/,direccion:/^(direccion|domicilio)$/,cuit:/^(cuit|cuil|dni|cuit cuil)$/,email:/^(email|mail|e mail|correo)$/,zona:/^(zona|barrio|localidad)$/,contacto:/^(contacto|encargado|responsable)$/,rubro:/^(rubro|tipo|categoria)$/,condicion_pago:/^(condicion|condicion de pago|pago)$/,cumpleanos:/^(cumpleanos|cumple|fecha de nacimiento|nacimiento)$/};
   const nuevos=[];let dup=0;
   for(const h of hojas){const hi=h.filas.findIndex(f=>f.some(x=>MAP.nombre.test(norm(String(x)).trim())));if(hi<0)continue;
     const H=h.filas[hi].map(x=>norm(String(x)).trim());const col={};Object.entries(MAP).forEach(([k,re])=>{const i=H.findIndex(x=>re.test(x));if(i>=0)col[k]=i});
     for(const f of h.filas.slice(hi+1)){const nombre=String(f[col.nombre]??'').trim();if(!nombre)continue;
-      if(CRM.clis.some(x=>norm(x.nombre)===norm(nombre))||nuevos.some(x=>norm(x.nombre)===norm(nombre))){dup++;continue}
-      const r={nombre};Object.keys(col).forEach(k=>{if(k!=='nombre'){const v=String(f[col[k]]??'').trim();if(v)r[k]=v}});nuevos.push(r)}}
+      const r={nombre};Object.keys(col).forEach(k=>{if(k!=='nombre'){const v=String(f[col[k]]??'').trim();if(v)r[k]=v}});
+      if(r.instagram)r.instagram=igNorm(r.instagram);
+      if(r.cumpleanos){const m=/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/.exec(r.cumpleanos);const iso=/^\d{4}-\d{2}-\d{2}/.test(r.cumpleanos)?r.cumpleanos.slice(0,10):m?`${m[3]?(m[3].length===2?'19'+m[3]:m[3]):'2000'}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:null;r.cumpleanos=iso}
+      const tn=telNorm(r.telefono);
+      if(CRM.clis.concat(nuevos).some(x=>(tn&&telNorm(x.telefono)===tn)||(r.instagram&&x.instagram===r.instagram)||(!tn&&!r.instagram&&norm(x.nombre)===norm(nombre)))){dup++;continue}
+      nuevos.push(r)}}
   if(!nuevos.length)return toast(dup?'Todos los clientes del archivo ya estaban cargados':'⚠️ No encontré una columna con el nombre del cliente (Nombre, Cliente o Negocio)',7000);
-  modal(`<h2>📥 Importar mayoristas</h2><p>${nuevos.length} clientes nuevos${dup?` · ${dup} ya estaban cargados (no se tocan)`:''}.</p>
-  <div class="scroll" style="max-height:50vh"><table><tr><th>Nombre</th><th>Teléfono</th><th>Dirección</th><th>Contacto</th></tr>${nuevos.map(r=>`<tr><td>${esc(r.nombre)}</td><td>${esc(r.telefono||'')}</td><td>${esc(r.direccion||'')}</td><td>${esc(r.contacto||'')}</td></tr>`).join('')}</table></div>
+  modal(`<h2>📥 Importar clientes</h2><p>${nuevos.length} clientes nuevos${dup?` · ${dup} ya estaban cargados (no se tocan)`:''}.</p>
+  <div class="fila"><div><label>Cargarlos como</label><select id="crmImpT">${Object.entries(CRM_TCLI).map(([k,[t]])=>`<option value="${k}" ${(CRM.tipo||'mayorista')===k?'selected':''}>${t}</option>`).join('')}</select></div></div>
+  <div class="scroll" style="max-height:45vh"><table><tr><th>Nombre</th><th>Teléfono</th><th>Instagram</th><th>Dirección</th></tr>${nuevos.map(r=>`<tr><td>${esc(r.nombre)}</td><td>${esc(r.telefono||'')}</td><td>${r.instagram?'@'+esc(r.instagram):''}</td><td>${esc(r.direccion||'')}</td></tr>`).join('')}</table></div>
   <div class="acciones" style="margin-top:12px"><button class="btn" id="crmImpOk">Importar ${nuevos.length}</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
-  $('#crmImpOk').onclick=async()=>{const rows=await sbIns('crm_clientes',nuevos);CRM.clis.push(...(rows||[]));cerrarModal();toast(nuevos.length+' mayoristas importados ✅');vMayoristas()}}
+  $('#crmImpOk').onclick=async()=>{const t=$('#crmImpT').value;const rows=await sbIns('crm_clientes',nuevos.map(r=>({...r,tipo:t})));CRM.clis.push(...(rows||[]));cerrarModal();toast(nuevos.length+' clientes importados ✅');vMayoristas()}}
+
+// ───────── CAMPAÑAS ─────────
+const CRM_PLANT={
+  promo:['🎉 Promo',`Hola{nombre}! 🥐 Esta semana en Poly Artesanal tenemos [PROMO]. Te esperamos en Galván 3512 o encargalo por acá.\n\nSi no querés recibir más mensajes, respondé BAJA.`],
+  extrano:['💛 Te extrañamos',`Hola{nombre}! Hace un tiempo que no te vemos por Poly Artesanal 🥐 Te guardamos [BENEFICIO] para tu próxima visita. ¡Te esperamos!\n\nSi no querés recibir más mensajes, respondé BAJA.`],
+  cumple:['🎂 Cumpleaños',`¡Feliz cumpleaños{nombre}! 🎂 En Poly Artesanal queremos festejarte: este mes tenés [REGALO]. ¡Te esperamos!`],
+  novedad:['✨ Novedad',`Hola{nombre}! Te cuento que en Poly Artesanal lanzamos [NOVEDAD] 🥐 ¿Te reservo para esta semana?\n\nSi no querés recibir más mensajes, respondé BAJA.`],
+  mayorista:['🏪 Mayoristas',`Hola{nombre}! Te escribo de Poly Artesanal. Esta semana tenemos [NOVEDAD/PRECIO] para tu negocio. ¿Te armo el pedido?`]};
+// Ventas de un cliente en los 30 días siguientes a una fecha
+function crmVentasDesde(cliId,desde,dias=30){if(!desde)return {n:0,v:0};const d0=new Date(desde).getTime(),d1=d0+dias*864e5;
+  const ps=CRM.peds.filter(p=>p.cliente_id===cliId&&!/cancel/i.test(p.estado||'')&&new Date(p.created_at).getTime()>=d0&&new Date(p.created_at).getTime()<=d1);
+  return {n:ps.length,v:ps.reduce((a,p)=>a+(+p.total||0),0)}}
+function crmPublico(f,canal){crmCalcular();const H=hoy();
+  return CRM.clis.filter(c=>{
+    if(c.activo===false||c.acepta_promos===false)return false;
+    if(canal==='whatsapp'&&!crmWa(c.telefono))return false;
+    if(canal==='instagram'&&!c.instagram)return false;
+    if(f.tipos&&f.tipos.length&&!f.tipos.includes(c.tipo))return false;
+    if(f.cumple&&!c._cumpleMes)return false;
+    if(f.estado==='inactivos'&&!(c._estado==='inactivo'||c._estado==='contactar'))return false;
+    if(f.estado==='nuevos'&&c._estado!=='nuevo')return false;
+    if(f.estado==='recientes'&&!(c._ultima&&diasEntre(c._ultima,H)<=30))return false;
+    return true})}
+function crmMetricas(k){
+  if(k.canal==='anuncio'){const L=CRM.clis.filter(c=>c.origen&&k.codigo&&c.origen===k.codigo);
+    const desde=k.fecha_inicio?k.fecha_inicio+'T00:00:00-03:00':k.created_at;let v=0,comp=0;
+    L.forEach(c=>{const r=crmVentasDesde(c.id,desde,365);v+=r.v;if(r.n)comp++});
+    return {leads:L,dest:L.length,env:L.length,resp:L.length,comp,v}}
+  const E=CRM.envs.filter(e=>e.campania_id===k.id);let comp=0,v=0;
+  E.forEach(e=>{const r=crmVentasDesde(e.cliente_id,e.enviado_at);e._ventas=r;if(e.estado==='compro'||r.n)comp++;v+=r.v});
+  return {E,dest:E.length,env:E.filter(e=>e.estado!=='pendiente').length,resp:E.filter(e=>['respondio','compro'].includes(e.estado)||e._ventas.n).length,comp,v}}
+async function vCampanias(){
+  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando campañas…</div>';await cargarCRM()}
+  if(CRM.camp){const k=CRM.camps.find(x=>x.id===CRM.camp);if(k)return crmVerCampania(k);CRM.camp=null}
+  const L=CRM.camps;
+  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('campanias')}
+  <p class="muted">Armá una campaña, elegí a quién le llega y el mensaje. El sistema te da la lista y vos mandás cada mensaje con un toque (WhatsApp se abre con el texto listo; en Instagram se copia para pegarlo). Después marcás quién respondió, y las compras se cuentan solas cuando ese cliente hace un pedido. Para los <b>anuncios pagos</b> de Instagram o Facebook, el sistema te da un link y un código para saber cuántos clientes y ventas trajo.</p>
+  <div class="acciones" style="margin-bottom:10px"><button class="btn oro" onclick="crmNuevaCampania()">📣 Nueva campaña</button>
+    <span class="muted" style="font-size:13px">WhatsApp del local: <b>${CRM.waLocal?'+'+esc(CRM.waLocal):'sin cargar'}</b> <a href="javascript:crmWaLocal()">cambiar</a></span></div>
+  ${L.length?`<div class="card scroll"><table><tr><th>Campaña</th><th>Canal</th><th>Fecha</th><th class="num">Llega a</th><th class="num">Enviados</th><th class="num">Respondieron</th><th class="num">Compraron</th><th class="num">Ventas</th></tr>
+  ${L.map(k=>{const m=crmMetricas(k);return `<tr class="click" onclick="CRM.camp=${k.id};vCampanias()"><td><b>${esc(k.nombre)}</b>${k.estado==='terminada'?' <span class="muted" style="font-size:11px">terminada</span>':''}</td><td>${crmChip(k.canal,CRM_CANAL)}</td><td>${fechaCorta(k.fecha_inicio||diaLocal(k.created_at))}</td>
+    ${k.canal==='anuncio'?`<td class="num">—</td><td class="num">${k.presupuesto?$$(k.presupuesto):'—'}<div class="muted" style="font-size:11px">invertido</div></td><td class="num">${m.dest}<div class="muted" style="font-size:11px">clientes nuevos</div></td>`:`<td class="num">${m.dest}</td><td class="num">${m.env}</td><td class="num">${m.resp}</td>`}
+    <td class="num">${m.comp}</td><td class="num"><b>${m.v?$$(m.v):'—'}</b></td></tr>`}).join('')}</table></div>`:'<div class="card muted">Todavía no hay campañas. Tocá "📣 Nueva campaña" para armar la primera.</div>'}
+  <div class="card" style="margin-top:12px"><h3>💡 Ideas</h3><ul style="margin:0;padding-left:18px;font-size:14px;line-height:1.6">
+    <li><b>Te extrañamos:</b> WhatsApp a clientes inactivos con un beneficio para que vuelvan.</li>
+    <li><b>Cumpleaños del mes:</b> un regalito (ej. una medialuna o 10% off) para los que cumplen este mes.</li>
+    <li><b>Mayoristas:</b> avisá una novedad o la lista de precios nueva a todos juntos.</li>
+    <li><b>Anuncio en Instagram:</b> promocioná una publicación con el botón de WhatsApp y el link de la campaña: cada persona que escribe llega con el código y la anotás.</li></ul></div>`;
+}
+async function crmWaLocal(){const v=prompt('Número de WhatsApp del local (con característica, ej: 11 4143 2504):',CRM.waLocal?'+'+CRM.waLocal:'');if(v===null)return;
+  const w=crmWa(v);if(!w)return toast('Número no válido');await sbIns('config',[{clave:'whatsapp_local',valor:w}],true);CRM.waLocal=w;toast('Guardado ✅');refrescar()}
+function crmNuevaCampania(canalIni){if(!CRM.cargado)return cargarCRM().then(()=>crmNuevaCampania(canalIni));
+  const st={canal:canalIni||'whatsapp'};
+  modal(`<h2>📣 Nueva campaña</h2>
+  <label>Nombre</label><input id="kN" placeholder="ej: Te extrañamos noviembre, Cumples de diciembre, Pan dulce 2026…">
+  <label>Canal</label><div class="tabs2" id="kCanal">${Object.entries(CRM_CANAL).map(([k,[t]])=>`<button data-c="${k}" class="${st.canal===k?'on':''}">${t}</button>`).join('')}</div>
+  <div id="kCuerpo"></div>
+  <div class="acciones" style="margin-top:14px"><button class="btn" id="kOk">Crear campaña</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  const cuerpo=()=>{
+    if(st.canal==='anuncio'){$('#kCuerpo').innerHTML=`
+      <p class="muted" style="font-size:13px">Para anuncios pagos de Instagram o Facebook. Creás el anuncio en la app de Instagram (Promocionar → Más mensajes → WhatsApp) o en Meta Ads, y acá llevás la cuenta: cuánto invertiste, cuántos clientes nuevos llegaron y cuánto compraron.</p>
+      <div class="fila" style="flex-wrap:wrap"><div><label>Presupuesto ($)</label><input id="kP" type="number" min="0" inputmode="decimal"></div><div><label>Desde</label><input id="kD" type="date" value="${hoy()}"></div><div><label>Hasta</label><input id="kH" type="date" value="${sumaDias(hoy(),7)}"></div></div>
+      <label>Texto que va a escribir la persona al tocar el anuncio</label><textarea id="kM" rows="3">Hola! Vi el anuncio de Poly Artesanal y quiero consultar 🥐</textarea>
+      <p class="muted" style="font-size:12px">Al crearla te damos el link de WhatsApp con un código (ej. AD-1234) para poner en el anuncio o en la bio.</p>`;return}
+    const tipos=Object.entries(CRM_TCLI).map(([k,[t]])=>`<label style="display:inline-flex;gap:5px;align-items:center;margin-right:12px;font-weight:400"><input type="checkbox" class="kT" value="${k}" style="width:auto" checked> ${t}</label>`).join('');
+    $('#kCuerpo').innerHTML=`
+      <label>¿A quién le llega?</label><div>${tipos}</div>
+      <div class="fila" style="flex-wrap:wrap;margin-top:6px"><div><label>Además</label><select id="kE"><option value="">Todos</option><option value="inactivos">Solo los que dejaron de venir</option><option value="recientes">Solo los que compraron en el último mes</option><option value="nuevos">Solo los que nunca compraron</option></select></div>
+      <div style="display:flex;align-items:flex-end"><label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="kC" style="width:auto"> 🎂 Solo los que cumplen años este mes</label></div></div>
+      <div class="alerta" id="kCuenta" style="margin-top:8px"></div>
+      <label>Mensaje <span class="muted" style="font-weight:400;font-size:12px">· {nombre} se cambia por el nombre de cada cliente</span></label>
+      <div class="tabs2">${Object.entries(CRM_PLANT).map(([k,[t]])=>`<button data-p="${k}">${t}</button>`).join('')}</div>
+      <textarea id="kM" rows="6">${esc(CRM_PLANT.promo[1])}</textarea>
+      <p class="muted" style="font-size:12px">Reemplazá lo que está entre [corchetes]. Solo les llega a los clientes que aceptan promos; si alguien responde BAJA, marcalo y no le llegan más.</p>`;
+    const contar=()=>{const L=crmPublico(filtros(),st.canal);$('#kCuenta').innerHTML=`Le llega a <strong>${L.length}</strong> cliente${L.length===1?'':'s'}${L.length?': '+esc(L.slice(0,6).map(c=>c.nombre).join(', '))+(L.length>6?'…':''):''}${st.canal==='instagram'?' <span class="muted">(con Instagram cargado)</span>':' <span class="muted">(con WhatsApp cargado)</span>'}`};
+    document.querySelectorAll('.kT').forEach(e=>e.onchange=contar);$('#kE').onchange=contar;$('#kC').onchange=()=>{if($('#kC').checked)$('#kM').value=CRM_PLANT.cumple[1];contar()};
+    document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{$('#kM').value=CRM_PLANT[b.dataset.p][1];if(b.dataset.p==='mayorista')document.querySelectorAll('.kT').forEach(e=>e.checked=e.value==='mayorista');contar()});
+    contar()};
+  const filtros=()=>({tipos:[...document.querySelectorAll('.kT')].filter(e=>e.checked).map(e=>e.value),estado:$('#kE')?$('#kE').value:'',cumple:$('#kC')?$('#kC').checked:false});
+  document.querySelectorAll('#kCanal button').forEach(b=>b.onclick=()=>{st.canal=b.dataset.c;document.querySelectorAll('#kCanal button').forEach(x=>x.classList.toggle('on',x===b));cuerpo()});
+  cuerpo();
+  $('#kOk').onclick=async()=>{const nombre=$('#kN').value.trim();if(!nombre)return toast('Ponele un nombre a la campaña');
+    const usr=(window.POLY_USUARIO||{}).usuario||null;
+    if(st.canal==='anuncio'){
+      if(!CRM.waLocal)return toast('Primero cargá el WhatsApp del local (en Campañas → cambiar)',5000);
+      const codigo='AD-'+String(Date.now()).slice(-4);
+      const [k]=await sbIns('crm_campanias',[{nombre,canal:'anuncio',codigo,presupuesto:+$('#kP').value||null,fecha_inicio:$('#kD').value||hoy(),fecha_fin:$('#kH').value||null,mensaje:$('#kM').value.trim(),creado_por:usr}]);
+      CRM.camps.unshift(k);cerrarModal();CRM.camp=k.id;location.hash='#campanias';refrescar();toast('Campaña creada ✅');return}
+    const f=filtros();if(!f.tipos.length)return toast('Elegí al menos un tipo de cliente');
+    const L=crmPublico(f,st.canal);if(!L.length)return toast('Con ese filtro no le llega a nadie',4000);
+    const msg=$('#kM').value.trim();if(!msg)return toast('Escribí el mensaje');
+    if(/\[[^\]]+\]/.test(msg)&&!confirm('El mensaje todavía tiene partes entre [corchetes] para completar. ¿Crear igual?'))return;
+    const [k]=await sbIns('crm_campanias',[{nombre,canal:st.canal,mensaje:msg,filtros:f,fecha_inicio:hoy(),creado_por:usr}]);
+    const env=await sbIns('crm_campania_envios',L.map(c=>({campania_id:k.id,cliente_id:c.id})));
+    CRM.camps.unshift(k);CRM.envs.push(...(env||[]));cerrarModal();CRM.camp=k.id;location.hash='#campanias';refrescar();toast('Campaña creada ✅ · '+L.length+' clientes');}
+}
+function crmLinkAnuncio(k){return 'https://wa.me/'+CRM.waLocal+'?text='+encodeURIComponent((k.mensaje||'Hola! Vi el anuncio de Poly Artesanal')+' ('+k.codigo+')')}
+function crmVerCampania(k){
+  const m=crmMetricas(k);const volver=`<button class="btn sec" onclick="CRM.camp=null;vCampanias()">← Campañas</button>`;
+  const kpis=(arr)=>`<div class="grid g4" style="margin:10px 0">${arr.map(([l,v,s])=>`<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div>${s?`<div class="sub muted">${s}</div>`:''}</div>`).join('')}</div>`;
+  const pie=`<div class="acciones" style="margin-top:12px">${k.estado==='terminada'?`<button class="btn sec" onclick="crmCampEstado(${k.id},'en_curso')">↩️ Reabrir</button>`:`<button class="btn sec" onclick="crmCampEstado(${k.id},'terminada')">✔ Marcar como terminada</button>`}<button class="btn rojo" onclick="confirmar('¿Borrar esta campaña? Se pierde su seguimiento (los clientes no se tocan).',()=>crmCampBorrar(${k.id}))">🗑️ Borrar</button></div>`;
+  if(k.canal==='anuncio'){
+    const link=crmLinkAnuncio(k),costo=m.dest&&k.presupuesto?k.presupuesto/m.dest:null,ret=k.presupuesto&&m.v?m.v/k.presupuesto:null;
+    $('#app').innerHTML=`<div class="acciones">${volver}</div><h2>${esc(k.nombre)} ${crmChip('anuncio',CRM_CANAL)}</h2>
+    <p class="muted">${k.fecha_inicio?'Del '+fechaCorta(k.fecha_inicio):''}${k.fecha_fin?' al '+fechaCorta(k.fecha_fin):''} · código <b>${esc(k.codigo)}</b></p>
+    ${kpis([['Invertido',k.presupuesto?$$(k.presupuesto):'—'],['Clientes nuevos',m.dest,costo?$$(costo)+' por cliente':''],['Compraron',m.comp],['Ventas',$$(m.v),ret?(ret>=1?'vendiste '+fnum(ret,1)+' veces lo invertido':'recuperaste el '+Math.round(ret*100)+'% de lo invertido'):'']])}
+    <div class="card"><h3>🔗 Link para el anuncio</h3><p class="muted" style="font-size:13px">Ponelo en el botón del anuncio, en la bio o en una historia. Quien lo toca abre WhatsApp con el mensaje y el código <b>${esc(k.codigo)}</b>: cuando te escriba, anotalo acá abajo.</p>
+      <div class="fila"><input readonly value="${esc(link)}" onclick="this.select()"><button class="btn" onclick="crmCopiar(${esc(JSON.stringify(link))}).then(()=>toast('Link copiado 📋'))">📋 Copiar</button></div>
+      <p class="muted" style="font-size:12px;margin-top:6px">En la app de Instagram: tocá <b>Promocionar</b> en una publicación → objetivo <b>Más mensajes</b> → <b>WhatsApp</b>. Si te pide un link, usá este.</p></div>
+    <div class="card" style="margin-top:10px"><h3>👥 Clientes que llegaron por este anuncio</h3>
+      <div class="fila" style="flex-wrap:wrap"><input id="kaN" placeholder="Nombre"><input id="kaT" placeholder="WhatsApp" inputmode="tel"><input id="kaI" placeholder="@instagram"><button class="btn" onclick="crmAltaAnuncio(${k.id})">➕ Anotar</button></div>
+      <table style="margin-top:8px"><tr><th>Cliente</th><th>Desde</th><th class="num">Compró</th></tr>${m.leads.map(c=>{const r=crmVentasDesde(c.id,(k.fecha_inicio?k.fecha_inicio+'T00:00:00-03:00':k.created_at),365);return `<tr><td><a href="javascript:crmFicha(${c.id})">${esc(c.nombre)}</a></td><td>${fechaCorta(diaLocal(c.created_at))}</td><td class="num">${r.n?$$(r.v)+' · '+r.n+' pedido'+(r.n>1?'s':''):'—'}</td></tr>`}).join('')||'<tr><td colspan="3" class="muted">Todavía no anotaste a nadie.</td></tr>'}</table></div>${pie}`;
+    return}
+  const E=m.E.map(e=>({e,c:CRM.clis.find(c=>c.id===e.cliente_id)})).filter(x=>x.c);
+  const q=norm(CRM.cf);const vis=E.filter(x=>!q||norm(x.c.nombre+' '+(x.c.telefono||'')+' '+(x.c.instagram||'')).includes(q));
+  const pend=E.filter(x=>x.e.estado==='pendiente').length;
+  $('#app').innerHTML=`<div class="acciones">${volver}</div><h2>${esc(k.nombre)} ${crmChip(k.canal,CRM_CANAL)}</h2>
+  <p class="muted">Creada el ${fechaCorta(diaLocal(k.created_at))}${k.estado==='terminada'?' · terminada':''}. Las compras se cuentan solas: un pedido del cliente en los 30 días siguientes al envío.</p>
+  ${kpis([['Llega a',m.dest,pend?pend+' por enviar':'todos enviados'],['Enviados',m.env],['Respondieron',m.resp],['Compraron',m.comp,m.v?$$(m.v)+' en ventas':'']])}
+  <div class="card" style="margin-bottom:10px"><h3>✉️ Mensaje</h3><textarea id="kMsg" rows="5">${esc(k.mensaje||'')}</textarea>
+    <div class="acciones" style="margin-top:6px"><button class="btn sec peq" onclick="crmCampMsg(${k.id})">💾 Guardar cambios del mensaje</button>
+    ${k.canal==='whatsapp'?`<button class="btn sec peq" onclick="crmCopiarTels(${k.id})">📋 Copiar teléfonos (para lista de difusión)</button>`:''}
+    <button class="btn sec peq" onclick="crmCampSumar(${k.id})">➕ Sumar clientes nuevos que entran en el filtro</button></div></div>
+  ${pend&&k.estado!=='terminada'?`<button class="btn oro" style="width:100%;padding:14px;font-size:16px;margin-bottom:10px" onclick="crmEnviarSig(${k.id})">${k.canal==='whatsapp'?'💬':'📸'} Enviar al siguiente (${pend} pendiente${pend>1?'s':''})</button>`:''}
+  <div class="acciones" style="margin-bottom:8px"><input id="kBus" placeholder="Buscar cliente…" value="${esc(CRM.cf)}" style="max-width:260px" oninput="CRM.cf=this.value;clearTimeout(window._tk);window._tk=setTimeout(()=>{refrescar();const i=$('#kBus');i.focus();i.setSelectionRange(i.value.length,i.value.length)},250)"></div>
+  <div class="card scroll"><table><tr><th>Cliente</th><th>Estado</th><th>Compra</th><th></th></tr>
+  ${vis.map(({e,c})=>`<tr><td><a href="javascript:crmFicha(${c.id})"><b>${esc(c.nombre)}</b></a> ${crmChip(c.tipo,CRM_TCLI)}<div class="muted" style="font-size:12px">${esc(k.canal==='instagram'?'@'+(c.instagram||''):(c.telefono||''))}${e.enviado_at?' · enviado '+fechaCorta(diaLocal(e.enviado_at)):''}</div></td>
+    <td>${crmChip(e.estado,CRM_ENV)}</td><td>${e._ventas&&e._ventas.n?`<b style="color:var(--verde)">🛒 ${$$(e._ventas.v)}</b>`:'<span class="muted">—</span>'}</td>
+    <td style="white-space:nowrap"><button class="btn peq ${e.estado==='pendiente'?'':'sec'}" onclick="crmEnviar(${k.id},${e.id})">${k.canal==='whatsapp'?'💬':'📸'} ${e.estado==='pendiente'?'Enviar':'Reenviar'}</button>
+      <select onchange="crmEnvEstado(${e.id},this.value)" style="width:auto;padding:4px 6px;font-size:12px"><option value="">Marcar…</option>${['respondio','compro','no_interesa','baja','pendiente'].map(s=>`<option value="${s}">${CRM_ENV[s][0]}</option>`).join('')}</select></td></tr>`).join('')||'<tr><td colspan="4" class="muted">No hay clientes con ese filtro.</td></tr>'}
+  </table></div>${pie}`;
+}
+// Abre WhatsApp / Instagram con el mensaje de la campaña para ese cliente y lo marca como enviado.
+// Se llama directo desde el toque (sin esperas antes de abrir la ventana) para que el navegador no la bloquee.
+function crmEnviar(kid,eid){const k=CRM.camps.find(x=>x.id===kid),e=CRM.envs.find(x=>x.id===eid),c=e&&CRM.clis.find(x=>x.id===e.cliente_id);if(!k||!c)return;
+  const t=crmPersonalizar(($('#kMsg')&&$('#kMsg').value)||k.mensaje,c);
+  if(k.canal==='whatsapp'){const wa=crmWa(c.telefono);if(!wa)return toast('Este cliente no tiene un WhatsApp válido');window.open('https://wa.me/'+wa+'?text='+encodeURIComponent(t),'_blank')}
+  else{if(!c.instagram)return toast('Este cliente no tiene Instagram');window.open('https://ig.me/m/'+encodeURIComponent(c.instagram),'_blank');crmCopiar(t).then(ok=>toast(ok?'Mensaje copiado: pegalo en el chat de Instagram 📋':'Copiá el mensaje a mano',4000))}
+  (async()=>{const ahora=new Date().toISOString();const patch={estado:e.estado==='pendiente'?'enviado':e.estado,enviado_at:e.enviado_at||ahora,actualizado_at:ahora};
+    const [x]=await sbUpd('crm_campania_envios','id=eq.'+eid,patch);Object.assign(e,x||patch);
+    await crmNota(c.id,'campania','📣 '+k.nombre+': '+(t.length>120?t.slice(0,120)+'…':t),true);refrescar()})();
+}
+function crmEnviarSig(kid){const e=CRM.envs.filter(x=>x.campania_id===kid&&x.estado==='pendiente').sort((a,b)=>a.id-b.id)[0];if(!e)return toast('No quedan pendientes');crmEnviar(kid,e.id)}
+async function crmEnvEstado(eid,estado){if(!estado)return;const e=CRM.envs.find(x=>x.id===eid);const ahora=new Date().toISOString();
+  const patch={estado,actualizado_at:ahora};if(estado==='pendiente')patch.enviado_at=null;else if(!e.enviado_at)patch.enviado_at=ahora;
+  const [x]=await sbUpd('crm_campania_envios','id=eq.'+eid,patch);Object.assign(e,x||patch);
+  if(estado==='baja'){const c=CRM.clis.find(y=>y.id===e.cliente_id);if(c){await sbUpd('crm_clientes','id=eq.'+c.id,{acepta_promos:false,updated_at:ahora});c.acepta_promos=false;await crmNota(c.id,'nota','⛔ Pidió no recibir más promos',true)}toast('Listo: no le llegan más promos')}
+  else toast('Marcado ✅');refrescar()}
+async function crmCampMsg(kid){const k=CRM.camps.find(x=>x.id===kid);const t=$('#kMsg').value.trim();const [x]=await sbUpd('crm_campanias','id=eq.'+kid,{mensaje:t,updated_at:new Date().toISOString()});Object.assign(k,x||{mensaje:t});toast('Mensaje guardado ✅')}
+async function crmCampEstado(kid,estado){const k=CRM.camps.find(x=>x.id===kid);const [x]=await sbUpd('crm_campanias','id=eq.'+kid,{estado,updated_at:new Date().toISOString()});Object.assign(k,x||{estado});toast('Listo ✅');refrescar()}
+async function crmCampBorrar(kid){await sbDel('crm_campanias','id=eq.'+kid);CRM.camps=CRM.camps.filter(x=>x.id!==kid);CRM.envs=CRM.envs.filter(x=>x.campania_id!==kid);CRM.camp=null;toast('Campaña borrada');vCampanias()}
+async function crmCampSumar(kid){const k=CRM.camps.find(x=>x.id===kid);const ya=new Set(CRM.envs.filter(e=>e.campania_id===kid).map(e=>e.cliente_id));
+  const L=crmPublico(k.filtros||{},k.canal).filter(c=>!ya.has(c.id));if(!L.length)return toast('No hay clientes nuevos para sumar');
+  const env=await sbIns('crm_campania_envios',L.map(c=>({campania_id:kid,cliente_id:c.id})));CRM.envs.push(...(env||[]));toast('Sumados '+L.length+' clientes ✅');refrescar()}
+async function crmCopiarTels(kid){const L=CRM.envs.filter(e=>e.campania_id===kid&&e.estado!=='baja').map(e=>CRM.clis.find(c=>c.id===e.cliente_id)).filter(Boolean).map(c=>'+'+crmWa(c.telefono)).filter(x=>x!=='+null');
+  const ok=await crmCopiar(L.join('\n'));toast(ok?L.length+' teléfonos copiados 📋 (la lista de difusión solo le llega a quien tiene agendado el número del local)':'No se pudo copiar',6000)}
+async function crmAltaAnuncio(kid){const k=CRM.camps.find(x=>x.id===kid);const nombre=$('#kaN').value.trim(),tel=$('#kaT').value.trim(),ig=$('#kaI').value.trim();
+  if(!nombre)return toast('Poné el nombre');if(!tel&&!ig)return toast('Poné el WhatsApp o el Instagram');
+  try{const r=await polyRPC('crm_alta_cliente',{p:{nombre,telefono:tel,instagram:ig,tipo:ig&&!tel?'instagram':'mostrador',origen:k.codigo}});
+    if(!r.nuevo){const [x]=await sbUpd('crm_clientes','id=eq.'+r.id+'&origen=is.null',{origen:k.codigo});}
+    CRM.cargado=false;await cargarCRM();toast(r.nuevo?'Cliente anotado ✅':'Ya existía: lo vinculé a este anuncio ✅');refrescar()}catch(e){toast('⚠️ '+e.message,5000)}}
 
 // ================= PRODUCTOS DE VENTA =================
 // Lista de productos que se venden en el local (mismos códigos que la caja) y
