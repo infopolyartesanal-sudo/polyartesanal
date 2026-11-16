@@ -237,6 +237,12 @@
   #panel-comanda { overflow-y: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   #panel-comanda > * { flex: none !important; overflow: visible !important; min-height: auto !important; }
   #panel-comanda > div:last-child { padding-bottom: 90px !important; }
+
+  /* fix: tarjetas de pedidos de clientes en modo oscuro (fondo oscuro para que se lean las letras claras) */
+  html.noche .pcs-card { background: #111f16 !important; border-color: #483f23 !important; color: #dce2de !important; }
+  html.noche .pcs-card.r { background: #2b1313 !important; border-color: #6b2b2b !important; }
+  html.noche .pcs-card.ok { background: #142d1d !important; border-color: #2f6b45 !important; }
+  html.noche .pcs-card b, html.noche .pcs-card strong { color: #f1f4f2; }
 </style>
 <!-- tema-noche -->
 <script>
@@ -2477,23 +2483,28 @@ function renderTareas(){
     } else if (h) h.innerHTML = el.value.trim() ? '<span style="color:#E65100">No está en la lista de mayoristas: el pedido se guarda igual, pero no queda en ninguna ficha.</span>' : '<span style="color:#888">Empezá a escribir y elegí el mayorista de la lista.</span>';
   };
   function baseNom(x) { return norm(x).replace(/\(.*?\)/g, ' ').replace(/\bmayorista\b/g, ' ').replace(/\s+/g, ' ').trim(); }
+  // misma normalización que Gestión → Productos de venta (los alias se guardan así: sin acentos, sin paréntesis pero con su contenido)
+  function claveV(x) { return norm(x).replace(/[^a-z0-9]+/g, ' ').replace(/\bmayorista\b/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function pvDe(nombre) { return pvMap[claveV(nombre)] || pvMap[baseNom(nombre)] || null; }
+  // nombre que ve el vendedor: si la receta es BASE (bizcochuelo, relleno) se muestra con el nombre de venta
+  function nomVenta(p) { var pv = pvDe(p.nombre); return (pv && p.tipo === 'BASE') ? pv.nombre : p.nombre; }
   function cargarProductos() {
     // Trae todas las recetas: las BASE (rellenos, masas) solo se muestran si están vinculadas a un producto de venta
     var todas = [];
     var a = api('recetas?select=id,nombre,sector,precio_venta,tipo,unidad_venta&order=nombre').then(function (r) { todas = r || []; }).catch(function () {});
     var b = Promise.all([api('productos_venta?select=codigo,nombre,precio_may,precio_lpu,precio_pey&activo=eq.true'), api('productos_venta_alias?select=alias,codigo')]).then(function (r) {
       var porCod = {}; pvMap = {};
-      (r[0] || []).forEach(function (x) { porCod[x.codigo] = x; pvMap[baseNom(x.nombre)] = x; });
-      (r[1] || []).forEach(function (x) { if (porCod[x.codigo]) pvMap[baseNom(x.alias)] = porCod[x.codigo]; });
+      (r[0] || []).forEach(function (x) { porCod[x.codigo] = x; pvMap[baseNom(x.nombre)] = x; pvMap[claveV(x.nombre)] = x; });
+      (r[1] || []).forEach(function (x) { if (porCod[x.codigo]) { pvMap[baseNom(x.alias)] = porCod[x.codigo]; pvMap[claveV(x.alias)] = porCod[x.codigo]; } });
     }).catch(function () {});
     return Promise.all([a, b]).then(function () {
-      productos = todas.filter(function (p) { return p.tipo !== 'BASE' || pvMap[baseNom(p.nombre)]; });
+      productos = todas.filter(function (p) { return p.tipo !== 'BASE' || pvDe(p.nombre); });
     });
   }
   // Devuelve [precio, origen]: 'lista' = Productos de venta · 'receta' = precio de la receta · 'falta' = no hay precio para esa lista
   function precioDe(p) {
     var campo = LISTAS[lista][1], base = baseNom(p.nombre), esMay = /mayorista/i.test(p.nombre);
-    var pv = pvMap[base];
+    var pv = pvDe(p.nombre);
     if (pv && +pv[campo] > 0) return [+pv[campo], 'lista'];
     if (lista === 'mayorista') {
       if (esMay && +p.precio_venta) return [+p.precio_venta, 'receta'];
@@ -2572,15 +2583,17 @@ function renderTareas(){
     var q = norm(document.getElementById('pcs-bus').value), res = document.getElementById('pcs-res');
     if (q.length < 2) { res.style.display = 'none'; return; }
     var palabras = q.split(/\s+/);
-    var hits = productos.filter(function (p) { var n = norm(p.nombre); return palabras.every(function (w) { return n.indexOf(w) >= 0; }); }).slice(0, 30);
+    // busca por el nombre de la receta Y por el nombre de venta vinculado en Gestión (ej. "torta porcion")
+    var hits = productos.filter(function (p) { var pv = pvDe(p.nombre); var n = claveV(p.nombre) + ' ' + (pv ? claveV(pv.nombre) : ''); return palabras.every(function (w) { return n.indexOf(claveV(w)) >= 0; }); })
+      .sort(function (a, b) { var x = claveV(nomVenta(a)) === claveV(q) ? 0 : 1, y = claveV(nomVenta(b)) === claveV(q) ? 0 : 1; return x - y || nomVenta(a).localeCompare(nomVenta(b)); }).slice(0, 30);
     res.style.display = 'block';
-    res.innerHTML = hits.length ? hits.map(function (p) { return '<div class="pcs-prod" onclick="pcsAgregar(\'' + p.id + '\')"><span>' + esc(p.nombre) + ' <span style="color:#999;font-size:11px">' + (SECT[p.sector] || '') + '</span></span><b>' + (function () { var pr = precioDe(p); return pr[0] ? plata(pr[0]) : '<span style="color:#C62828;font-size:11px">sin precio ' + LISTAS[lista][0] + '</span>'; })() + '</b></div>'; }).join('') : '<div style="padding:10px;color:#999;font-size:13px">No encontré ese producto. Si es nuevo, pedile a Poly que lo cargue en Gestión.</div>';
+    res.innerHTML = hits.length ? hits.map(function (p) { var pv = pvDe(p.nombre), nv = nomVenta(p); var sub = (pv && nv !== pv.nombre) ? ' <span style="color:#6A1B9A;font-size:11px">· se vende como ' + esc(pv.nombre) + '</span>' : (nv !== p.nombre ? ' <span style="color:#999;font-size:11px">(' + esc(p.nombre) + ')</span>' : ''); return '<div class="pcs-prod" onclick="pcsAgregar(\'' + p.id + '\')"><span>' + esc(nv) + sub + ' <span style="color:#999;font-size:11px">' + (SECT[p.sector] || '') + '</span></span><b>' + (function () { var pr = precioDe(p); return pr[0] ? plata(pr[0]) : '<span style="color:#C62828;font-size:11px">sin precio ' + LISTAS[lista][0] + '</span>'; })() + '</b></div>'; }).join('') : '<div style="padding:10px;color:#999;font-size:13px">No encontré ese producto. Si es nuevo, pedile a Poly que lo cargue en Gestión.</div>';
   };
   window.pcsAgregar = function (id) {
     var p = productos.find(function (x) { return x.id === id; }); if (!p) return;
     var ya = carrito.find(function (c) { return c.receta_id === id; });
     var pr = precioDe(p);
-    if (ya) ya.cantidad += 1; else carrito.push({ receta_id: p.id, producto: p.nombre, sector: p.sector || 'panaderia', cantidad: 1, unidad: p.unidad_venta || 'u', precio: pr[0], origen: pr[1] });
+    if (ya) ya.cantidad += 1; else carrito.push({ receta_id: p.id, producto: nomVenta(p), sector: p.sector || 'panaderia', cantidad: 1, unidad: p.unidad_venta || 'u', precio: pr[0], origen: pr[1] });
     document.getElementById('pcs-bus').value = ''; document.getElementById('pcs-res').style.display = 'none';
     pcsPintarCarrito();
   };
