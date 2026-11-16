@@ -1980,45 +1980,93 @@ function sumarUnidadesDeposito(id, uds) {
   }
 }
 
-async function addTanda(id) {
-  const item = getProdItem(id);
-  const t = getTamanoTanda(id);
+// ── Registrar tanda: se elige tamaño, cuánto salió de verdad y a dónde va (freezer, cámara o directo al Salón) ──
+async function addTanda(id) { abrirTanda(id); }
+function numDec(v) { let s = String(v == null ? '' : v).trim().replace(/\s/g, ''); if (!s) return NaN; if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.'); return Number(s); }
+function abrirTanda(id) {
+  const cat = PROD_CATALOG.find(c => c.id === id); if (!cat) return;
+  const rinde = cat.rendimiento > 0 ? cat.rendimiento : 0, un = cat.unidad || 'u';
+  let t = getTamanoTanda(id), dest = getProdDestino(id), tocado = false;
+  const ov = document.createElement('div'); ov.id = 'tandaOv';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;font-family:system-ui,sans-serif';
+  const btn = (on) => 'flex:1;padding:12px 6px;border-radius:10px;border:2px solid ' + (on ? '#534AB7' : '#ddd') + ';background:' + (on ? '#534AB7' : '#fff') + ';color:' + (on ? '#fff' : '#333') + ';font-weight:700;font-size:14px;cursor:pointer';
+  const pintar = () => {
+    const sug = rinde ? Math.round(rinde * t * 100) / 100 : '';
+    ov.innerHTML = '<div style="background:#fff;color:#1a1a1a;width:100%;max-width:480px;border-radius:18px 18px 0 0;padding:18px 16px 22px;box-shadow:0 -6px 30px rgba(0,0,0,.25)">'
+      + '<div style="font-size:18px;font-weight:800;margin-bottom:2px">🏭 ' + cat.nombre + '</div>'
+      + '<div style="font-size:12px;color:#777;margin-bottom:12px">' + (rinde ? 'Una tanda rinde ' + String(rinde).replace('.', ',') + ' ' + un : 'Poné cuánto salió') + '</div>'
+      + '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">¿Qué hiciste?</div><div style="display:flex;gap:8px;margin-bottom:12px">'
+      + '<button data-t="1" style="' + btn(t === 1) + '">Tanda completa</button><button data-t="0.5" style="' + btn(t === 0.5) + '">½ tanda</button></div>'
+      + '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">¿Cuánto salió? (' + un + ')</div>'
+      + '<input id="tandaCant" inputmode="decimal" autocomplete="off" value="' + (tocado ? (ov._v || '') : String(sug).replace('.', ',')) + '" placeholder="ej: ' + (un === 'kg' ? '7,5' : '120') + '" style="width:100%;box-sizing:border-box;padding:14px;font-size:22px;font-weight:700;text-align:center;border:2px solid #534AB7;border-radius:12px;margin-bottom:4px">'
+      + '<div style="font-size:11px;color:#888;margin-bottom:12px">' + (rinde ? 'Viene puesto lo que rinde normalmente: cambialo si salió más o menos.' : '') + '</div>'
+      + '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:6px">¿A dónde va?</div><div style="display:flex;gap:8px;margin-bottom:16px">'
+      + '<button data-d="freezer" style="' + btn(dest === 'freezer') + '">🧊 Freezer</button><button data-d="camara" style="' + btn(dest === 'camara') + '">❄️ Cámara</button><button data-d="salon" style="' + btn(dest === 'salon') + '">🏪 Al Salón</button></div>'
+      + (dest === 'salon' ? '<div style="font-size:12px;color:#2E7D32;background:#E8F5E9;border-radius:8px;padding:8px 10px;margin:-8px 0 14px">Se manda a Recepción del Salón: el vendedor la confirma y suma a su stock.</div>' : '')
+      + '<div style="display:flex;gap:8px"><button data-a="no" style="flex:1;padding:14px;border-radius:12px;border:1px solid #ddd;background:#fff;font-weight:700;font-size:15px;cursor:pointer">Cancelar</button>'
+      + '<button data-a="si" style="flex:2;padding:14px;border-radius:12px;border:0;background:#16a34a;color:#fff;font-weight:800;font-size:16px;cursor:pointer">✅ Registrar</button></div></div>';
+    const inp = ov.querySelector('#tandaCant');
+    inp.oninput = () => { tocado = true; ov._v = inp.value; };
+    inp.onkeydown = e => { if (e.key === 'Enter') ok(); };
+    ov.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { t = +b.dataset.t; pintar(); });
+    ov.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { if (tocado) ov._v = inp.value; dest = b.dataset.d; pintar(); });
+    ov.querySelector('[data-a=no]').onclick = () => ov.remove();
+    ov.querySelector('[data-a=si]').onclick = ok;
+    setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  };
+  const ok = async () => {
+    const uds = numDec(ov.querySelector('#tandaCant').value);
+    if (!(uds > 0)) { alert('Poné cuánto salió (un número mayor a 0).'); return; }
+    if (rinde && uds > rinde * t * 3 && !confirm('¿Seguro que salieron ' + String(uds).replace('.', ',') + ' ' + un + '? Normalmente rinde ' + String(rinde * t).replace('.', ',') + '.')) return;
+    ov.remove();
+    if (getTamanoTanda(id) !== t) { getProdItem(id).tamano = t; }
+    if (dest !== 'salon' && getProdDestino(id) !== dest) setProdDestino(id, dest);
+    await registrarTanda(id, t, Math.round(uds * 1000) / 1000, dest);
+  };
+  document.body.appendChild(ov); pintar();
+}
+// suma (o resta) unidades al depósito indicado
+function moverUnidades(id, uds, dest) {
+  if (dest === 'camara') { camaraPanState[id] = Math.max(0, Math.round(((camaraPanState[id] || 0) + uds) * 10) / 10); saveCamaraPan(); return; }
   const cat = PROD_CATALOG.find(c => c.id === id);
-  let uds = null;
-  if (!(cat && cat.rendimiento > 0)) {
-    const v = prompt('¿Cuántas unidades (' + ((cat && cat.unidad) || 'u') + ') salieron de esta ' + (t === 0.5 ? 'media tanda' : 'tanda') + ' de ' + ((cat && cat.nombre) || id) + '?');
-    if (v === null) return;
-    uds = parseFloat(String(v).replace(',', '.'));
-    if (!(uds > 0)) { alert('Poné un número mayor a 0.'); return; }
-  }
+  if (cat && cat.rendimiento > 0 && PROD_TO_FREEZER[id]) { updateFreezerFromTanda(id, uds / cat.rendimiento); return; }
+  const fp = getFreezerProduct((PROD_TO_FREEZER[id] && PROD_TO_FREEZER[id].id) || id);
+  fp.total = Math.max(0, Math.round(((fp.total || 0) + uds) * 10) / 10); saveFreezerPan(); renderFreezer();
+}
+async function registrarTanda(id, t, uds, dest) {
+  const item = getProdItem(id); const cat = PROD_CATALOG.find(c => c.id === id);
   item.tandasHechas = Math.round((item.tandasHechas + t) * 2) / 2;
   item.hist = (item.hist || []).concat([t]).slice(-30);
   item.histU = (item.histU || []).concat([uds]).slice(-30);
-  if (uds !== null) { sumarUnidadesDeposito(id, uds); }
-  else if (getProdDestino(id) === 'camara') { addToCamara(id, t); } else { updateFreezerFromTanda(id, t); }
-  saveProdState();
-  renderProduccion();
-  addToLog('🏭 ' + (t === 0.5 ? 'Media tanda' : 'Tanda') + ' completada: ' + cat.nombre + (uds !== null ? ' → ' + uds + ' ' + (cat.unidad || 'u') : '') + ' (' + fmtTandas(item.tandasHechas) + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
-
-  // ── INTEGRACIÓN: descontar ingredientes del inventario (función central) ──
+  item.histD = (item.histD || []).concat([dest]).slice(-30);
+  if (dest === 'salon') {
+    try {
+      await sbUpsert('salon_recepciones', [{ producto_id: 'pan_' + id, producto_nombre: cat.nombre, cantidad: uds, unidad: (cat.unidad === 'kg' ? 'kg' : 'u'), sector_origen: 'panaderia', destino: 'salon', estado: 'despachado' }]);
+    } catch (e) { alert('⚠️ No se pudo mandar al Salón: ' + (e.message || e) + '. La tanda quedó registrada; avisale al Salón.'); }
+  } else { moverUnidades(id, uds, dest); }
+  saveProdState(); renderProduccion();
+  addToLog('🏭 ' + (t === 0.5 ? 'Media tanda' : 'Tanda') + ': ' + cat.nombre + ' → ' + String(uds).replace('.', ',') + ' ' + (cat.unidad || 'u') + ' a ' + (dest === 'salon' ? 'Salón' : dest === 'camara' ? 'cámara' : 'freezer') + ' (' + fmtTandas(item.tandasHechas) + (cat.tandas ? '/' + cat.tandas : '') + ')', 'receta');
+  // descuenta los ingredientes de la tanda (o media tanda) del depósito
   registrarProduccion('panaderia', cat.nombre, t, uds, cat.rendimiento || null);
 }
 
 function removeTanda(id) {
   const item = getProdItem(id);
   if (item.tandasHechas <= 0) return;
-  // deshace lo último que se sumó (media o completa)
-  let t = (item.hist && item.hist.length) ? item.hist.pop() : getTamanoTanda(id);
-  const uds = (item.histU && item.histU.length) ? item.histU.pop() : null;
+  let t = (item.hist && item.hist.length) ? item.hist[item.hist.length - 1] : getTamanoTanda(id);
+  const uds = (item.histU && item.histU.length) ? item.histU[item.histU.length - 1] : null;
+  const dest = (item.histD && item.histD.length) ? item.histD[item.histD.length - 1] : null;
+  if (!confirm('¿Deshacer la última ' + (t === 0.5 ? 'media tanda' : 'tanda') + (uds ? ' (' + String(uds).replace('.', ',') + ')' : '') + '? Vuelven los ingredientes al depósito.' + (dest === 'salon' ? '\n\nOjo: esa tanda se mandó al Salón. Avisale al vendedor que no la confirme en Recepción.' : ''))) return;
+  if (item.hist && item.hist.length) item.hist.pop(); if (item.histU && item.histU.length) item.histU.pop(); if (item.histD && item.histD.length) item.histD.pop();
   if (t > item.tandasHechas) t = item.tandasHechas;
   item.tandasHechas = Math.max(0, Math.round((item.tandasHechas - t) * 2) / 2);
-  if (uds) { sumarUnidadesDeposito(id, -uds); }
+  if (dest === 'salon') { /* no se toca el freezer: lo mandado al Salón se rechaza desde Recepción */ }
+  else if (uds) { moverUnidades(id, -uds, dest || getProdDestino(id)); }
   else if (getProdDestino(id) === 'camara') { addToCamara(id, -t); } else { updateFreezerFromTanda(id, -t); }
   saveProdState();
   renderProduccion();
-  // Deshacer tanda: devuelve los ingredientes al inventario
   const catR = PROD_CATALOG.find(c => c.id === id);
-  if (catR) registrarProduccion('panaderia', catR.nombre, -t, uds || null, catR.rendimiento || null);
+  if (catR) registrarProduccion('panaderia', catR.nombre, -t, uds ? -uds : null, catR.rendimiento || null);
 }
 
 function renderProduccion() {
