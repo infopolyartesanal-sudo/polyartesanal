@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<!-- poly-seguridad -->
+<script>
+/* Seguridad: cada pedido a la base va firmado con la sesión de quien está usando el sistema */
+(function () {
+  var BASE = 'sinoeoaktirnscdpbvdc.supabase.co', f0 = window.fetch;
+  function token() { try { return localStorage.getItem('poly_sesion'); } catch (e) { return null; } }
+  window.fetch = function (u, o) {
+    var url = typeof u === 'string' ? u : (u && u.url) || '', t = token();
+    if (!t || url.indexOf(BASE) < 0 || window.__polySinFirma) return f0.call(this, u, o);
+    var o2 = Object.assign({}, o || {}), h = new Headers((o && o.headers) || (typeof u !== 'string' && u && u.headers) || {});
+    h.set('x-poly-token', t); o2.headers = h;
+    var self = this;
+    return f0.call(self, u, o2).catch(function (e) {
+      // si el navegador rechaza el encabezado, se sigue trabajando como antes
+      if (e && e.name === 'TypeError') { window.__polySinFirma = true; return f0.call(self, u, o); }
+      throw e;
+    });
+  };
+  function ping() {
+    if (!token()) return;
+    var m = (location.pathname.split('/').pop() || 'index.html').replace('.html', '') || 'index';
+    window.fetch('https://' + BASE + '/rest/v1/rpc/seguridad_ping', { method: 'POST',
+      headers: { apikey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg',
+        Authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_modulo: m + (window.__polySinFirma ? ':sin-firma' : '') }) }).catch(function () {});
+  }
+  setTimeout(ping, 4000);
+})();
+</script>
+<!-- /poly-seguridad -->
+<script>
+/* Poly Artesanal — control de acceso
+   Cada módulo incluye este archivo. Verifica la sesión y deja entrar solo:
+   - al administrador (rol admin) a todo
+   - a cada usuario de sector, únicamente a su módulo
+*/
+(function () {
+  var SB_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
+  var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+  var ARCHIVO = { cocina: 'asistente_cocina.html', panaderia: 'asistente_panaderia.html', pasteleria: 'asistente_pasteleria.html',
+                  madrugada: 'asistente_madrugada.html', salon: 'asistente_salon.html', deposito: 'asistente_deposito.html' };
+  var pagina = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+  var requerido = null; // módulo que exige esta página; 'admin' = solo Poly
+  Object.keys(ARCHIVO).forEach(function (m) { if (ARCHIVO[m] === pagina) requerido = m; });
+  if (pagina === 'gestion.html' || pagina === 'central.html') requerido = 'admin';
+  if (pagina === 'caja.html') requerido = 'salon';
+
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function borrar() { try { localStorage.removeItem('poly_sesion'); localStorage.removeItem('poly_usuario'); } catch (e) {} }
+  function irA(p) { location.replace(p); }
+  function mostrar() { document.documentElement.style.visibility = ''; }
+
+  window.polyRPC = function (fn, body) {
+    return fetch(SB_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+      headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}) }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j && j.message || 'Error'); return j; }); });
+  };
+  window.polyToken = function () { return leer('poly_sesion'); };
+  window.polySalir = function () {
+    var t = leer('poly_sesion'); borrar();
+    var fin = function () { location.href = 'index.html'; };
+    if (t) window.polyRPC('cerrar_sesion', { p_token: t }).then(fin, fin); else fin();
+  };
+
+  function permitido(u) { return u.rol === 'admin' || (requerido && requerido !== 'admin' && u.modulo === requerido); }
+  function destino(u) { return u.rol === 'admin' ? 'index.html' : (ARCHIVO[u.modulo] || 'index.html'); }
+
+  function barra(u) {
+    var b = document.createElement('div');
+    b.id = 'poly-sesion';
+    b.style.cssText = 'position:fixed;top:4px;left:4px;z-index:99999;font:11px system-ui,sans-serif;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:3px 4px 3px 9px;display:flex;gap:6px;align-items:center;';
+    b.innerHTML = '<span>👤 ' + (u.nombre || u.usuario) + '</span>' +
+      (u.rol === 'admin' ? '<a href="index.html" style="color:#fff;text-decoration:none;background:rgba(255,255,255,.18);border-radius:10px;padding:2px 7px;">Menú</a>' : '') +
+      '<button type="button" style="border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:10px;padding:2px 7px;font:inherit;cursor:pointer;">Salir</button>';
+    b.querySelector('button').onclick = window.polySalir;
+    document.body.appendChild(b);
+  }
+
+  if (pagina === 'index.html' || pagina === '') return; // el index maneja su propio login
+  // Si en otra pestaña se tocó "Salir" o se entró con otro usuario, esta pestaña vuelve a verificar la sesión
+  window.addEventListener('storage', function (e) { if (e.key === 'poly_sesion') location.reload(); });
+  document.documentElement.style.visibility = 'hidden';
+  var token = leer('poly_sesion');
+  if (!token) { irA('index.html'); return; }
+
+  var guardado = null; try { guardado = JSON.parse(leer('poly_usuario') || 'null'); } catch (e) {}
+  window.polyRPC('verificar_sesion', { p_token: token }).then(function (u) {
+    if (!u || !u.ok) { if (u && u.motivo === 'fuera_local') { irA('index.html#fuera'); return; } borrar(); irA('index.html'); return; }
+    try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
+    if (!permitido(u)) { irA(destino(u)); return; }
+    window.POLY_USUARIO = u;
+    var listo = function () { barra(u); mostrar(); };
+    if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
+  }, function () {
+    // sin internet: si ya había entrado en este dispositivo, lo dejamos trabajar
+    if (guardado && permitido(guardado)) {
+      window.POLY_USUARIO = guardado;
+      var listo = function () { barra(guardado); mostrar(); };
+      if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
+    } else { irA('index.html'); }
+  });
+})();
+
+</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#0f1f15"/>
+<title>Caja · Poly Artesanal</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--bg:#0d1a12;--bg2:#13261a;--bg3:#1a3323;--brd:#2c4a36;--tx:#e8efe9;--tx2:#a9bcae;--oro:#C9A84C;--verde:#2E9E5B;--rojo:#e05252;--azul:#3d8bd9;--mor:#8e5bd6}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--tx);height:100vh;overflow:hidden;font-size:15px}
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit;font-size:15px;background:var(--bg);color:var(--tx);border:1px solid var(--brd);border-radius:9px;padding:9px 11px;outline:none}
+  input:focus,select:focus{border-color:var(--oro)}
+  #top{height:56px;display:flex;align-items:center;gap:12px;padding:0 16px 0 150px;background:var(--bg2);border-bottom:1px solid var(--brd)}
+  #top h1{font-size:18px;font-weight:800;letter-spacing:.2px}
+  #top h1 span{color:var(--oro)}
+  #estado{font-size:13px;color:var(--tx2);flex:1}
+  .tb{background:var(--bg3);border:1px solid var(--brd);color:var(--tx);border-radius:9px;padding:8px 12px;font-size:14px;font-weight:600}
+  .tb:hover{border-color:var(--oro)}
+  .tb.oro{background:var(--oro);color:#1b1405;border-color:var(--oro)}
+  #main{display:grid;grid-template-columns:1fr 430px;height:calc(100vh - 56px)}
+  #izq{display:flex;flex-direction:column;min-height:0;padding:14px;gap:10px}
+  #der{display:flex;flex-direction:column;min-height:0;background:var(--bg2);border-left:1px solid var(--brd)}
+  #bus{font-size:18px;padding:13px 15px}
+  .listas{display:flex;gap:6px}
+  .listas button{flex:1;padding:9px;border-radius:9px;border:2px solid var(--brd);background:transparent;color:var(--tx);font-weight:700}
+  .listas button.on{background:var(--c);border-color:var(--c);color:#fff}
+  #grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-content:start;padding-bottom:20px}
+  .pr{background:var(--bg2);border:1px solid var(--brd);border-radius:11px;padding:11px 10px;text-align:left;color:var(--tx);min-height:78px;display:flex;flex-direction:column;justify-content:space-between}
+  .pr:hover{border-color:var(--oro);background:var(--bg3)}
+  .pr b{font-size:14px;line-height:1.2}
+  .pr span{font-size:13px;color:var(--oro);font-weight:700;margin-top:6px}
+  .pr.sin span{color:var(--rojo)}
+  .sec{grid-column:1/-1;font-size:12px;color:var(--tx2);text-transform:uppercase;letter-spacing:.6px;margin-top:4px}
+  #cli{padding:12px 14px;border-bottom:1px solid var(--brd);font-size:14px;display:flex;align-items:center;gap:8px}
+  #cli .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #car{flex:1;overflow-y:auto;padding:6px 14px}
+  .li{display:grid;grid-template-columns:1fr 92px 96px 26px;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--brd)}
+  .li .nm{font-size:14px;line-height:1.25}
+  .li .nm small{display:block;color:var(--tx2);font-size:12px}
+  .li input{width:100%;padding:6px 7px;text-align:center;font-size:15px}
+  .li .st{text-align:right;font-weight:700}
+  .li .x{background:none;border:0;color:var(--tx2);font-size:18px}
+  .li .x:hover{color:var(--rojo)}
+  #vacio{color:var(--tx2);text-align:center;padding:40px 10px;font-size:14px}
+  #pie{padding:14px;border-top:1px solid var(--brd);background:var(--bg)}
+  #tot{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+  #tot b{font-size:34px;color:var(--oro)}
+  #cobrar{width:100%;padding:17px;font-size:19px;font-weight:800;border:0;border-radius:12px;background:var(--verde);color:#fff}
+  #cobrar:disabled{opacity:.45;cursor:default}
+  .muted{color:var(--tx2);font-size:13px}
+  #ov{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;z-index:50;overflow-y:auto;padding:40px 12px}
+  #box{background:var(--bg2);border:1px solid var(--brd);border-radius:16px;padding:20px;width:min(560px,100%)}
+  #box h3{font-size:19px;margin-bottom:12px}
+  #box label{display:block;font-size:13px;color:var(--tx2);margin:10px 0 4px}
+  #box input,#box select{width:100%}
+  .fila{display:flex;gap:8px}.fila>*{flex:1}
+  .acc{display:flex;gap:8px;margin-top:16px}.acc button{flex:1;padding:13px;border-radius:10px;border:0;font-weight:700;font-size:15px}
+  .b-ok{background:var(--verde);color:#fff}.b-no{background:var(--bg3);color:var(--tx);border:1px solid var(--brd)!important}.b-rojo{background:var(--rojo);color:#fff}
+  .medios{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+  .medios button{padding:11px 6px;border-radius:9px;border:1px solid var(--brd);background:var(--bg);color:var(--tx);font-weight:700;font-size:13px}
+  .medios button:hover{border-color:var(--oro)}
+  .pago{display:grid;grid-template-columns:1fr 140px 30px;gap:6px;align-items:center;margin-top:6px}
+  .resu{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--brd);font-size:15px}
+  .grande{font-size:24px;font-weight:800}
+  #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#111;border:1px solid var(--oro);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;display:none;z-index:99;max-width:90vw}
+  .tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:7px;background:var(--bg3);border:1px solid var(--brd);color:var(--tx2)}
+  .tag.prueba{background:#4a3a0a;border-color:#8a6d16;color:#ffd96a}
+  .vt{display:grid;grid-template-columns:60px 70px 1fr 100px 90px;gap:8px;padding:8px 0;border-bottom:1px solid var(--brd);font-size:14px;align-items:center}
+  #ticket{display:none}
+  @media print{
+    @page{size:80mm auto;margin:0}
+    body{background:#fff;color:#000;height:auto;overflow:visible}
+    body>*:not(#ticket){display:none!important}
+    #ticket{display:block;width:72mm;margin:0 auto;padding:3mm 0;font:12px/1.3 "Courier New",monospace;color:#000}
+    #ticket .c{text-align:center}#ticket .r{text-align:right}#ticket hr{border:0;border-top:1px dashed #000;margin:4px 0}
+    #ticket table{width:100%;border-collapse:collapse}#ticket td{vertical-align:top;padding:1px 0}
+    #ticket .g{font-size:15px;font-weight:700}
+  }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>🧾 Caja <span>Poly</span></h1>
+  <div id="estado">Cargando…</div>
+  <button class="tb" onclick="verVentas()">📋 Ventas del turno</button>
+  <button class="tb" onclick="cobrarCC()">💳 Cobrar cuenta corriente</button>
+  <button class="tb" id="bTurno" onclick="turnoBtn()">…</button>
+  <a class="tb" href="asistente_salon.html" style="text-decoration:none">🏪 Salón</a>
+</div>
+<div id="main">
+  <section id="izq">
+    <input id="bus" placeholder="🔎 Buscá un producto o escribí el código y Enter…" autocomplete="off" oninput="pintarGrid()" onkeydown="if(event.key==='Enter'){event.preventDefault();enterBus()}">
+    <div class="listas" id="listas"></div>
+    <div id="grid"></div>
+  </section>
+  <section id="der">
+    <div id="cli"></div>
+    <div id="car"></div>
+    <div id="pie">
+      <div id="tot"><span class="muted" id="totInfo">0 productos</span><b id="totV">$ 0</b></div>
+      <button id="cobrar" onclick="abrirCobro()" disabled>Cobrar</button>
+    </div>
+  </section>
+</div>
+<div id="ov"><div id="box"></div></div>
+<div id="toast"></div>
+<div id="ticket"></div>
+
+<script>
+const SB='https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
+const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
+async function api(path,opt){const r=await fetch(SB+path,Object.assign({headers:H},opt||{}));const t=await r.text();const j=t?JSON.parse(t):null;if(!r.ok)throw new Error((j&&j.message)||('Error '+r.status));return j}
+const rpc=(fn,body)=>api('rpc/'+fn,{method:'POST',body:JSON.stringify(body||{})});
+const $=s=>document.querySelector(s);
+const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const plata=n=>'$ '+(Math.round((+n||0)*100)/100).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2});
+const num=v=>{let s=String(v==null?'':v).trim().replace(/\s|\$/g,'');if(!s)return 0;if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,'');const n=+s;return isFinite(n)?n:0};
+const kgTxt=q=>String(Math.round(q*1000)/1000).replace('.',',');
+function toast(m,ms){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>t.style.display='none',ms||2600)}
+function modal(h){$('#box').innerHTML=h;$('#ov').style.display='flex';setTimeout(()=>{const i=$('#box [autofocus]');if(i){i.focus();if(i.select)i.select()}},60)}
+function cerrar(){$('#ov').style.display='none';$('#box').innerHTML='';$('#bus').focus()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#ov').style.display==='flex')cerrar();if(e.key==='F9'){e.preventDefault();if(!$('#cobrar').disabled)abrirCobro()}});
+
+const LISTAS={minorista:['Minorista','precio_lpu','#8e5bd6'],mayorista:['Mayorista','precio_may','#3d8bd9'],pedidosya:['PedidosYa','precio_pey','#e05252']};
+const MEDIOS=['Efectivo','Mercado Pago / QR','Transferencia','Débito','Crédito','Cuenta corriente'];
+const COND={cf:'Consumidor final',ri:'Responsable inscripto',mono:'Monotributista',ex:'Exento'};
+let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'};
+
+async function cargar(){
+  const desde=new Date(Date.now()-30*864e5).toISOString();
+  const [p,cfg,cl,cc,ci]=await Promise.all([
+    api('productos_venta?select=codigo,nombre,precio_may,precio_lpu,precio_pey,iva,por_kg,activo&activo=eq.true&order=nombre'),
+    api('config?select=valor&clave=eq.caja'),
+    api('crm_clientes?select=id,nombre,razon_social,cuit,tipo,lista&activo=is.true&order=nombre').catch(()=>[]),
+    api('cc_movimientos?select=cliente_id,monto').catch(()=>[]),
+    api('cierres_caja?select=items&fecha=gte.'+desde).catch(()=>[])]);
+  PROD=(p||[]).filter(x=>!/^articulo libre$/i.test(norm(x.nombre).trim()));
+  CFG=(cfg&&cfg[0]&&cfg[0].valor)||{};
+  CLIENTES=cl||[];SALDOS={};(cc||[]).forEach(m=>{SALDOS[m.cliente_id]=(SALDOS[m.cliente_id]||0)+(+m.monto||0)});
+  const cuenta={};(ci||[]).forEach(c=>(c.items||[]).forEach(i=>{if(i.codigo)cuenta[i.codigo]=(cuenta[i.codigo]||0)+(+i.total||0)}));
+  TOP=Object.entries(cuenta).sort((a,b)=>b[1]-a[1]).map(x=>x[0]).filter(c=>PROD.some(p=>p.codigo===c)).slice(0,24);
+  await estadoTurno();
+  pintarListas();pintarGrid();pintarCarrito();
+}
+async function estadoTurno(){
+  let r=null;try{r=await rpc('caja_resumen')}catch(e){toast('⚠️ '+e.message,5000)}
+  TURNO=r&&r.abierto?r:null;
+  const modo=CFG.modo||'prueba';
+  $('#estado').innerHTML=TURNO?`Turno <b>${esc(TURNO.turno.turno)}</b> abierto · ${TURNO.ventas} ventas · <b>${plata(TURNO.total)}</b> ${modo==='prueba'?'<span class="tag prueba">MODO PRUEBA · sin factura</span>':modo==='homologacion'?'<span class="tag prueba">ARCA PRUEBA</span>':''}`:'<span style="color:var(--rojo);font-weight:700">Caja cerrada</span> · abrí el turno para empezar a vender';
+  $('#bTurno').textContent=TURNO?'🔒 Cerrar turno':'🔓 Abrir turno';$('#bTurno').className='tb'+(TURNO?'':' oro');
+  pintarCarrito();
+}
+function precio(p){return +p[LISTAS[lista][1]]||0}
+function pintarListas(){$('#listas').innerHTML=Object.entries(LISTAS).map(([k,[n,,c]])=>`<button style="--c:${c}" class="${k===lista?'on':''}" onclick="cambiarLista('${k}')">${n}</button>`).join('')}
+function cambiarLista(k){lista=k;carrito.forEach(it=>{const p=PROD.find(x=>x.codigo===it.codigo);if(p&&!it.manual)it.precio=precio(p)});pintarListas();pintarGrid();pintarCarrito()}
+function btnProd(p){const pr=precio(p);return `<button class="pr${pr?'':' sin'}" onclick="agregar('${esc(p.codigo)}')"><b>${esc(p.nombre)}</b><span>${pr?plata(pr)+(p.por_kg?' /kg':''):'sin precio'}</span></button>`}
+function buscar(q){q=norm(q).trim();if(!q)return [];const w=q.split(/\s+/);return PROD.filter(p=>p.codigo===q||w.every(x=>norm(p.nombre).includes(x)))}
+function pintarGrid(){const q=$('#bus').value;let h='';
+  if(q.trim()){const r=buscar(q);h=r.length?r.map(btnProd).join(''):'<div class="sec">No encontré ese producto</div>'}
+  else{const top=TOP.map(c=>PROD.find(p=>p.codigo===c)).filter(Boolean);
+    if(top.length)h+='<div class="sec">⭐ Los más vendidos</div>'+top.map(btnProd).join('');
+    h+='<div class="sec">Todos</div>'+PROD.filter(p=>!TOP.includes(p.codigo)).map(btnProd).join('')}
+  $('#grid').innerHTML=h}
+function enterBus(){const q=$('#bus').value.trim();if(!q)return;const r=buscar(q);if(r.length===1||(r.length&&r[0].codigo===q)){agregar(r[0].codigo)}else if(!r.length)toast('No encontré "'+q+'"');else toast('Hay '+r.length+' productos: tocá el que es')}
+function agregar(cod){
+  if(!TURNO){toast('Primero abrí el turno');return turnoBtn()}
+  const p=PROD.find(x=>x.codigo===cod);if(!p)return;
+  if(!precio(p))toast('⚠️ '+p.nombre+' no tiene precio en '+LISTAS[lista][0]+': cargalo a mano');
+  if(p.por_kg)return pedirKg(p);
+  const ya=carrito.find(it=>it.codigo===cod&&it.unidad==='u');if(ya)ya.cantidad+=1;else carrito.push({codigo:cod,nombre:p.nombre,cantidad:1,unidad:'u',precio:precio(p),iva:p.iva});
+  $('#bus').value='';pintarGrid();pintarCarrito();$('#bus').focus()}
+function pedirKg(p){modal(`<h3>${esc(p.nombre)}</h3><p class="muted">${plata(precio(p))} el kilo · poné lo que marca la balanza</p>
+  <label>Kilos</label><input id="kgIn" inputmode="decimal" placeholder="ej: 0,250" autofocus onkeydown="if(event.key==='Enter')okKg('${esc(p.codigo)}')" oninput="$('#kgPr').textContent=plata(num(this.value)*${precio(p)})">
+  <div class="resu"><span>Importe</span><b id="kgPr">$ 0</b></div>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okKg('${esc(p.codigo)}')">Agregar</button></div>`)}
+function okKg(cod){const p=PROD.find(x=>x.codigo===cod);let q=num($('#kgIn').value);if(!(q>0))return toast('Poné los kilos');if(q>=50&&!confirm('¿Seguro que son '+kgTxt(q)+' kg? Si eran gramos, poné 0,'+String(Math.round(q)).padStart(3,'0')))return;
+  carrito.push({codigo:cod,nombre:p.nombre,cantidad:Math.round(q*1000)/1000,unidad:'kg',precio:precio(p),iva:p.iva});cerrar();$('#bus').value='';pintarGrid();pintarCarrito()}
+function total(){return Math.round(carrito.reduce((a,it)=>a+it.cantidad*it.precio,0)*100)/100}
+function pintarCli(){const c=cliente;let t='👤 Consumidor final';
+  if(c.id){const s=SALDOS[c.id]||0;t=`👤 <b>${esc(c.nombre)}</b> <span class="muted">${COND[c.tipo]||''}${c.doc?' · '+esc(c.doc):''}${s?' · debe '+plata(s):''}</span>`}
+  else if(c.tipo!=='cf')t=`👤 <b>${esc(c.nombre||'')}</b> <span class="muted">${COND[c.tipo]} · ${esc(c.doc||'')}</span>`;
+  $('#cli').innerHTML=`<span class="n">${t}</span><button class="tb" onclick="elegirCliente()">Cambiar</button>${c.tipo!=='cf'||c.id?'<button class="tb" onclick="cliente={tipo:\'cf\'};pintarCli()">✕</button>':''}`}
+function pintarCarrito(){pintarCli();
+  $('#car').innerHTML=carrito.length?carrito.map((it,k)=>`<div class="li"><div class="nm">${esc(it.nombre)}<small>${plata(it.precio)}${it.unidad==='kg'?' /kg':' c/u'}${it.manual?' · a mano':''}</small></div>
+    <input value="${it.unidad==='kg'?kgTxt(it.cantidad):it.cantidad}" inputmode="decimal" onchange="cantidad(${k},this.value)" title="${it.unidad==='kg'?'kilos':'unidades'}">
+    <input value="${it.precio}" inputmode="decimal" onchange="precioMano(${k},this.value)" title="precio">
+    <button class="x" onclick="carrito.splice(${k},1);pintarCarrito()" title="Quitar">✕</button>
+    <div></div><div class="muted" style="text-align:center;font-size:11px">${it.unidad==='kg'?'kg':'u'}</div><div class="st">${plata(it.cantidad*it.precio)}</div><div></div></div>`).join(''):`<div id="vacio">${TURNO?'Tocá un producto o buscalo arriba.<br><br><span class="muted">F9 = cobrar · Esc = cancelar</span>':'La caja está cerrada.'}</div>`;
+  const t=total();$('#totV').textContent=plata(t);$('#totInfo').textContent=carrito.length+' producto'+(carrito.length===1?'':'s');
+  $('#cobrar').disabled=!carrito.length||!TURNO||carrito.some(it=>!(it.precio>0))}
+function cantidad(k,v){const q=num(v);if(!(q>0)){carrito.splice(k,1)}else carrito[k].cantidad=carrito[k].unidad==='kg'?Math.round(q*1000)/1000:q;pintarCarrito()}
+function precioMano(k,v){const p=num(v);if(!(p>0))return toast('Precio inválido');carrito[k].precio=p;carrito[k].manual=true;pintarCarrito()}
+
+// ---------- cliente ----------
+function elegirCliente(){modal(`<h3>👤 Cliente</h3>
+  <label>Buscar cliente guardado (mayoristas, cuenta corriente)</label><input id="clB" list="clL" autocomplete="off" placeholder="Nombre…" autofocus>
+  <datalist id="clL">${CLIENTES.map(c=>`<option value="${esc(c.nombre)}">${esc((c.razon_social||'')+(c.cuit?' · '+c.cuit:''))}</option>`).join('')}</datalist>
+  <div class="acc" style="margin-top:8px"><button class="b-ok" onclick="usarCliente()">Usar este cliente</button></div>
+  <hr style="border:0;border-top:1px solid var(--brd);margin:16px 0">
+  <p class="muted">O cargá los datos para la factura:</p>
+  <div class="fila"><div><label>Condición frente al IVA</label><select id="clT">${Object.entries(COND).map(([k,n])=>`<option value="${k}" ${k===cliente.tipo?'selected':''}>${n}</option>`).join('')}</select></div><div><label>CUIT / DNI</label><input id="clD" inputmode="numeric" value="${esc(cliente.doc||'')}"></div></div>
+  <label>Nombre o razón social</label><input id="clN" value="${esc(cliente.id?'':cliente.nombre||'')}">
+  <p class="muted" style="margin-top:8px">Responsable inscripto → Factura A. Consumidor final, monotributista o exento → Factura B.</p>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="datosCliente()">Guardar datos</button></div>`)}
+function usarCliente(){const v=$('#clB').value.trim();const c=CLIENTES.find(x=>norm(x.nombre)===norm(v));if(!c)return toast('Elegilo de la lista');
+  const cuit=(c.cuit||'').replace(/\D/g,'');cliente={id:c.id,nombre:c.razon_social||c.nombre,doc:cuit||'',tipo:cuit.length===11?'ri':'cf'};
+  if(c.lista&&LISTAS[norm(c.lista)])cambiarLista(norm(c.lista));else if(c.tipo==='mayorista')cambiarLista('mayorista');
+  cerrar();pintarCarrito();if(cuit.length===11)toast('Se va a hacer Factura A a nombre de '+cliente.nombre+'. Si es monotributista, cambialo en "Cambiar".',4500)}
+function datosCliente(){const t=$('#clT').value,d=$('#clD').value.replace(/\D/g,''),n=$('#clN').value.trim();
+  if(t!=='cf'&&d.length!==11)return toast('Para '+COND[t]+' poné el CUIT (11 números)');if(t!=='cf'&&!n)return toast('Poné el nombre o razón social');
+  cliente={tipo:t,doc:d,nombre:n};cerrar();pintarCarrito()}
+
+// ---------- cobro ----------
+let PAGOS=[];
+function abrirCobro(){if(!carrito.length)return;const t=total();PAGOS=[];
+  modal(`<h3>💰 Cobrar ${plata(t)}</h3><p class="muted">Tocá cómo paga. Si paga con dos medios, tocá los dos y repartí el importe.</p>
+  <div class="medios">${MEDIOS.map(m=>`<button onclick="addPago('${m}')">${m==='Efectivo'?'💵':m.startsWith('Mercado')?'📱':m==='Transferencia'?'🏦':m==='Cuenta corriente'?'📒':'💳'} ${m}</button>`).join('')}</div>
+  <div id="pagos"></div><div id="pagoRes" style="margin-top:12px"></div>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Volver</button><button class="b-ok" id="bOk" onclick="confirmar()" disabled>✅ Confirmar venta</button></div>`);
+}
+function addPago(m){const t=total();const ya=PAGOS.reduce((a,p)=>a+p.monto,0);
+  if(m==='Cuenta corriente'&&!cliente.id)return toast('Para cuenta corriente, elegí primero el cliente (botón "Cambiar")',4000);
+  if(PAGOS.some(p=>p.medio===m))return;PAGOS.push({medio:m,monto:Math.max(0,Math.round((t-ya)*100)/100),recibe:null});pintarPagos();
+  const i=document.querySelector(m==='Efectivo'?'#pr'+(PAGOS.length-1):'#pm'+(PAGOS.length-1));if(i){i.focus();i.select()}}
+function pintarPagos(){const t=total();
+  $('#pagos').innerHTML=PAGOS.map((p,k)=>`<div class="pago"><b>${p.medio}</b><input id="pm${k}" value="${p.monto}" inputmode="decimal" oninput="PAGOS[${k}].monto=num(this.value);resPago()"><button class="x" style="background:none;border:0;color:var(--tx2);font-size:18px" onclick="PAGOS.splice(${k},1);pintarPagos()">✕</button></div>
+    ${p.medio==='Efectivo'?`<div class="pago"><span class="muted">Con cuánto paga</span><input id="pr${k}" value="${p.recibe==null?'':p.recibe}" placeholder="opcional" inputmode="decimal" oninput="PAGOS[${k}].recibe=this.value===''?null:num(this.value);resPago()" onkeydown="if(event.key==='Enter')confirmar()"><span></span></div>`:''}`).join('');resPago()}
+function resPago(){const t=total(),s=PAGOS.reduce((a,p)=>a+(+p.monto||0),0);const ef=PAGOS.find(p=>p.medio==='Efectivo');
+  const vuelto=ef&&ef.recibe!=null?Math.max(0,Math.round((ef.recibe-ef.monto)*100)/100):0;const falta=Math.round((t-s)*100)/100;
+  $('#pagoRes').innerHTML=`<div class="resu"><span>Total</span><b>${plata(t)}</b></div><div class="resu"><span>Pagado</span><b>${plata(s)}</b></div>
+    ${Math.abs(falta)>0.009?`<div class="resu" style="color:var(--rojo)"><span>${falta>0?'Falta':'Sobra (bajá un importe)'}</span><b>${plata(Math.abs(falta))}</b></div>`:''}
+    ${ef&&ef.recibe!=null?`<div class="resu grande" style="color:var(--oro)"><span>Vuelto</span><span>${ef.recibe<ef.monto?'falta plata':plata(vuelto)}</span></div>`:''}`;
+  $('#bOk').disabled=!PAGOS.length||Math.abs(falta)>0.009||(ef&&ef.recibe!=null&&ef.recibe<ef.monto)}
+let guardando=false;
+async function confirmar(){if(guardando||$('#bOk').disabled)return;guardando=true;$('#bOk').disabled=true;$('#bOk').textContent='Guardando…';
+  const ef=PAGOS.find(p=>p.medio==='Efectivo');const vuelto=ef&&ef.recibe!=null?Math.max(0,ef.recibe-ef.monto):0;
+  const body={lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
+    pagos:PAGOS.filter(p=>p.monto>0).map(p=>({medio:p.medio,monto:Math.round(p.monto*100)/100,...(p.medio==='Efectivo'&&p.recibe!=null?{recibe:p.recibe}:{})})),
+    items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio}))};
+  try{const r=await rpc('caja_vender',{p:body});
+    const venta={id:r.id,fecha:new Date(),items:carrito.slice(),pagos:body.pagos,vuelto,total:r.total,cliente:Object.assign({},cliente),lista,fiscal:r.fiscal_estado};
+    if(cliente.id&&body.pagos.some(p=>p.medio==='Cuenta corriente'))SALDOS[cliente.id]=(SALDOS[cliente.id]||0)+body.pagos.find(p=>p.medio==='Cuenta corriente').monto;
+    carrito=[];cliente={tipo:'cf'};if(lista!=='minorista')cambiarLista('minorista');
+    cerrar();imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
+  }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bOk').textContent='✅ Confirmar venta'}
+  guardando=false}
+
+// ---------- ticket ----------
+function imprimirTicket(v){const C=CFG;const prueba=(v.fiscal||'')!=='autorizada';
+  const iva={};v.items.forEach(it=>{const a=it.iva==null?21:+it.iva;const s=it.cantidad*it.precio;iva[a]=(iva[a]||0)+s});
+  const ivaCont=Object.entries(iva).reduce((a,[al,s])=>a+s-s/(1+al/100),0);
+  $('#ticket').innerHTML=`<div class="c g">${esc(C.nombre_fantasia||'Poly Artesanal')}</div>${C.razon_social&&C.razon_social!==C.nombre_fantasia?`<div class="c">${esc(C.razon_social)}</div>`:''}
+  <div class="c">${esc(C.domicilio||'')}</div>${C.cuit?`<div class="c">CUIT ${esc(C.cuit)} · IIBB ${esc(C.iibb||'')}</div><div class="c">${esc(C.cond_iva||'')} · Inicio act. ${esc(C.inicio_actividades||'')}</div>`:''}
+  <hr><div class="c g">${prueba?'COMPROBANTE NO VÁLIDO COMO FACTURA':(v.cbte||'FACTURA')}</div>
+  <div>Venta #${v.id} · ${v.fecha.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</div>
+  ${v.cliente&&(v.cliente.nombre||v.cliente.doc)?`<div>${esc(v.cliente.nombre||'')} ${v.cliente.doc?'· '+esc(v.cliente.doc):''}</div>`:'<div>A CONSUMIDOR FINAL</div>'}
+  <hr><table>${v.items.map(it=>`<tr><td colspan="2">${esc(it.nombre)}</td></tr><tr><td>${it.unidad==='kg'?kgTxt(it.cantidad)+' kg':it.cantidad+' u'} x ${plata(it.precio)}</td><td class="r">${plata(it.cantidad*it.precio)}</td></tr>`).join('')}</table>
+  <hr><table><tr><td class="g">TOTAL</td><td class="r g">${plata(v.total)}</td></tr>${v.pagos.map(p=>`<tr><td>${esc(p.medio)}</td><td class="r">${plata(p.medio==='Efectivo'&&p.recibe!=null?p.recibe:p.monto)}</td></tr>`).join('')}${v.vuelto?`<tr><td>Vuelto</td><td class="r">${plata(v.vuelto)}</td></tr>`:''}</table>
+  <hr><div style="font-size:11px">Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</div><div style="font-size:11px">IVA Contenido: ${plata(ivaCont)}</div><div style="font-size:11px">Otros Impuestos Nacionales Indirectos: $ 0</div>
+  <hr><div class="c">¡Gracias por elegirnos!</div><div class="c">@polyartesanal</div>`;
+  setTimeout(()=>window.print(),80)}
+
+// ---------- ventas del turno / anular ----------
+async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
+  const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,fiscal_estado,ventas_items(nombre,cantidad,unidad,precio,iva)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
+  modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
+    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span></span>
+    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
+    <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
+function reimprimir(id){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;imprimirTicket({id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre},fiscal:x.fiscal_estado})}
+async function anular(id){const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
+  try{await rpc('caja_anular',{p_id:id,p_motivo:m||'sin motivo'});toast('Venta #'+id+' anulada');await estadoTurno();verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
+
+// ---------- turno ----------
+function turnoBtn(){TURNO?cerrarTurno():abrirTurno()}
+function abrirTurno(){const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});const sug=h>=5&&h<13?'Mañana':h>=13&&h<21?'Tarde':'Noche';
+  modal(`<h3>🔓 Abrir turno</h3><div class="fila"><div><label>Turno</label><select id="tT">${['Mañana','Tarde','Noche'].map(t=>`<option ${t===sug?'selected':''}>${t}</option>`).join('')}</select></div>
+  <div><label>Efectivo en la caja al abrir (cambio)</label><input id="tF" inputmode="decimal" placeholder="0" autofocus onkeydown="if(event.key==='Enter')okAbrir()"></div></div>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okAbrir()">Abrir</button></div>`)}
+async function okAbrir(){try{await rpc('caja_abrir',{p_turno:$('#tT').value,p_fondo:num($('#tF').value)});cerrar();await estadoTurno();toast('✅ Turno abierto')}catch(e){toast('⚠️ '+e.message,6000)}}
+async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}if(!r.abierto)return estadoTurno();
+  const pm=r.por_medio||{};const ef=(+pm['Efectivo']||0)-(+r.vuelto||0);const ccef=+((r.cc_cobrado||{})['Efectivo'])||0;const esperado=(+r.turno.fondo_inicial||0)+ef+ccef;
+  modal(`<h3>🔒 Cerrar turno ${esc(r.turno.turno)}</h3>
+  <div class="resu"><span>Ventas</span><b>${r.ventas}</b></div><div class="resu"><span>Total vendido</span><b>${plata(r.total)}</b></div>
+  ${Object.entries(pm).map(([m,v])=>`<div class="resu"><span class="muted">${esc(m)}</span><span>${plata(m==='Efectivo'?v-(+r.vuelto||0):v)}</span></div>`).join('')}
+  ${Object.keys(r.cc_cobrado||{}).length?`<div class="resu"><span class="muted">Cobros de cuenta corriente</span><span>${Object.entries(r.cc_cobrado).map(([m,v])=>esc(m)+' '+plata(v)).join(' · ')}</span></div>`:''}
+  <div class="resu"><span>Efectivo que tiene que haber (con el cambio de ${plata(r.turno.fondo_inicial)})</span><b>${plata(esperado)}</b></div>
+  <label>Efectivo contado en la caja</label><input id="cE" inputmode="decimal" autofocus oninput="const d=num(this.value)-${esperado};$('#cDif').innerHTML=this.value?(Math.abs(d)<1?'<span style=color:var(--verde)>✅ Cierra justo</span>':'<span style=color:var(--rojo)>'+(d<0?'Falta ':'Sobra ')+plata(Math.abs(d))+'</span>'):''">
+  <div id="cDif" style="margin-top:6px;font-weight:700"></div>
+  <label>Notas (opcional)</label><input id="cN">
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-rojo" onclick="okCerrar()">Cerrar turno</button></div>`)}
+async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efectivo y ponelo');
+  try{const r=await rpc('caja_cerrar',{p_efectivo:num($('#cE').value),p_notas:$('#cN').value||null});
+    modal(`<h3>✅ Turno cerrado</h3><div class="resu"><span>Total vendido</span><b>${plata(r.total)}</b></div><div class="resu"><span>Ventas</span><b>${r.tickets}</b></div>
+    <div class="resu"><span>Efectivo esperado</span><b>${plata(r.efectivo_esperado)}</b></div><div class="resu"><span>Efectivo contado</span><b>${plata(r.efectivo_contado)}</b></div>
+    <div class="resu grande" style="color:${Math.abs(r.diferencia)<1?'var(--verde)':'var(--rojo)'}"><span>${Math.abs(r.diferencia)<1?'Cierra':'Diferencia'}</span><span>${plata(r.diferencia)}</span></div>
+    <p class="muted" style="margin-top:10px">La venta del turno ya quedó cargada en Gestión → Finanzas.</p><div class="acc"><button class="b-ok" onclick="cerrar()">Listo</button></div>`);
+    await estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
+
+// ---------- cuenta corriente ----------
+function cobrarCC(){if(!TURNO)return toast('Primero abrí el turno');const conDeuda=CLIENTES.filter(c=>(SALDOS[c.id]||0)>0.009);
+  modal(`<h3>💳 Cobrar cuenta corriente</h3>${conDeuda.length?`<div style="margin-bottom:6px">${conDeuda.map(c=>`<div class="resu"><span>${esc(c.nombre)}</span><b>${plata(SALDOS[c.id])}</b></div>`).join('')}</div>`:'<p class="muted">Nadie debe nada.</p>'}
+  <label>Cliente</label><select id="ccC">${CLIENTES.map(c=>`<option value="${c.id}">${esc(c.nombre)}${SALDOS[c.id]?' · debe '+plata(SALDOS[c.id]):''}</option>`).join('')}</select>
+  <div class="fila"><div><label>Importe</label><input id="ccM" inputmode="decimal" autofocus></div><div><label>Cómo paga</label><select id="ccP">${MEDIOS.filter(m=>m!=='Cuenta corriente').map(m=>`<option>${m}</option>`).join('')}</select></div></div>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okCC()">Registrar pago</button></div>`)}
+async function okCC(){const id=+$('#ccC').value,m=num($('#ccM').value);if(!(m>0))return toast('Poné el importe');
+  try{const r=await rpc('caja_cobrar_cc',{p_cliente:id,p_monto:m,p_medio:$('#ccP').value});SALDOS[id]=+r.saldo;cerrar();toast('✅ Pago registrado · saldo '+plata(r.saldo),4000);estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
+
+cargar().catch(e=>{$('#estado').textContent='⚠️ No se pudo cargar: '+e.message});
+setTimeout(()=>$('#bus').focus(),300);
+</script>
+</body>
+</html>
