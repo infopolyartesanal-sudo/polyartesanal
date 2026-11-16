@@ -1600,10 +1600,11 @@ const CRM_ORIGEN={salon:'Salón (pedido o mostrador)',instagram:'Instagram',reco
 async function cargarCRM(){
   try{
     const [c,i,p,k,e,cfg]=await Promise.all([sbGet('crm_clientes','order=nombre'),sbGet('crm_interacciones','order=fecha.desc&limit=5000'),
-      sb('pedidos_clientes?select=id,numero,cliente,fecha_retiro,total,sena,estado,lista_precios,cliente_id,created_at,pedidos_clientes_items(producto,cantidad,precio,unidad)&cliente_id=not.is.null&order=created_at.desc&limit=5000'),
+      sb('pedidos_clientes?select=id,numero,cliente,fecha_retiro,total,sena,estado,lista_precios,cliente_id,created_at,venta_id,pedidos_clientes_items(producto,cantidad,precio,unidad)&cliente_id=not.is.null&order=created_at.desc&limit=5000'),
       sbGet('crm_campanias','order=created_at.desc').catch(()=>[]),sbGet('crm_campania_envios','order=id&limit=50000').catch(()=>[]),
       sbGet('config','clave=in.(whatsapp_local,comunidad)').catch(()=>[])]);
-    CRM.clis=c||[];CRM.inter=i||[];CRM.peds=p||[];CRM.camps=k||[];CRM.envs=e||[];
+    CRM.clis=c||[];CRM.inter=i||[];CRM.peds=(p||[]).filter(x=>!x.venta_id);// el pedido entregado por la Caja ya cuenta como venta
+   CRM.camps=k||[];CRM.envs=e||[];
     const cv=k2=>((cfg||[]).find(x=>x.clave===k2)||{}).valor;
     CRM.waLocal=String(cv('whatsapp_local')||'').replace(/\D/g,'');CRM.com=cv('comunidad')||null;
     const [co,cj,ct]=await Promise.all([sbGet('crm_compras','order=fecha.desc&limit=50000').catch(()=>[]),sbGet('crm_canjes','order=fecha.desc&limit=20000').catch(()=>[]),sbGet('crm_contenidos','fecha=gte.'+sumaDias(hoy(),-60)+'&order=fecha').catch(()=>[])]);

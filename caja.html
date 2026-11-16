@@ -199,6 +199,7 @@
   <h1>🧾 Caja <span>Poly</span></h1>
   <div id="estado">Cargando…</div>
   <button class="tb" onclick="verVentas()">📋 Ventas del turno</button>
+  <button class="tb" onclick="pedidosEntregar()" id="bPed">📦 Entregar pedido</button>
   <button class="tb" onclick="cobrarCC()">💳 Cobrar cuenta corriente</button>
   <button class="tb" id="bTurno" onclick="turnoBtn()">…</button>
   <a class="tb" href="asistente_salon.html" style="text-decoration:none">🏪 Salón</a>
@@ -242,7 +243,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#ov').style.disp
 const LISTAS={minorista:['Minorista','precio_lpu','#8e5bd6'],mayorista:['Mayorista','precio_may','#3d8bd9'],pedidosya:['PedidosYa','precio_pey','#e05252']};
 const MEDIOS=['Efectivo','Mercado Pago / QR','Transferencia','Débito','Crédito','Cuenta corriente'];
 const COND={cf:'Consumidor final',ri:'Responsable inscripto',mono:'Monotributista',ex:'Exento'};
-let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''};
+let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''},PEDIDO=null;
 
 async function cargar(){
   const desde=new Date(Date.now()-30*864e5).toISOString();
@@ -297,6 +298,7 @@ function total(){return Math.round(carrito.reduce((a,it)=>a+it.cantidad*it.preci
 function pintarCli(){const c=cliente;let t='👤 Consumidor final';
   if(c.id){const s=SALDOS[c.id]||0;t=`👤 <b>${esc(c.nombre)}</b> <span class="muted">${COND[c.tipo]||''}${c.doc?' · '+esc(c.doc):''}${s?' · debe '+plata(s):''}</span>`}
   else if(c.tipo!=='cf')t=`👤 <b>${esc(c.nombre||'')}</b> <span class="muted">${COND[c.tipo]} · ${esc(c.doc||'')}</span>`;
+  if(PEDIDO)t=` <span class="chip" style="background:#e8f0fb;color:#1f5fa8;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700">📦 Pedido #${PEDIDO.numero} <a href="#" onclick="PEDIDO=null;pintarCli();return false" title="Ya no es la entrega de ese pedido">✕</a></span> `+t;
   $('#cli').innerHTML=`<span class="n">${t}</span><button class="tb" onclick="elegirCliente()">Cambiar</button>${c.tipo!=='cf'||c.id?'<button class="tb" onclick="cliente={tipo:\'cf\'};pintarCli()">✕</button>':''}`}
 function pintarCarrito(){pintarCli();
   $('#car').innerHTML=carrito.length?carrito.map((it,k)=>`<div class="li"><div class="nm">${esc(it.nombre)}<small>${plata(it.precio)}${it.unidad==='kg'?' /kg':' c/u'}${it.manual?' · a mano':''}</small></div>
@@ -327,6 +329,34 @@ function usarCliente(){const v=$('#clB').value.trim();const c=CLIENTES.find(x=>n
 function datosCliente(){const t=$('#clT').value,d=$('#clD').value.replace(/\D/g,''),n=$('#clN').value.trim();
   if(t!=='cf'&&d.length!==11)return toast('Para '+COND[t]+' poné el CUIT (11 números)');if(t!=='cf'&&!n)return toast('Poné el nombre o razón social');
   cliente={tipo:t,doc:d,nombre:n};cerrar();pintarCarrito()}
+
+
+// ---------- entregar un pedido confirmado (mayoristas): trae cliente, lista y productos ----------
+async function pedidosEntregar(){if(!TURNO)return toast('Primero abrí el turno');
+  const d0=new Date(Date.now()-3*3600e3-10*864e5).toISOString().slice(0,10),d1=new Date(Date.now()-3*3600e3+3*864e5).toISOString().slice(0,10);
+  let ps=[];try{ps=await api('pedidos_clientes?select=id,numero,cliente,cliente_id,fecha_retiro,hora_retiro,envio,direccion,total,sena,lista_precios,estado,notas,pedidos_clientes_items(producto,cantidad,unidad,precio)&estado=in.(pendiente,en_produccion,listo)&lista_precios=eq.mayorista&fecha_retiro=gte.'+d0+'&fecha_retiro=lte.'+d1+'&order=fecha_retiro,id')}catch(e){return toast('⚠️ '+e.message)}
+  window._peds=ps;
+  modal(`<h3>📦 Entregar un pedido mayorista</h3><p class="muted">Pedidos mayoristas confirmados de los últimos 10 días y los próximos 3. Al elegir uno se carga el cliente, la lista y los productos; al cobrar queda como <b>entregado</b>.</p>
+  ${ps.length?ps.map(p=>`<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;margin:8px 0;cursor:pointer" onclick="cargarPedido(${p.id})">
+    <div style="display:flex;justify-content:space-between;gap:8px"><b>#${p.numero} · ${esc(p.cliente||'')}</b><span>${plata(p.total)}</span></div>
+    <div class="muted" style="font-size:13px">${esc(p.fecha_retiro||'')}${p.hora_retiro?' · '+esc(p.hora_retiro):''} · ${p.envio?'🛵 '+esc(p.direccion||''):'🏪 Retira'}${p.lista_precios==='mayorista'?' · <b>MAYORISTA</b>':''}${+p.sena>0?' · seña '+plata(p.sena):''}</div>
+    <div style="font-size:13px;margin-top:3px">${(p.pedidos_clientes_items||[]).map(i=>(i.unidad==='kg'?kgTxt(+i.cantidad)+' kg':+i.cantidad)+' '+esc(i.producto)).join(' · ')}</div></div>`).join('')
+  :'<p>No hay pedidos confirmados para entregar.</p>'}
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`)}
+async function cargarPedido(id){const p=(window._peds||[]).find(x=>x.id===id);if(!p)return;
+  if(carrito.length&&!confirm('Hay productos en la venta actual. ¿Reemplazarlos por el pedido #'+p.numero+'?'))return;
+  let al={};try{(await api('productos_venta_alias?select=alias,codigo')).forEach(a=>al[norm(a.alias).trim()]=a.codigo)}catch(e){}
+  const falt=[];carrito=[];
+  (p.pedidos_clientes_items||[]).forEach(i=>{const n=norm(i.producto).trim();const pr=PROD.find(x=>norm(x.nombre).trim()===n)||PROD.find(x=>x.codigo===al[n]);
+    const kg=i.unidad==='kg'||(pr&&pr.por_kg);
+    if(!pr)falt.push(i.producto);
+    carrito.push({codigo:pr?pr.codigo:null,nombre:pr?pr.nombre:i.producto,cantidad:+i.cantidad,unidad:kg?'kg':'u',precio:+i.precio||(pr?0:0),iva:pr?pr.iva:21,manual:true})});
+  const c=CLIENTES.find(x=>x.id===p.cliente_id);
+  if(c){const cuit=(c.cuit||'').replace(/\D/g,'');cliente={id:c.id,nombre:c.razon_social||c.nombre,doc:cuit,tipo:cuit.length===11?'ri':'cf',dir:p.direccion||[c.direccion,c.zona].filter(Boolean).join(', '),mayorista:c.tipo==='mayorista'}}
+  else cliente={tipo:'cf',nombre:p.cliente||''};
+  lista=p.lista_precios==='mayorista'?'mayorista':'minorista';PEDIDO={id:p.id,numero:p.numero,sena:+p.sena||0};
+  cerrar();pintarListas();pintarGrid();pintarCarrito();
+  toast('Pedido #'+p.numero+' cargado'+(falt.length?' · ⚠️ sin vincular: '+falt.join(', '):'')+(PEDIDO.sena?' · ya pagó seña '+plata(PEDIDO.sena):''),falt.length?7000:3500)}
 
 // ---------- cobro ----------
 let PAGOS=[];
@@ -368,7 +398,7 @@ function resPago(){const t=total(),s=PAGOS.reduce((a,p)=>a+(+p.monto||0),0);cons
 let guardando=false;
 async function confirmar(){if(guardando||$('#bOk').disabled)return;guardando=true;$('#bOk').disabled=true;$('#bOk').textContent='Guardando…';
   const ef=PAGOS.find(p=>p.medio==='Efectivo');const vuelto=ef&&ef.recibe!=null?Math.max(0,ef.recibe-ef.monto):0;
-  const body={lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
+  const body={pedido_id:PEDIDO?PEDIDO.id:'',lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
     pagos:PAGOS.filter(p=>p.monto>0).map(p=>({medio:p.medio,monto:Math.round(p.monto*100)/100,...(p.medio==='Efectivo'&&p.recibe!=null?{recibe:p.recibe}:{})})),
     remito:REM.on,entrega_direccion:REM.on?REM.dir:'',entrega_notas:REM.on?REM.notas:'',
     items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio,bultos:REM.on&&it.bultos!=null?it.bultos:'',kg:REM.on&&it.kg!=null?it.kg:''}))};
@@ -376,7 +406,7 @@ async function confirmar(){if(guardando||$('#bOk').disabled)return;guardando=tru
     const venta={id:r.id,fecha:new Date(),items:carrito.slice(),pagos:body.pagos,vuelto,total:r.total,cliente:Object.assign({},cliente),lista,fiscal:r.fiscal_estado};
     if(cliente.id&&body.pagos.some(p=>p.medio==='Cuenta corriente'))SALDOS[cliente.id]=(SALDOS[cliente.id]||0)+body.pagos.find(p=>p.medio==='Cuenta corriente').monto;
     venta.remito=r.remito_nro?{nro:r.remito_nro,dir:REM.dir,notas:REM.notas}:null;
-    carrito=[];cliente={tipo:'cf'};if(lista!=='minorista')cambiarLista('minorista');
+    carrito=[];cliente={tipo:'cf'};PEDIDO=null;if(lista!=='minorista')cambiarLista('minorista');
     cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
   }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bOk').textContent='✅ Confirmar venta'}
   guardando=false}
