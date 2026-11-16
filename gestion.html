@@ -1024,15 +1024,38 @@ function verFactura(id){
 async function marcarPagada(id){await sbUpd('facturas','id=eq.'+id,{estado:'pagada'});D.facturas.find(f=>f.id===id).estado='pagada';cerrarModal();vFacturas()}
 async function borrarFactura(id){await sbDel('facturas','id=eq.'+id);D.facturas=D.facturas.filter(f=>f.id!==id);vFacturas()}
 function nuevaFactura(manual){
+  let borr=null;try{borr=JSON.parse(localStorage.getItem('factura_borrador')||'null')}catch(e){}
   modal(`<h2>${manual?'✍️ Factura a mano':'📷 Cargar factura'}</h2>
-  ${manual?'':`<div class="drop" id="drop" onclick="$('#fArch').click()">Tocá para sacar una foto o elegir el archivo (JPG, PNG o PDF)<br><span class="muted">También podés arrastrarlo acá</span></div><input type="file" id="fArch" accept="image/*,application/pdf" style="display:none"><p id="fEst" class="muted"></p>`}
+  ${manual?'':`${borr&&borr.j?`<div class="alerta" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span>📄 Tenés una factura leída sin guardar${borr.j.proveedor?' de <b>'+esc(borr.j.proveedor)+'</b>':''}${borr.j.total?' por '+$$(borr.j.total):''}.</span><span><button class="btn peq" id="fRet">Retomarla</button> <button class="btn peq sec" id="fDes">Descartar</button></span></div>`:''}
+  <div class="acciones" id="drop" style="flex-wrap:wrap"><button class="btn" id="fCam" style="flex:1;min-width:160px;padding:16px">📷 Sacar foto</button><button class="btn sec" id="fGal" style="flex:1;min-width:160px;padding:16px">📁 Elegir archivo o de la galería</button></div>
+  <p class="muted" style="font-size:12px">JPG, PNG o PDF. En la compu también podés arrastrar el archivo acá.</p>
+  <input type="file" id="fArch" accept="image/*,application/pdf" style="display:none"><p id="fEst" class="muted"></p>`}
   <div id="fForm" style="${manual?'':'display:none'}"></div>`);
   if(manual)return formFactura({items:[{}]});
   const go=async file=>{if(!file)return;$('#fEst').textContent='🤖 Leyendo la factura… (tarda unos segundos)';
-    try{const j=await leerConIA(file,PROMPT_FACTURA);$('#fEst').textContent='✅ Leída. Revisá los datos antes de guardar.';$('#drop').style.display='none';formFactura(j)}
+    try{const j=await leerConIA(file,PROMPT_FACTURA);try{localStorage.setItem('factura_borrador',JSON.stringify({j,t:Date.now()}))}catch(e){}
+      $('#fEst').textContent='✅ Leída. Revisá los datos antes de guardar.';$('#drop').style.display='none';formFactura(j)}
     catch(e){$('#fEst').innerHTML='⚠️ No pude leerla: '+esc(e.message)+'. Podés <a href="#" onclick="formFactura({items:[{}]});return false">cargarla a mano</a>.'}};
   $('#fArch').onchange=e=>go(e.target.files[0]);
+  $('#fGal').onclick=()=>$('#fArch').click();
+  // la cámara se abre dentro de la página: en el celular, abrir la app de cámara a veces hace que el navegador recargue Gestión y se pierda la factura
+  $('#fCam').onclick=()=>camaraFoto(go,()=>$('#fArch').click());
+  if($('#fRet'))$('#fRet').onclick=()=>{$('#drop').style.display='none';$('#fEst').textContent='✅ Retomada. Revisá los datos antes de guardar.';$('#fRet').closest('.alerta').remove();formFactura(borr.j)};
+  if($('#fDes'))$('#fDes').onclick=()=>{try{localStorage.removeItem('factura_borrador')}catch(e){}$('#fDes').closest('.alerta').remove()};
   const d=$('#drop');d.ondragover=e=>{e.preventDefault()};d.ondrop=e=>{e.preventDefault();go(e.dataTransfer.files[0])};
+}
+// Cámara dentro de la página (sin salir de Gestión)
+async function camaraFoto(alListo,alternativa){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){return alternativa()}
+  let st;try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:2560},height:{ideal:1920}},audio:false})}
+  catch(e){toast('No pude abrir la cámara acá: elegí la foto de la galería',4000);return alternativa()}
+  const ov=document.createElement('div');ov.style.cssText='position:fixed;inset:0;background:#000;z-index:10000;display:flex;flex-direction:column';
+  ov.innerHTML='<video autoplay playsinline muted style="flex:1;width:100%;object-fit:contain;background:#000"></video><div style="display:flex;gap:10px;padding:14px;background:#111"><button class="btn sec" style="flex:1;padding:16px" data-a="no">Cancelar</button><button class="btn" style="flex:2;padding:16px;font-size:18px" data-a="si">📸 Sacar foto</button></div>';
+  document.body.appendChild(ov);const v=ov.querySelector('video');v.srcObject=st;
+  const fin=()=>{st.getTracks().forEach(t=>t.stop());ov.remove()};
+  ov.querySelector('[data-a=no]').onclick=fin;
+  ov.querySelector('[data-a=si]').onclick=()=>{if(!v.videoWidth)return;const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+    c.toBlob(b=>{fin();alListo(new File([b],'factura.jpg',{type:'image/jpeg'}))},'image/jpeg',0.92)};
 }
 function sugerirInsumo(desc){
   const eq=D.equiv.find(e=>e.texto===norm(desc));if(eq&&insMap[eq.insumo_id])return insMap[eq.insumo_id];
@@ -1094,6 +1117,7 @@ async function guardarFactura(){
     condicion_pago:$('#fC').value,categoria:$('#fCat').value,estado:$('#fC').value==='Contado'?'pagada':'pendiente',impacta_stock:actualizar,
     items:items.map(i=>({nombre:i.descripcion,insumo_id:i.insumo_id||null,bultos:i.bultos,contenido_por_empaque:i.contenido,cantidad_base:i.cantidad_base,unidad:i.unidad,total:i.total}))};
   const [f]=await sbIns('facturas',[row]);D.facturas.unshift(f);indexar();cerrarModal();
+  try{localStorage.removeItem('factura_borrador')}catch(e){}
   toast(suba.length?'Factura guardada. ⚠️ Subieron: '+suba.join(', '):'Factura guardada ✅ '+(actualizar?'Stock y costos actualizados.':''),suba.length?9000:3000);
   if(vistaActual==='facturas')vFacturas();
   }catch(e){console.error(e);$('#bGF').disabled=false}
