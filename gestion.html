@@ -451,9 +451,16 @@ async function sb(path,{method='GET',body,prefer}={}){
   const h={apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'application/json'};
   if(prefer)h.Prefer=prefer;
   const r=await fetch(SB_URL+'/rest/v1/'+path,{method,headers:h,body:body?JSON.stringify(body):undefined});
-  if(!r.ok){const t=await r.text();console.error('Supabase',path,r.status,t);toast('⚠️ Error guardando: '+t.slice(0,120),6000);throw new Error(t)}
+  if(!r.ok){const t=await r.text();console.error('Supabase',path,r.status,t);
+    if(r.status===401||/42501|row-level security/.test(t)){sesionVencida();throw new Error('Tu sesión se cerró: volvé a entrar')}
+    toast('⚠️ Error guardando: '+t.slice(0,120),6000);throw new Error(t)}
   const t=await r.text();return t?JSON.parse(t):null;
 }
+// La sesión de este navegador ya no es válida (se cerró en otro lado, se cambió la clave o venció): avisar claro en vez de un error técnico
+function sesionVencida(){if(window._avisoSesion)return;window._avisoSesion=1;
+  const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px';
+  d.innerHTML='<div style="background:#13261a;border:1px solid #C9A84C;border-radius:16px;padding:22px;max-width:420px;color:#e8efe9;font-family:system-ui,sans-serif"><div style="font-size:19px;font-weight:800;margin-bottom:8px">🔒 Tu sesión en este navegador se cerró</div><div style="font-size:14px;line-height:1.45;color:#c5d3c9">Lo que estabas cargando <b>no se guardó</b>. Esto pasa cuando se cierra la sesión en otra pestaña, se cambia la clave del usuario o se entra con otro usuario en esta misma compu.<br><br>Volvé a entrar y cargalo de nuevo.</div><button style="margin-top:16px;width:100%;padding:13px;border:0;border-radius:10px;background:#2E9E5B;color:#fff;font-weight:800;font-size:15px;cursor:pointer">Volver a entrar</button></div>';
+  d.querySelector('button').onclick=()=>{try{localStorage.removeItem('poly_sesion');localStorage.removeItem('poly_usuario')}catch(e){}location.href='index.html'};document.body.appendChild(d)}
 const sbGet=(t,q='')=>sb(t+'?select=*'+(q?'&'+q:''));
 const sbIns=(t,rows,upsert)=>sb(t,{method:'POST',body:rows,prefer:'return=representation'+(upsert?',resolution=merge-duplicates':'')});
 const sbUpd=(t,filtro,patch)=>sb(t+'?'+filtro,{method:'PATCH',body:patch,prefer:'return=representation'});
