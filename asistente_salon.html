@@ -2473,13 +2473,17 @@ function renderTareas(){
   };
   function baseNom(x) { return norm(x).replace(/\(.*?\)/g, ' ').replace(/\bmayorista\b/g, ' ').replace(/\s+/g, ' ').trim(); }
   function cargarProductos() {
-    var a = api('recetas?select=id,nombre,sector,precio_venta,tipo,unidad_venta&tipo=neq.BASE&order=nombre').then(function (r) { productos = r || []; }).catch(function () {});
+    // Trae todas las recetas: las BASE (rellenos, masas) solo se muestran si están vinculadas a un producto de venta
+    var todas = [];
+    var a = api('recetas?select=id,nombre,sector,precio_venta,tipo,unidad_venta&order=nombre').then(function (r) { todas = r || []; }).catch(function () {});
     var b = Promise.all([api('productos_venta?select=codigo,nombre,precio_may,precio_lpu,precio_pey&activo=eq.true'), api('productos_venta_alias?select=alias,codigo')]).then(function (r) {
       var porCod = {}; pvMap = {};
       (r[0] || []).forEach(function (x) { porCod[x.codigo] = x; pvMap[baseNom(x.nombre)] = x; });
       (r[1] || []).forEach(function (x) { if (porCod[x.codigo]) pvMap[baseNom(x.alias)] = porCod[x.codigo]; });
     }).catch(function () {});
-    return Promise.all([a, b]);
+    return Promise.all([a, b]).then(function () {
+      productos = todas.filter(function (p) { return p.tipo !== 'BASE' || pvMap[baseNom(p.nombre)]; });
+    });
   }
   // Devuelve [precio, origen]: 'lista' = Productos de venta · 'receta' = precio de la receta · 'falta' = no hay precio para esa lista
   function precioDe(p) {
