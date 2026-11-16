@@ -812,9 +812,9 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
     <div id="hm-peso-box" style="display:none;background:#FFF8E1;border-radius:10px;padding:12px;margin-bottom:14px;">
       <div style="font-size:13px;color:#555;margin-bottom:6px;">Estaba leudando: <strong id="hm-latas"></strong>. Este producto se vende <b>por kilo</b>: pesalo al sacarlo.</div>
       <label style="font-size:13px;color:#333;font-weight:600;">¿Cuántos kilos salieron?</label>
-      <input type="number" id="hm-kg" min="0" step="0.01" inputmode="decimal" placeholder="ej: 3,5" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #FFE082;border-radius:8px;text-align:center;font-weight:700;" />
+      <input type="text" id="hm-kg" inputmode="decimal" autocomplete="off" placeholder="ej: 3,5" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #FFE082;border-radius:8px;text-align:center;font-weight:700;" />
       <label style="font-size:12px;color:#666;font-weight:600;display:block;margin-top:10px;">¿Se tiró algo? (kilos, opcional)</label>
-      <input type="number" id="hm-kg-merma" min="0" step="0.01" inputmode="decimal" placeholder="0" style="width:100%;box-sizing:border-box;margin-top:4px;padding:9px;font-size:15px;border:1.5px solid #eee;border-radius:8px;text-align:center;" />
+      <input type="text" id="hm-kg-merma" inputmode="decimal" autocomplete="off" placeholder="0" style="width:100%;box-sizing:border-box;margin-top:4px;padding:9px;font-size:15px;border:1.5px solid #eee;border-radius:8px;text-align:center;" />
     </div>
     <div id="hm-u-box" style="background:#F1F8E9;border-radius:10px;padding:12px;margin-bottom:14px;">
       <div style="font-size:13px;color:#555;margin-bottom:6px;">Estaba leudando: <strong id="hm-leudada"></strong> unidades</div>
@@ -849,7 +849,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
       <div style="flex:1"><label style="font-size:13px;font-weight:600;">Unidades que salieron</label>
         <input type="number" id="pm-u" min="0" step="1" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
       <div style="flex:1"><label style="font-size:13px;font-weight:600;">Kilos (si se pesa)</label>
-        <input type="number" id="pm-kg" min="0" step="0.01" inputmode="decimal" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
+        <input type="text" id="pm-kg" inputmode="decimal" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
     </div>
     <div id="pm-esperado" style="font-size:12px;color:#666;margin-top:6px;"></div>
     <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:12px;color:#333;"><input type="checkbox" id="pm-desc" style="width:20px;height:20px;margin-top:1px"> <span>La masa la hicimos en Madrugada: <b>descontar los ingredientes</b> del depósito. (Si la masa vino de Panadería, Cocina o Pastelería, dejalo sin marcar: ya se descontó allá.)</span></label>
@@ -982,15 +982,26 @@ async function uploadFoto(file, item){
   if(!res.ok) throw new Error('upload '+res.status);
   return SUPABASE_URL + '/storage/v1/object/public/madrugada/' + obj;
 }
+// Kilos: acepta coma o punto como decimal ("2,235" o "2.235" = 2,235 kg). Antes el campo numérico tomaba el punto como miles (2.235 → 2235 kg).
+function leerKg(id){
+  let s = String((document.getElementById(id)||{}).value||'').trim().replace(/\s/g,'');
+  if (!s) return 0;
+  if (s.indexOf(',') >= 0) s = s.replace(/\./g,'').replace(',', '.');
+  else if ((s.match(/\./g)||[]).length > 1) s = s.replace(/\./g,'');
+  const n = Number(s);
+  return isFinite(n) && n > 0 ? n : 0;
+}
+const KG_MAX_TANDA = 40; // más de esto en una sola carga casi seguro es un error de tipeo
 async function confirmHornear(){
   if(!pendingItem) return;
   const btn = document.getElementById('hm-confirm');
   btn.disabled = true; btn.style.opacity = '.6';
   const peso = !!pendingItem._peso;
   const leud = Number(pendingItem.cantidad)||0;
-  const horn = peso ? Math.round((Number(document.getElementById('hm-kg').value)||0)*1000)/1000 : (Number(document.getElementById('hm-cantidad').value)||0);
-  const merma = peso ? Math.round((Number(document.getElementById('hm-kg-merma').value)||0)*1000)/1000 : Math.max(0, leud-horn);
+  const horn = peso ? Math.round((leerKg('hm-kg'))*1000)/1000 : (Number(document.getElementById('hm-cantidad').value)||0);
+  const merma = peso ? Math.round((leerKg('hm-kg-merma'))*1000)/1000 : Math.max(0, leud-horn);
   if (peso && !(horn > 0) && !(merma > 0)) { toast('Poné los kilos que salieron'); btn.disabled = false; btn.style.opacity = '1'; return; }
+  if (peso && (horn > KG_MAX_TANDA || merma > KG_MAX_TANDA) && !confirm('¿Seguro que son ' + String(Math.max(horn, merma)).replace('.', ',') + ' kg? Revisá que no sean gramos (ej: 2,5 kg y no 2500).')) { btn.disabled = false; btn.style.opacity = '1'; return; }
   setStatus('Despachando…');
   let fotoUrl = null;
   if(photoFile){ try { fotoUrl = await uploadFoto(photoFile, pendingItem); } catch(e){ console.warn('foto:', e); } }
@@ -1148,10 +1159,11 @@ function abrirProd(id){
 function cerrarProd(){ document.getElementById('prod-modal').style.display = 'none'; prodSel = null; prodFoto = null; }
 async function confirmarProd(){
   if (!prodSel) return;
-  const u = Number(document.getElementById('pm-u').value) || 0, kg = Number(document.getElementById('pm-kg').value) || 0;
+  const u = Number(document.getElementById('pm-u').value) || 0, kg = leerKg('pm-kg');
   const porKg = !!prodSel._peso;
   const cant = porKg ? kg : (u || 0);
   if (!(cant > 0)) { toast(porKg ? 'Poné los kilos que salieron' : 'Poné cuántas unidades salieron'); return; }
+  if (porKg && cant > KG_MAX_TANDA && !confirm('¿Seguro que son ' + String(cant).replace('.', ',') + ' kg? Revisá que no sean gramos (ej: 1,5 kg y no 1500).')) return;
   const btn = document.getElementById('pm-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Despachando…');
   let foto = null; if (prodFoto) { try { foto = await uploadFoto(prodFoto, { producto_id: 'rec_' + prodSel.id }); } catch (e) { console.warn('foto', e); } }
   try {
@@ -1248,6 +1260,8 @@ async function guardarBoleta(){
   const items = chItems.map((it, i) => { const q = Number(document.getElementById('ch-q' + i).value) || 0; if (!(q > 0)) return null; const u = q * chMult(it);
     return { id: it.id, codigo: it.codigo || null, nombre: it.nombre, cantidad: u, docenas: chMult(it) > 1 ? q : null, unidad: 'u', precio: Number(it.precio)||0, subtotal: Math.round(chSub(it, u) * 100) / 100, destino: it.destino || 'Facturas' }; }).filter(Boolean);
   if (!items.length) { toast('Cargá al menos una cantidad'); return; }
+  const raros = items.filter(x => (x.docenas != null ? x.docenas > 12 : x.cantidad > 150));
+  if (raros.length && !confirm('Revisá estas cantidades, parecen muy altas:\n' + raros.map(x => '• ' + x.nombre + ': ' + (x.docenas != null ? x.docenas + ' docenas = ' + x.cantidad + ' u' : x.cantidad + ' u')).join('\n') + '\n\n¿Las cargo igual?')) return;
   const ped = document.getElementById('ch-ped').value.trim() || null;
   if (chBoletas.some(b => b.fecha === fecha && (!ped || b.pedido === ped)) && !confirm('Ya hay una boleta cargada para ese día' + (ped ? ' con ese pedido' : '') + '. ¿Cargar otra igual?')) return;
   const total = items.reduce((a, x) => a + x.subtotal, 0);
