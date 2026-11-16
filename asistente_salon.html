@@ -79,6 +79,8 @@
   }
 
   if (pagina === 'index.html' || pagina === '') return; // el index maneja su propio login
+  // Si en otra pestaña se tocó "Salir" o se entró con otro usuario, esta pestaña vuelve a verificar la sesión
+  window.addEventListener('storage', function (e) { if (e.key === 'poly_sesion') location.reload(); });
   document.documentElement.style.visibility = 'hidden';
   var token = leer('poly_sesion');
   if (!token) { irA('index.html'); return; }
@@ -2610,7 +2612,11 @@ function renderTareas(){
       pcsCerrar(); aviso('✅ Pedido #' + r.numero + ' guardado. Se avisó a ' + Array.from(new Set(items.map(function (i) { return (SECT[i.sector] || i.sector); }))).join(', '));
       if (typeof addToLog === 'function') addToLog('🧾 Pedido de cliente #' + r.numero + ' — ' + body.cliente);
       cargarPedidos();
-    }).catch(function (e) { b.disabled = false; b.textContent = '✅ Guardar y avisar a los sectores'; aviso('⚠️ ' + e.message); });
+    }).catch(function (e) {
+      b.disabled = false; b.textContent = '✅ Guardar y avisar a los sectores';
+      if (/sesi[oó]n/i.test(e.message || '')) { alert('⚠️ La sesión del Salón se cerró. Volvé a ingresar con tu usuario y clave: el pedido no se guardó, vas a tener que cargarlo de nuevo.'); location.replace('index.html'); return; }
+      aviso('⚠️ ' + e.message);
+    });
   };
 
   // ── Entregar: confirma la recepción pendiente y descuenta del stock del Salón ──
