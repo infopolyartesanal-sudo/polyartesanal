@@ -409,6 +409,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <a href="#churrero">🍩 Churrero</a>
   <a href="#invsalon">🏪 Inventario Salón</a>
   <a href="#venta">🏷️ Productos de venta</a>
+  <a href="#papelera">🧻 Papelera y limpieza</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#estadisticas">📊 Estadísticas</a>
@@ -601,7 +602,7 @@ async function leerAyresArticulos(file){
     const H=h.filas[hi].map(x=>norm(String(x)));const col=(...ks)=>H.findIndex(x=>ks.includes(x));
     const cE=col('e','estado'),cH=col('hora','fecha','fecha y hora'),cCod=col('codigo'),cArt=col('articulo','producto','descripcion'),cCant=col('cantidad'),cSub=col('subtotal','importe','total');
     const cTipo=H.findIndex((x,i)=>i!==cArt&&i>cCod&&h.filas.slice(hi+1,hi+30).some(f=>/^(articulo|combo|descuento|recargo|cupon|ajuste|adelanto|observacion)$/.test(norm(String(f[i]||'')))));
-    const prods={},horas=new Set();let total=0,anuladas=0,desde=null,hasta=null,descuentos=0;
+    const prods={},horas=new Set(),tks={};let total=0,anuladas=0,desde=null,hasta=null,descuentos=0;
     for(const f of h.filas.slice(hi+1)){
       const est=cE>=0?norm(String(f[cE]||'')):'cobrada';
       if(!est&&!f[cCod]&&!f[cSub])continue;
@@ -613,10 +614,12 @@ async function leerAyresArticulos(file){
       if(!cod||!/articulo|combo/.test(tipo)){if(sub<0)descuentos+=sub;continue}
       const k=cod;const nom=String(f[cArt]||'').trim();
       const x=prods[k]||(prods[k]={codigo:cod,producto:nom,cantidad:0,total:0,fracc:false});
-      x.cantidad+=cant;x.total+=sub;if(Math.abs(cant-Math.round(cant))>1e-6)x.fracc=true}
+      x.cantidad+=cant;x.total+=sub;if(Math.abs(cant-Math.round(cant))>1e-6)x.fracc=true
+      // cada ticket = misma fecha y hora en Ayres: sirve para descontar papelera por venta
+      if(fh&&cant>0){const tk=tks[fh.getTime()]||(tks[fh.getTime()]=[]);tk.push({c:cod,q:Math.round(cant*1000)/1000})}}
     const items=Object.values(prods).sort((a,b)=>b.total-a.total).map(x=>({codigo:x.codigo,producto:x.producto,unidad:x.fracc?'kg':'un',cantidad:Math.round(x.cantidad*1000)/1000,total:Math.round(x.total*100)/100}));
     if(!items.length)continue;
-    return {items,total:Math.round(total*100)/100,tickets:horas.size||null,desde,hasta,anuladas,descuentos};
+    return {items,total:Math.round(total*100)/100,tickets:horas.size||null,desde,hasta,anuladas,descuentos,detalle:Object.values(tks)};
   }
   return null;
 }
@@ -820,7 +823,7 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
@@ -2236,6 +2239,53 @@ function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Art�
       if(!cod){pvEditar(x.codigo);return}cerrarModal();vVenta()}catch(e){toast('⚠️ '+(e.message||'No se pudo guardar'),5000)}};
 }
 
+// ================= PAPELERA Y LIMPIEZA =================
+// Reglas de consumo: por venta (desde el Excel de artículos de Ayres, ticket por ticket), por pedidos mayoristas y fijas por día/mes (se descuentan solas cada noche).
+let PAP={cargado:false,reglas:[],uso:{},alertas:[]};
+const PAP_GRUPOS=[['venta','🛍️ Por venta en el local','Se descuenta al guardar la venta del turno con el Excel "Control de artículos" de Ayres (Finanzas → Cargar venta).'],['mayorista','🚚 Por pedidos mayoristas','Se descuenta cuando un pedido mayorista se marca como entregado.'],['tiempo','📅 Consumo fijo','Se descuenta solo, todas las noches (lo mensual se reparte por día).']];
+const PAP_MODO={por_ticket:'cada venta que lo lleva',por_unidad:'por unidad vendida',kg_hasta:'por bolsa de hasta {kg} kg',kg_mas:'por bolsa de más de {kg} kg',camiseta:'según cantidad de productos del ticket',cada_kg:'cada {cada} kg',por_dia:'por día',por_mes:'por mes'};
+async function cargarPAP(){
+  const desde=sumaDias(hoy(),-30);
+  const [r,c,a,ins]=await Promise.all([sbGet('papelera_reglas','order=orden,id'),sbGet('papelera_consumos','fecha=gte.'+desde),sbGet('alertas_sistema','sector=eq.papelera&leida=eq.false&order=tipo'),sbGet('insumos','order=nombre')]);
+  if(ins){D.insumos=ins;indexar()}
+  const uso={};(c||[]).forEach(x=>{uso[x.regla_id]=(uso[x.regla_id]||0)+(+x.usos||0)});
+  PAP={cargado:true,reglas:r||[],uso,alertas:a||[]};
+  if(!PV.cargado){try{await cargarPV()}catch(e){}}
+}
+function papProd(cods){if(!cods||!cods.length)return '<span class="muted">todos</span>';return cods.map(c=>{const p=pvPorCod(c);return esc(p?p.nombre:c)}).join(', ')}
+function papModo(r){return (PAP_MODO[r.modo]||r.modo).replace('{kg}',fnum(r.kg_limite,3)).replace('{cada}',fnum(r.cada_kg,2))+(r.modo==='por_dia'&&r.cantidad_lunes!=null?' (lunes '+fnum(r.cantidad_lunes,3)+')':'')}
+async function vPapelera(){
+  if(!PAP.cargado){$('#app').innerHTML='<div class="cargando">Cargando papelera y limpieza…</div>';try{await cargarPAP()}catch(e){$('#app').innerHTML='<div class="card">No se pudo cargar: '+esc(e.message)+'</div>';return}}
+  const al=PAP.alertas;const bajo=al.filter(a=>a.tipo==='stock_bajo'),otras=al.filter(a=>a.tipo!=='stock_bajo');
+  let html=`<h2>🧻 Papelera y limpieza</h2><p class="muted">Cada regla descuenta del <a href="#inventario">Inventario</a> lo que se usa. Cuando un insumo llega a su mínimo aparece acá y en Inicio, y desde <a href="#compras">Compras</a> se arma el pedido. Si un nombre no coincide con tu proveedor, corregilo al hacer el pedido.</p>
+  <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Reglas activas</div><div class="val">${PAP.reglas.filter(r=>r.activo).length}</div></div>
+  <div class="card kpi"><div class="lbl">Para pedir</div><div class="val" style="color:${bajo.length?'var(--rojo)':'var(--verde)'}">${bajo.length}</div></div>
+  <div class="card kpi"><div class="lbl">Datos que faltan</div><div class="val" style="color:${otras.length?'#a07000':'var(--verde)'}">${otras.length}</div></div></div>`;
+  if(al.length)html+=`<div class="card" style="margin-bottom:12px"><h3>🔔 Alertas</h3>${bajo.map(a=>`<div style="padding:5px 0;border-bottom:1px solid #eee">🛒 ${esc(a.mensaje)}</div>`).join('')}${otras.map(a=>`<div style="padding:5px 0;border-bottom:1px solid #eee;color:#a07000">⚠️ ${esc(a.mensaje)}</div>`).join('')}
+    ${bajo.length?`<div class="acciones" style="margin-top:10px"><button class="btn" onclick="location.hash='#compras'">🛒 Armar pedido en Compras</button></div>`:''}</div>`;
+  html+=`<datalist id="dlInsPap">${D.insumos.filter(i=>i.activo!==false).map(i=>`<option value="${esc(i.nombre)}">`).join('')}</datalist>`;
+  for(const [g,tit,sub] of PAP_GRUPOS){const rs=PAP.reglas.filter(r=>r.grupo===g);if(!rs.length)continue;
+    html+=`<div class="card" style="margin-bottom:12px"><h3>${tit}</h3><p class="muted">${sub}</p><div class="scroll"><table><tr><th>Qué</th>${g!=='tiempo'?'<th>Productos</th>':''}<th>Insumo del stock</th><th class="num">Cantidad</th><th>Cuándo</th><th class="num" title="Cuántos usos equivalen a 1 unidad del stock (ej. 100 fajas = 1 kg). Vacío = no se descuenta.">Usos por unidad de stock</th><th class="num">Stock</th><th class="num">Usado 30 días</th><th>Activa</th></tr>
+    ${rs.map(r=>{const i=r.insumo_id?insMap[r.insumo_id]:null;const crit=i&&(+i.stock||0)<=(+i.stock_minimo||0);
+      return `<tr style="${r.activo?'':'opacity:.5'}"><td>${esc(r.descripcion)}</td>${g!=='tiempo'?`<td style="font-size:12px">${papProd(r.productos)}</td>`:''}
+      <td><input list="dlInsPap" value="${esc(i?i.nombre:r.insumo_nombre)}" style="min-width:230px;${i?'':'border-color:var(--rojo)'}" onchange="papInsumo(${r.id},this.value)">${i?'':'<div style="font-size:11px;color:var(--rojo)">no está en el stock</div>'}</td>
+      <td class="num"><input class="mini" type="number" step="any" value="${+r.cantidad}" onchange="papCampo(${r.id},'cantidad',this.value)"></td>
+      <td style="font-size:12px">${papModo(r)}</td>
+      <td class="num"><input class="mini" type="number" step="any" value="${r.usos_por_unidad==null?'':+r.usos_por_unidad}" placeholder="?" style="${r.usos_por_unidad==null?'border-color:#e0a800':''}" onchange="papCampo(${r.id},'usos_por_unidad',this.value)"></td>
+      <td class="num" style="${crit?'color:var(--rojo);font-weight:700':''}">${i?fnum(i.stock,3)+' '+esc(i.unidad||''):'—'}</td>
+      <td class="num">${PAP.uso[r.id]?fnum(PAP.uso[r.id],2):'—'}</td>
+      <td><input type="checkbox" ${r.activo?'checked':''} style="width:auto" onchange="papCampo(${r.id},'activo',this.checked)"></td></tr>`}).join('')}
+    </table></div></div>`}
+  html+=`<p class="muted" style="font-size:12px">La bolsa camiseta se calcula ticket por ticket: con 3 productos distintos, 1 bolsa; con 4 o 5, 2 bolsas; y una bolsa más cada 4 productos. Las bolsas para productos por peso se eligen según lo que pesa cada venta. Si la venta se carga sin el Excel de artículos de Ayres (por foto o a mano), no se descuenta la papelera de ese turno.</p>`;
+  $('#app').innerHTML=html;
+}
+async function papCampo(id,campo,v){const r=PAP.reglas.find(x=>x.id===id);let val=v;
+  if(campo!=='activo'){val=v===''?null:+v;if(campo==='cantidad'&&!(val>0))return toast('Poné una cantidad mayor a 0');if(val!=null&&!(val>0))return toast('Tiene que ser mayor a 0')}
+  const [x]=await sbUpd('papelera_reglas','id=eq.'+id,{[campo]:val,updated_at:new Date().toISOString()});Object.assign(r,x);toast('Guardado ✅');vPapelera()}
+async function papInsumo(id,v){const r=PAP.reglas.find(x=>x.id===id);const i=D.insumos.find(x=>norm(x.nombre)===norm(v));
+  if(!i)return toast('Elegí un insumo de la lista (o crealo en Inventario)');
+  const [x]=await sbUpd('papelera_reglas','id=eq.'+id,{insumo_id:i.id,insumo_nombre:i.nombre,updated_at:new Date().toISOString()});Object.assign(r,x);toast('Insumo cambiado ✅');vPapelera()}
+
 // ================= INVENTARIO =================
 let fInv={q:'',cat:'',solo:''};
 function vInventario(){
@@ -2437,7 +2487,9 @@ function nuevoCierre(){
     const items=[];document.querySelectorAll('#tV tr').forEach((tr,k)=>{if(!k)return;const p=tr.querySelector('.vP').value.trim(),c=+tr.querySelector('.vC').value;if(!p||!c)return;const it={producto:p,unidad:tr.querySelector('.vU').value,cantidad:c,total:+tr.querySelector('.vT').value||0};const cod=tr.dataset.cod;if(cod)it.codigo=cod;items.push(it)});
     const t=$('#cT').value,hora=t==='Mañana'?'14:00':t==='Tarde'?'20:00':'23:00';
     const [c]=await sbIns('cierres_caja',[{fecha:new Date($('#cF').value+'T'+hora+':00-03:00').toISOString(),turno:t,total:s,formas_pago:fp,items,tickets:+$('#cTk').value||null,total_articulos:VD_ART?VD_ART.total:null,responsable:$('#cR').value||null,estado:'cerrado'}]);D.cierres.unshift(c);
-    cerrarModal();toast('Venta guardada ✅ '+$$(s));VISTAS[vistaActual]();
+    let pap='';if(VD_ART&&(VD_ART.detalle||[]).length){try{const r=await polyRPC('papelera_por_venta',{p_ref:'cierre:'+c.id,p_fecha:$('#cF').value,p_tickets:VD_ART.detalle});
+      if(r&&r.ok){const n=(r.descuentos||[]).length;pap=n?' · 🧻 papelera descontada ('+r.tickets+' tickets)':'';PAP.cargado=false}}catch(e){console.warn('papelera',e);pap=' · ⚠️ no se pudo descontar la papelera'}}
+    cerrarModal();toast('Venta guardada ✅ '+$$(s)+pap,4000);VISTAS[vistaActual]();
   }finally{const b=$('#bGC');if(b)b.disabled=false}};
 }
 function sumaCanales(){let ef=0,on=0;document.querySelectorAll('.fpg').forEach(e=>{const v=+e.value||0;if(e.dataset.k==='Efectivo')ef+=v;else on+=v});const t=ef+on;
