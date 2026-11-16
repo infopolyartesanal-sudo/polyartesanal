@@ -2160,6 +2160,7 @@ async function vVenta(){
   let html=`<h2>🏷️ Productos de venta</h2><p class="muted">La lista de lo que se vende en el local, con los mismos códigos y precios que la caja. Acá vinculás el nombre con que cada sector manda un producto al Salón con el producto de venta, así el Control diario del Salón suma solo los ingresos.</p>
   <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Productos de venta</div><div class="val">${PV.prods.filter(p=>p.activo).length}</div></div>
   <div class="card kpi"><div class="lbl">Nombres vinculados</div><div class="val">${PV.alias.length}</div></div>
+  <div class="card kpi"><div class="lbl">Sin IVA cargado</div><div class="val" style="color:${PV.prods.some(p=>p.activo&&p.iva==null)?'var(--rojo)':'var(--verde)'}">${PV.prods.filter(p=>p.activo&&p.iva==null).length}</div><div class="sub muted">pestaña Lista de productos</div></div>
   <div class="card kpi"><div class="lbl">Llegan al Salón sin vincular</div><div class="val" style="color:${sinV.length?'var(--rojo)':'var(--verde)'}">${sinV.length}</div><div class="sub muted">no suman en el Control</div></div></div>
   <div class="tabs2">${[['vinc','Vincular'+(sinV.length?' ('+sinV.length+')':'')],['prods','Lista de productos']].map(([k,n])=>`<button class="${t===k?'on':''}" onclick="tabPV='${k}';vVenta()">${n}</button>`).join('')}</div>`;
   if(t==='vinc'){
@@ -2180,9 +2181,9 @@ async function vVenta(){
   if(t==='prods'){
     const q=norm(fPV);const lista=PV.prods.filter(p=>!q||norm(p.nombre).includes(q)||p.codigo===fPV.trim());
     html+=`<div class="acciones" style="margin-bottom:10px"><input placeholder="Buscar por nombre o código…" value="${esc(fPV)}" oninput="fPV=this.value;clearTimeout(window._tpv);window._tpv=setTimeout(()=>{vVenta();const i=document.querySelector('#app input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" style="max-width:320px"><button class="btn" onclick="pvEditar(null)">➕ Nuevo producto</button></div>
-    <div class="card scroll"><table><tr><th>Código</th><th>Producto</th><th>Tipo</th><th class="num">Mayorista</th><th class="num">Local (LPU)</th><th class="num">PedidosYa</th><th class="num">Nombres vinculados</th><th>Estado</th></tr>
+    <div class="card scroll"><table><tr><th>Código</th><th>Producto</th><th>Tipo</th><th class="num">Mayorista</th><th class="num">Local (LPU)</th><th class="num">PedidosYa</th><th>IVA</th><th class="num">Recetas / nombres vinculados</th><th>Estado</th></tr>
     ${lista.map(p=>{const n=PV.alias.filter(a=>a.codigo===p.codigo).length;return `<tr class="click" onclick="pvEditar('${esc(p.codigo)}')" style="${p.activo?'':'opacity:.5'}"><td>${esc(p.codigo)}</td><td><b>${esc(p.nombre)}</b></td><td>${esc(p.tipo||'')}</td>
-      <td class="num">${p.precio_may!=null?$$(p.precio_may):'—'}</td><td class="num">${p.precio_lpu!=null?$$(p.precio_lpu):'—'}</td><td class="num">${p.precio_pey!=null?$$(p.precio_pey):'—'}</td><td class="num">${n||'—'}</td><td>${p.activo?'<span class="chip ok">activo</span>':'<span class="chip neu">de baja</span>'}</td></tr>`}).join('')}
+      <td class="num">${p.precio_may!=null?$$(p.precio_may):'—'}</td><td class="num">${p.precio_lpu!=null?$$(p.precio_lpu):'—'}${p.por_kg?' <span class="muted" style="font-size:11px">/kg</span>':''}</td><td class="num">${p.precio_pey!=null?$$(p.precio_pey):'—'}</td><td>${p.iva==null?'<span class="chip mal">falta</span>':ivaTxt(p.iva)}</td><td class="num">${n||'—'}</td><td>${p.activo?'<span class="chip ok">activo</span>':'<span class="chip neu">de baja</span>'}</td></tr>`}).join('')}
     </table></div>`;
   }
   $('#app').innerHTML=html;
@@ -2196,22 +2197,43 @@ async function pvQuitarVinc(alias){IS.cargado=false;await sbDel('productos_venta
 async function pvVincularNuevo(){const n=normV($('#pvNn').value);const p=pvLeer($('#pvNp').value);if(!n)return toast('Escribí el nombre');if(!p)return toast('Elegí el producto de venta de la lista');
   const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:n,codigo:p.codigo}],true);PV.alias=PV.alias.filter(a=>a.alias!==n).concat([x]);
   if(!PV.llegadas.find(l=>l.k===n))PV.llegadas.push({k:n,nombre:$('#pvNn').value.trim(),sectores:new Set(),veces:0});toast('Vinculado ✅');vVenta()}
-function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Artículo',precio_may:null,precio_lpu:null,precio_pey:null,activo:true};
-  const al=cod?PV.alias.filter(a=>a.codigo===cod):[];
-  const nv=v=>v==null?'':v;
+const IVA_OPC=[['','— sin cargar —'],['10.5','10,5 %'],['21','21 %'],['27','27 %'],['0','Exento']];
+function ivaTxt(v){return v==null||v===''?'—':(+v===0?'Exento':String(v).replace('.',',')+' %')}
+// recetas que se venden como este producto: por vínculo (alias) o porque se llaman igual
+function pvRecetasDe(cod){const p=pvPorCod(cod);const k=p?normV(p.nombre):'';
+  return D.recetas.filter(r=>{const n=normV(r.nombre);const a=pvAliasDe(n);return a?a.codigo===cod:(k&&n===k)}).sort((x,y)=>x.nombre.localeCompare(y.nombre))}
+function pvRecOpc(){return `<datalist id="dlRecPV">${D.recetas.map(r=>`<option value="${esc(r.nombre)}">${esc(r.sector||'')}</option>`).join('')}</datalist>`}
+async function pvVincReceta(cod){const v=($('#pvRec').value||'').trim();if(!v)return toast('Elegí una receta de la lista');
+  const r=D.recetas.find(x=>norm(x.nombre)===norm(v));if(!r)return toast('No encontré esa receta. Elegila de la lista.');
+  const k=normV(r.nombre);const ya=pvAliasDe(k);
+  if(ya&&ya.codigo===cod)return toast('Esa receta ya está vinculada a este producto');
+  if(ya){const otro=pvPorCod(ya.codigo);if(!confirm('"'+r.nombre+'" hoy se vende como "'+(otro?otro.nombre:ya.codigo)+'". ¿La paso a este producto?'))return}
+  IS.cargado=false;const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:k,codigo:cod}],true);
+  PV.alias=PV.alias.filter(a=>a.alias!==k).concat([x]);toast('Receta vinculada ✅');pvEditar(cod)}
+function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Artículo',precio_may:null,precio_lpu:null,precio_pey:null,iva:null,por_kg:false,activo:true};
+  const recs=cod?pvRecetasDe(cod):[];const recK=new Set(recs.map(r=>normV(r.nombre)));
+  const otros=cod?PV.alias.filter(a=>a.codigo===cod&&!recK.has(a.alias)):[];
+  const nv=v=>v==null?'':v;const ivaAct=p.iva==null?'':String(+p.iva);
   modal(`<h3>${cod?'Editar producto de venta':'Nuevo producto de venta'}</h3>
   <div class="fila"><div><label>Código (el de la caja)</label><input id="pvC" value="${esc(p.codigo)}" ${cod?'disabled':''}></div><div><label>Tipo</label><select id="pvT">${['Artículo','Combo'].map(x=>`<option ${x===p.tipo?'selected':''}>${x}</option>`).join('')}</select></div></div>
-  <label>Nombre</label><input id="pvN" value="${esc(p.nombre)}">
+  <label>Nombre (como se cobra en la caja)</label><input id="pvN" value="${esc(p.nombre)}">
   <div class="fila"><div><label>Precio mayorista</label><input id="pvM" type="number" step="any" value="${nv(p.precio_may)}"></div><div><label>Precio local (LPU)</label><input id="pvL" type="number" step="any" value="${nv(p.precio_lpu)}"></div><div><label>Precio PedidosYa</label><input id="pvP" type="number" step="any" value="${nv(p.precio_pey)}"></div></div>
+  <div class="fila"><div><label>IVA</label><select id="pvI">${IVA_OPC.map(([v,t])=>`<option value="${v}" ${v===ivaAct?'selected':''}>${t}</option>`).join('')}</select></div><div></div></div>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvK" ${p.por_kg?'checked':''} style="width:auto"> Se vende por kilo (los precios son por kg)</label>
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvA" ${p.activo?'checked':''} style="width:auto"> Activo (se vende y aparece en el Control del Salón)</label>
-  ${cod?`<h4 style="margin-top:14px">Nombres vinculados</h4>${al.length?al.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #eee"><span>${esc(a.alias)}</span><button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button></div>`).join(''):'<p class="muted">Ninguno todavía. Se vinculan desde la pestaña "Vincular".</p>'}`:''}
-  <div class="acciones" style="margin-top:14px"><button class="btn" id="bPV">💾 Guardar</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  ${cod?`<h4 style="margin-top:16px">🧾 Recetas que se venden como este producto</h4>
+    ${recs.length?recs.map(r=>{const a=pvAliasDe(normV(r.nombre));return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #eee"><span>${esc(r.nombre)} <span class="muted" style="font-size:12px">${esc(r.sector||'')}${r.tipo==='BASE'?' · base':''}</span></span>${a?`<button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button>`:'<span class="muted" style="font-size:11px">mismo nombre</span>'}</div>`}).join(''):'<p class="muted">Ninguna todavía.</p>'}
+    ${pvRecOpc()}<div class="fila" style="margin-top:8px;align-items:flex-end"><div><label>Vincular una receta</label><input id="pvRec" list="dlRecPV" placeholder="Escribí y elegí la receta…" autocomplete="off"></div><div style="flex:0 0 auto"><button class="btn sec" onclick="pvVincReceta('${esc(cod)}')">➕ Vincular</button></div></div>
+    ${otros.length?`<h4 style="margin-top:14px">Otros nombres vinculados <span class="muted" style="font-weight:400;font-size:12px">(como lo mandan los sectores o el churrero)</span></h4>${otros.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #eee"><span>${esc(a.alias)}</span><button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button></div>`).join('')}`:''}`
+  :'<p class="muted" style="margin-top:12px">Guardá el producto y después vas a poder vincularle las recetas.</p>'}
+  <div class="acciones" style="margin-top:14px"><button class="btn" id="bPV">💾 Guardar</button><button class="btn sec" onclick="cerrarModal()">${cod?'Cerrar':'Cancelar'}</button></div>`);
   $('#bPV').onclick=async()=>{const num=id=>$(id).value===''?null:+$(id).value;
-    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),activo:$('#pvA').checked,updated_at:new Date().toISOString()};
+    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),iva:num('#pvI'),por_kg:$('#pvK').checked,activo:$('#pvA').checked,updated_at:new Date().toISOString()};
     if(!row.codigo||!row.nombre)return toast('Completá código y nombre');
     if(!cod&&pvPorCod(row.codigo))return toast('Ya existe un producto con el código '+row.codigo);
-    const [x]=cod?await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),row):await sbIns('productos_venta',[row]);
-    PV.prods=PV.prods.filter(q=>q.codigo!==x.codigo).concat([x]).sort((a,b)=>a.nombre.localeCompare(b.nombre));cerrarModal();toast('Guardado ✅');vVenta()};
+    try{const [x]=cod?await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),row):await sbIns('productos_venta',[row]);
+      PV.prods=PV.prods.filter(q=>q.codigo!==x.codigo).concat([x]).sort((a,b)=>a.nombre.localeCompare(b.nombre));toast('Guardado ✅');
+      if(!cod){pvEditar(x.codigo);return}cerrarModal();vVenta()}catch(e){toast('⚠️ '+(e.message||'No se pudo guardar'),5000)}};
 }
 
 // ================= INVENTARIO =================
