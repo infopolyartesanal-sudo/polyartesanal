@@ -1217,9 +1217,29 @@ function renderChurrero(){
     + '<div style="display:flex;justify-content:space-between;font-size:17px;font-weight:800;margin:12px 2px;"><span>Total</span><span id="ch-total">$ 0</span></div>'
     + '<label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;background:#FFF8E1;border-radius:10px;padding:10px;"><input type="checkbox" id="ch-rev" style="width:22px;height:22px;"> <span><b>Revisé los números contra el remito</b> y están bien.</span></label>'
     + '<button onclick="guardarBoleta()" id="ch-ok" style="width:100%;margin-top:10px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-check"></i> OK: guardar y mandar al Salón</button>'
+    + '<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:12px;padding:12px;margin-top:16px;">'
+    + '<div style="font-size:14px;font-weight:700;color:#E65100;">♻️ Churros de ayer, azucarados</div>'
+    + '<div style="font-size:12px;color:#666;margin:4px 0 8px;">Si sobraron churros, a la noche se dieron de baja. Si al otro día están bien y los pasás por azúcar, cargalos acá: vuelven al Salón como Facturas, <b>sin boleta ni pago al churrero</b>.</div>'
+    + '<div style="display:flex;gap:8px;"><input type="number" id="ch-rec" min="1" step="1" inputmode="numeric" placeholder="Cantidad (unidades)" style="flex:1;min-width:0;padding:11px;font-size:16px;border:1px solid #FFE082;border-radius:8px;text-align:center;">'
+    + '<button onclick="mandarChurrosRecuperados()" id="ch-rec-ok" style="background:#E65100;color:#fff;border:none;border-radius:8px;padding:0 14px;font-weight:700;cursor:pointer;">Mandar al Salón</button></div></div>'
     + '<div style="font-size:14px;font-weight:700;color:#1B5E20;margin:18px 0 6px;">Últimas boletas</div>'
     + (chBoletas.length ? chBoletas.map(b => '<div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:13px;"><div style="display:flex;justify-content:space-between;font-weight:700;"><span>' + new Date(b.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday:'short', day:'2-digit', month:'2-digit' }) + (b.pedido ? ' · pedido ' + escMad(b.pedido) : '') + '</span><span>' + pesos(b.total) + (b.pago_id ? ' · ✅ pagada' : '') + '</span></div><div style="color:#666;">' + (b.items||[]).map(x => (x.docenas != null ? x.docenas + ' doc. ' : x.cantidad + ' ') + escMad(x.codigo || x.nombre)).join(' · ') + (b.revisado_por ? ' · ✔ ' + escMad(b.revisado_por) : '') + (b.foto_url ? ' · <a href="' + b.foto_url + '" target="_blank">📷</a>' : '') + '</div></div>').join('') : '<div style="font-size:13px;color:#999;">Todavía no hay boletas.</div>');
   chCalcular();
+}
+// Churros que sobraron, se dieron de baja a la noche y al otro día vuelven al local pasados por azúcar: entran como Facturas, sin boleta.
+async function mandarChurrosRecuperados(){
+  const q = Math.round(Number(document.getElementById('ch-rec').value) || 0);
+  if (!(q > 0)) { toast('Poné cuántos churros volvés a sacar'); return; }
+  if (q > 100 && !confirm('¿Seguro que son ' + q + ' churros?')) return;
+  const btn = document.getElementById('ch-rec-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Mandando…');
+  try {
+    const rec = await sbUpsert('salon_recepciones', [{ producto_id: 'churros_recuperados', producto_nombre: 'Churros', cantidad: q, unidad: 'u', sector_origen: 'madrugada', destino: 'salon', estado: 'despachado' }]);
+    if (!rec) throw new Error('No se pudo mandar');
+    try { await sbLog('madrugada', 'recupero', 'Churros de ayer azucarados, vuelven al Salón: ' + q + ' u (sin boleta)', q, 'churros_recuperados', 'u'); } catch (e) {}
+    document.getElementById('ch-rec').value = '';
+    toast('✅ ' + q + ' churros mandados al Salón');
+  } catch (e) { toast('⚠️ ' + (e.message || 'Error')); }
+  btn.disabled = false; btn.style.opacity = '1'; setStatus('Listo');
 }
 function chImagenBase64(file){
   return new Promise((ok, mal) => { const img = new Image(); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
