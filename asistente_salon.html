@@ -232,6 +232,11 @@
   #tabs::-webkit-scrollbar { display: none; }
   #tabs .tab { flex: 1 0 auto; min-width: 58px; }
   .alert-banner { max-height: 26vh; overflow-y: auto; flex-shrink: 0; }
+
+  /* fix: la solapa Pedidos scrollea entera (pedidos de clientes + pedidos a sectores), sin cortar nada */
+  #panel-comanda { overflow-y: auto !important; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  #panel-comanda > * { flex: none !important; overflow: visible !important; min-height: auto !important; }
+  #panel-comanda > div:last-child { padding-bottom: 90px !important; }
 </style>
 <!-- tema-noche -->
 <script>
