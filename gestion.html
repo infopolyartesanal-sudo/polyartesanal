@@ -1607,6 +1607,12 @@ async function cargarCRM(){
     CRM.waLocal=String(cv('whatsapp_local')||'').replace(/\D/g,'');CRM.com=cv('comunidad')||null;
     const [co,cj,ct]=await Promise.all([sbGet('crm_compras','order=fecha.desc&limit=50000').catch(()=>[]),sbGet('crm_canjes','order=fecha.desc&limit=20000').catch(()=>[]),sbGet('crm_contenidos','fecha=gte.'+sumaDias(hoy(),-60)+'&order=fecha').catch(()=>[])]);
     CRM.compras=co||[];CRM.canjes=cj||[];CRM.contenidos=ct||[];
+    // ventas hechas en la Caja con cliente: se suman como compras del cliente (histórico, última compra, lo que más compra)
+    try{const vs=await sb('ventas?select=id,created_at,total,remito_nro,cliente_id,pagos,ventas_items(nombre,cantidad,unidad,precio)&cliente_id=not.is.null&estado=eq.ok&order=created_at.desc&limit=5000');
+      (vs||[]).forEach(v=>CRM.peds.push({id:'v'+v.id,venta_id:v.id,numero:'Caja '+v.id,cliente_id:v.cliente_id,fecha_retiro:diaLocal(v.created_at),created_at:v.created_at,total:+v.total||0,
+        estado:(v.pagos||[]).some(p=>p.medio==='Cuenta corriente')?'Caja · a cuenta':'Caja',remito_nro:v.remito_nro,
+        pedidos_clientes_items:(v.ventas_items||[]).map(i=>({producto:i.nombre,cantidad:+i.cantidad||0,precio:+i.precio||0,unidad:i.unidad||'u'}))}));
+      CRM.peds.sort((a,b)=>String(b.fecha_retiro||b.created_at).localeCompare(String(a.fecha_retiro||a.created_at)));}catch(e){console.warn('CRM ventas caja',e)}
   }catch(e){console.warn('CRM',e)}
   CRM.cargado=true;crmCalcular();
 }
@@ -1744,7 +1750,7 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
     <div class="card kpi"><div class="lbl">Última compra</div><div class="val" style="font-size:20px">${c._ultima?fechaCorta(c._ultima):'—'}</div><div class="sub muted">${c._dias!=null?'hace '+c._dias+' días':''}</div></div>
     ${c.tipo==='mayorista'?`<div class="card kpi"><div class="lbl">Ritmo de compra</div><div class="val" style="font-size:20px">cada ${c._freq} d</div><div class="sub muted">${c.frecuencia_dias?'lo cargaste vos':c._freqCalc?'calculado de sus pedidos':'estimado'}</div></div>`:`<div class="card kpi"><div class="lbl">Campañas recibidas</div><div class="val" style="font-size:20px">${envs.filter(x=>x.e.estado!=='pendiente').length}</div></div>`}
     <div class="card kpi"><div class="lbl">Este mes</div><div class="val" style="font-size:20px">${$$(c._mes)}</div></div>
-    <div class="card kpi"><div class="lbl">Histórico</div><div class="val" style="font-size:20px">${$$(c._total)}</div><div class="sub muted">${c._n} pedidos${c._n?' · promedio '+$$(c._total/c._n):''}</div></div>
+    <div class="card kpi"><div class="lbl">Histórico</div><div class="val" style="font-size:20px">${$$(c._total)}</div><div class="sub muted">${c._n} compras${c._n?' · promedio '+$$(c._total/c._n):''}</div></div>
   </div>
   <div id="crmCC"></div>
   ${c.comunidad?(()=>{const cfg=comCfg(),n=comCompras(c),cj=CRM.canjes.filter(x=>x.cliente_id===c.id);return `<div class="alerta" style="background:#fbf6e6">⭐ <b>Miembro de la ${esc(cfg.nombre)}</b>${c.comunidad_at?' desde '+fechaCorta(diaLocal(c.comunidad_at)):''} · ${n} compra${n===1?'':'s'} · ${cj.filter(x=>x.tipo==='fidelidad').length} beneficio(s) y ${cj.filter(x=>x.tipo==='cumple').length} regalo(s) de cumple entregados</div>`})():''}
@@ -1758,8 +1764,8 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
     <div class="card"><h3>🥐 Lo que más compra</h3>${top.length?`<table>${top.map(x=>`<tr><td>${esc(x.n)}</td><td class="num">${fnum(x.q,x.u==='kg'?2:0)} ${esc(x.u)}</td><td class="num">${x.v?$$(x.v):''}</td></tr>`).join('')}</table>`:'<p class="muted">Sin pedidos vinculados todavía.</p>'}</div>
   </div>
   ${envs.length?`<div class="card" style="margin-top:10px"><h3>📣 Campañas</h3><table>${envs.map(({e,k})=>`<tr><td><a href="javascript:cerrarModal();CRM.camp=${k.id};location.hash='#campanias'">${esc(k.nombre)}</a> ${crmChip(k.canal,CRM_CANAL)}</td><td>${e.enviado_at?fechaCorta(diaLocal(e.enviado_at)):''}</td><td>${crmChip(e.estado,CRM_ENV)}</td></tr>`).join('')}</table></div>`:''}
-  <div class="card" style="margin-top:10px"><h3>🧾 Pedidos</h3>${c._peds.length?`<div class="scroll" style="max-height:280px"><table><tr><th>#</th><th>Fecha</th><th>Productos</th><th class="num">Total</th><th>Estado</th></tr>
-    ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando el Salón carga un pedido con este teléfono (o elige este mayorista).</p>'}</div>`);
+  <div class="card" style="margin-top:10px"><h3>🧾 Pedidos y compras</h3>${c._peds.length?`<div class="scroll" style="max-height:280px"><table><tr><th>#</th><th>Fecha</th><th>Productos</th><th class="num">Total</th><th>Estado</th></tr>
+    ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}${p.remito_nro?` <button class="btn peq sec" onclick="crmRemito(${p.venta_id})" title="Remito N° ${p.remito_nro}">📦</button>`:''}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando el Salón carga un pedido con este teléfono (o elige este mayorista).</p>'}</div>`);
   crmCargarCC(id);
 }
 // ---------- Cuenta corriente (ventas a cuenta desde la Caja, remitos y pagos con comprobante) ----------
