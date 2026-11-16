@@ -79,6 +79,8 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
       <label for="nT">WhatsApp</label><input id="nT" type="tel" inputmode="tel" autocomplete="tel" placeholder="ej: 11 2345 6789">
       <label for="nC">Elegí una contraseña</label><input id="nC" type="password" autocomplete="new-password" placeholder="mínimo 6 caracteres">
       <label for="nB">Cumpleaños <span class="muted">(opcional, para tu regalo)</span></label><input id="nB" type="date">
+      <label class="chk"><input type="checkbox" id="nMay"> <span>Soy <b>comercio / cliente mayorista</b> (cafetería, almacén, dietética…)</span></label>
+      <div id="bxNeg" class="oculto"><label for="nNeg">Nombre del negocio</label><input id="nNeg" placeholder="ej: Café Central"><p class="muted" style="margin:4px 0 0">Poly revisa tu cuenta y te habilita los precios mayoristas. Te avisamos por WhatsApp.</p></div>
       <label class="chk"><input type="checkbox" id="nOk" checked> <span>Quiero recibir novedades y promos por WhatsApp.</span></label>
       <p class="muted" style="margin:10px 0 0">Con tu cuenta también te sumás a la <b>Comunidad Poly</b>: tus pedidos suman sellos para tu regalo.</p>
       <button class="btn" id="bNew">Crear cuenta</button><div class="err" id="eNew"></div>
@@ -104,6 +106,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   <!-- Catálogo -->
   <section id="vTienda" class="oculto">
     <div class="barra"><span>Hola, <b id="hNombre"></b></span><span class="der"><button class="link" id="bMis">Mis pedidos</button><button class="link" id="bSalir">Salir</button></span></div>
+    <div id="bnMay" class="card oculto" style="background:var(--v);color:var(--cr);padding:10px 14px">🏪 <b>Cuenta mayorista</b> · ves precios mayoristas y el pedido va a tu cuenta corriente, sin seña.</div>
     <input id="q" type="search" placeholder="🔎 Buscar: facturas, pan, budín…">
     <div class="chips" id="chips" style="margin-top:10px"></div>
     <div id="lista"><p class="muted">Cargando productos…</p></div>
@@ -131,7 +134,12 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   <section id="vListo" class="oculto">
     <h1>¡Pedido recibido! 🥐</h1>
     <p class="lead" id="lNum"></p>
-    <div class="card">
+    <div class="card oculto" id="lMay">
+      <p style="margin:0">Poly lo revisa y te lo <b>confirma por WhatsApp</b>. Vas a verlo como <b>Confirmado</b> en "Mis pedidos".</p>
+      <p style="margin:8px 0 0">No hace falta seña: se carga a tu <b>cuenta corriente</b> y lo pagás según tu plazo acordado.</p>
+      <a class="btn wa" id="bWaM" target="_blank" rel="noopener">📲 Avisar por WhatsApp</a>
+    </div>
+    <div class="card" id="lMin">
       <p style="margin:0">Para <b>reservarlo</b> transferí la seña de <b id="lSena"></b> (el <span id="lPct">50</span>%) a:</p>
       <div class="alias"><small>ALIAS</small><div class="a" id="lAlias"></div><small id="lTit"></small></div>
       <button class="btn sec" id="bCopiar" style="margin-top:4px">📋 Copiar alias</button>
@@ -169,45 +177,50 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   var VISTAS = ['vEntrar', 'vOlvido', 'vTienda', 'vCarrito', 'vListo', 'vMis'];
   function ver(id) { VISTAS.forEach(function (v) { $(v).classList.toggle('oculto', v !== id); }); pintarBarra(); window.scrollTo(0, 0); }
 
-  var TOKEN = ls.get('poly_cliente_token'), PERFIL = null, CAT = { productos: [], config: {} }, SECTOR = 'todos';
+  var MAY = false, TOKEN = ls.get('poly_cliente_token'), PERFIL = null, CAT = { productos: [], config: {} }, SECTOR = 'todos';
   var CARRO = {}; try { CARRO = JSON.parse(ls.get('poly_carrito') || '{}') || {}; } catch (e) { CARRO = {}; }
   function guardarCarro() { ls.set('poly_carrito', JSON.stringify(CARRO)); }
   var GRUPOS = { todos: 'Todo', panaderia: '🍞 Panadería', pasteleria: '🍰 Pastelería', cocina: '🥪 Cocina', reventa: '🍫 Snacks y más' };
 
   // ── catálogo
-  var catP = rpc('cliente_catalogo').then(function (c) {
-    CAT = c || CAT; var cfg = CAT.config || {};
+  function cargarCat() { return rpc('cliente_catalogo_cli', { p_token: TOKEN || null }).then(function (c) {
+    CAT = c || CAT; MAY = !!CAT.mayorista; $('bnMay').classList.toggle('oculto', !MAY);
+    $('cN').placeholder = MAY ? 'Ej: entregar antes de las 9, factura A a nombre de…' : "Ej: la torta con la leyenda 'Feliz cumple Juli'"; var cfg = CAT.config || {};
     $('tAnt').textContent = ((+cfg.anticipacion_dias || 2) * 24) + ' h';
-    if (cfg.envio === false) $('lEnv').classList.add('oculto');
+    $('lEnv').classList.toggle('oculto', cfg.envio === false && !MAY);
     $('cH').innerHTML = (cfg.franjas || ['Mañana', 'Tarde']).map(function (f) { return '<option>' + esc(f) + '</option>'; }).join('');
     var d = new Date(Date.now() - 3 * 3600e3); d.setUTCDate(d.getUTCDate() + (+cfg.anticipacion_dias || 2));
     $('cF').min = d.toISOString().slice(0, 10); if (!$('cF').value) $('cF').value = $('cF').min;
     var hay = {}; CAT.productos.forEach(function (p) { hay[p.sector] = 1; });
     $('chips').innerHTML = Object.keys(GRUPOS).filter(function (k) { return k === 'todos' || hay[k]; }).map(function (k) { return '<button data-s="' + k + '"' + (k === SECTOR ? ' class="on"' : '') + '>' + GRUPOS[k] + '</button>'; }).join('');
     Object.keys(CARRO).forEach(function (k) { if (!prod(k)) delete CARRO[k]; }); guardarCarro();
-    pintarLista();
-  }).catch(function (e) { $('lista').innerHTML = '<p class="err">' + esc(e.message) + '</p>'; });
+    pintarLista(); pintarBarra();
+  }).catch(function (e) { $('lista').innerHTML = '<p class="err">' + esc(e.message) + '</p>'; }); }
+  var catP = cargarCat();
   function prod(c) { return CAT.productos.find(function (p) { return p.codigo === c; }); }
-  function paso(p) { return p.unidad === 'kg' ? 0.25 : 1; }
+  function paso(p) { return p.unidad === 'kg' ? (MAY ? 1 : 0.25) : 1; }
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
   function pintarLista() {
     var q = norm($('q').value).trim();
     var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0); });
     $('lista').innerHTML = ps.length ? ps.map(function (p) {
       var c = CARRO[p.codigo];
-      return '<div class="prod"><div class="n"><b>' + esc(p.nombre) + '</b><span>' + plata(p.precio) + (p.unidad === 'kg' ? ' el kg' : '') + '</span></div>' +
-        (c ? '<div class="step"><button class="menos" data-m="' + esc(p.codigo) + '">−</button><span class="q">' + cant(c, p.unidad) + '</span><button data-p="' + esc(p.codigo) + '">+</button></div>'
+      return '<div class="prod"><div class="n"><b>' + esc(p.nombre) + '</b><span>' + plata(p.precio) + (p.unidad === 'kg' ? ' el kg' : '') + (MAY ? ' · mayorista' : '') + '</span></div>' +
+        (c ? '<div class="step"><button class="menos" data-m="' + esc(p.codigo) + '">−</button><span class="q" data-q="' + esc(p.codigo) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(c, p.unidad) + '</span><button data-p="' + esc(p.codigo) + '">+</button></div>'
            : '<button class="add" data-p="' + esc(p.codigo) + '">Agregar</button>') + '</div>';
     }).join('') : '<p class="muted">No encontramos productos con esa búsqueda.</p>';
   }
   function sumar(cod, s) {
     var p = prod(cod); if (!p) return; var st = paso(p), v = Math.round(((CARRO[cod] || 0) + s * st) * 100) / 100;
-    if (!CARRO[cod] && s > 0 && p.unidad === 'kg') v = 0.5;
+    if (!CARRO[cod] && s > 0 && p.unidad === 'kg') v = MAY ? 1 : 0.5;
     if (v <= 0) delete CARRO[cod]; else CARRO[cod] = v;
     guardarCarro(); pintarLista(); pintarBarra(); if (!$('vCarrito').classList.contains('oculto')) pintarCarrito();
   }
   document.addEventListener('click', function (e) {
-    var b = e.target.closest('[data-p],[data-m],[data-s],[data-x]'); if (!b) return;
+    var b = e.target.closest('[data-p],[data-m],[data-s],[data-x],[data-q]'); if (!b) return;
+    if (b.dataset.q) { var pq = prod(b.dataset.q); if (!pq) return; var r = prompt('¿Cuánto' + (pq.unidad === 'kg' ? 's kilos' : 's unidades') + ' de ' + pq.nombre + '?', String(CARRO[b.dataset.q] || '').replace('.', ','));
+      if (r == null) return; var v = parseFloat(String(r).replace(',', '.')); if (!(v > 0)) delete CARRO[b.dataset.q]; else CARRO[b.dataset.q] = pq.unidad === 'kg' ? Math.round(v * 4) / 4 : Math.round(v);
+      guardarCarro(); pintarLista(); pintarBarra(); if (!$('vCarrito').classList.contains('oculto')) pintarCarrito(); return; }
     if (b.dataset.p) sumar(b.dataset.p, 1); else if (b.dataset.m) sumar(b.dataset.m, -1);
     else if (b.dataset.x) { delete CARRO[b.dataset.x]; guardarCarro(); pintarCarrito(); pintarLista(); pintarBarra(); }
     else if (b.dataset.s) { SECTOR = b.dataset.s; Array.prototype.forEach.call($('chips').children, function (x) { x.classList.toggle('on', x === b); }); pintarLista(); }
@@ -224,8 +237,9 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     if (!ks.length) { $('carLista').innerHTML = '<p class="muted">Todavía no agregaste nada.</p>'; }
     else $('carLista').innerHTML = ks.map(function (k) { var p = prod(k); if (!p) return '';
       return '<div class="prod" style="box-shadow:none;padding:6px 0;border-bottom:1px solid #f0ebe2;border-radius:0"><div class="n"><b>' + esc(p.nombre) + '</b><span>' + plata(p.precio * CARRO[k]) + '</span></div>' +
-        '<div class="step"><button class="menos" data-m="' + esc(k) + '">−</button><span class="q">' + cant(CARRO[k], p.unidad) + '</span><button data-p="' + esc(k) + '">+</button></div></div>'; }).join('');
+        '<div class="step"><button class="menos" data-m="' + esc(k) + '">−</button><span class="q" data-q="' + esc(k) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(CARRO[k], p.unidad) + '</span><button data-p="' + esc(k) + '">+</button></div></div>'; }).join('');
     var t = total(), s = Math.ceil(t * pct / 100 / 100) * 100;
+    if (MAY) { $('carTot').innerHTML = '<div class="linea tot"><span>Total (precio mayorista)</span><span>' + plata(t) + '</span></div><div class="linea muted"><span>Va a tu cuenta corriente · sin seña</span><span>' + (envio() ? 'entrega a coordinar' : '') + '</span></div>'; return; }
     $('carTot').innerHTML = '<div class="linea tot"><span>Total</span><span>' + plata(t) + '</span></div>' +
       '<div class="linea sena"><span>Seña para reservar (' + pct + '%)</span><span>' + plata(s) + '</span></div>' +
       '<div class="linea muted"><span>Al retirar pagás</span><span>' + plata(t - s) + (envio() ? ' + envío' : '') + '</span></div>';
@@ -237,7 +251,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   });
 
   // ── sesión
-  function entrar(tok) { TOKEN = tok; ls.set('poly_cliente_token', tok); return cargarPerfil().then(function () { ver('vTienda'); }); }
+  function entrar(tok) { TOKEN = tok; ls.set('poly_cliente_token', tok); return cargarPerfil().then(function () { return cargarCat(); }).then(function () { ver('vTienda'); }); }
   function cargarPerfil() {
     return rpc('cliente_perfil', { p_token: TOKEN }).then(function (p) {
       if (!p || !p.ok) { salir(true); throw new Error('Tu sesión venció: volvé a ingresar'); }
@@ -246,7 +260,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
       return p;
     });
   }
-  function salir(silencio) { if (TOKEN && !silencio) rpc('cliente_salir', { p_token: TOKEN }).catch(function () {}); TOKEN = null; PERFIL = null; ls.del('poly_cliente_token'); ver('vEntrar'); }
+  function salir(silencio) { if (TOKEN && !silencio) rpc('cliente_salir', { p_token: TOKEN }).catch(function () {}); TOKEN = null; PERFIL = null; ls.del('poly_cliente_token'); if (MAY) { CARRO = {}; guardarCarro(); cargarCat(); } ver('vEntrar'); }
   $('tbIn').onclick = function () { this.classList.add('on'); $('tbNew').classList.remove('on'); $('fIn').classList.remove('oculto'); $('fNew').classList.add('oculto'); };
   $('tbNew').onclick = function () { this.classList.add('on'); $('tbIn').classList.remove('on'); $('fNew').classList.remove('oculto'); $('fIn').classList.add('oculto'); };
   $('bIn').onclick = function () {
@@ -261,14 +275,16 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   $('iC').onkeydown = function (e) { if (e.key === 'Enter') $('bIn').click(); };
   $('bNew').onclick = function () {
     var b = this; $('eNew').textContent = '';
-    var p = { nombre: $('nN').value.trim(), telefono: $('nT').value.trim(), clave: $('nC').value, cumpleanos: $('nB').value || null, acepta_promos: $('nOk').checked };
+    var p = { nombre: $('nN').value.trim(), telefono: $('nT').value.trim(), clave: $('nC').value, cumpleanos: $('nB').value || null, acepta_promos: $('nOk').checked, negocio: $('nMay').checked ? $('nNeg').value.trim() : null };
+    if ($('nMay').checked && !p.negocio) { $('eNew').textContent = 'Poné el nombre de tu negocio.'; return; }
     if (!p.nombre) { $('eNew').textContent = 'Poné tu nombre.'; return; }
     if (p.telefono.replace(/\D/g, '').length < 10) { $('eNew').textContent = 'Poné tu WhatsApp completo, con característica (ej: 11 2345 6789).'; return; }
     if (p.clave.length < 6) { $('eNew').textContent = 'La contraseña tiene que tener al menos 6 caracteres.'; return; }
     b.disabled = true;
-    rpc('cliente_registrar', { p: p }).then(function (r) { return entrar(r.token); }).then(function () { toast('¡Cuenta creada! Ya podés hacer tu pedido'); })
+    rpc('cliente_registrar', { p: p }).then(function (r) { return entrar(r.token); }).then(function () { toast(p.negocio && !MAY ? '¡Cuenta creada! Poly te habilita los precios mayoristas y te avisa' : '¡Cuenta creada! Ya podés hacer tu pedido'); })
       .catch(function (e) { $('eNew').textContent = e.message; }).then(function () { b.disabled = false; });
   };
+  $('nMay').onchange = function () { $('bxNeg').classList.toggle('oculto', !this.checked); };
   $('bSalir').onclick = function () { salir(false); };
   $('bOlvido').onclick = function () { if ($('iT').value) $('oT').value = $('iT').value; ver('vOlvido'); };
   $('bOlvVolver').onclick = function () { ver('vEntrar'); };
@@ -320,7 +336,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
       'Para el ' + fechaLarga(p.fecha) + (p.hora ? ', ' + p.hora : '') + ' · ' + (p.envio ? 'Envío a: ' + p.direccion : 'Retiro en el local') + '\n' +
       p.items.map(function (i) { return '• ' + cant(i.cantidad, i.unidad) + ' ' + i.producto; }).join('\n') + '\n' +
       (p.notas ? 'Aclaraciones: ' + p.notas + '\n' : '') +
-      'Total: ' + plata(p.total) + '\nSeña (' + (+cfg.sena_pct || 50) + '%): ' + plata(p.sena) + ' al alias ' + (cfg.alias || '') + '. Te mando el comprobante 👇';
+      'Total: ' + plata(p.total) + (MAY ? ' (mayorista, a cuenta corriente). ¿Me lo confirman? 🙌' : '\nSeña (' + (+cfg.sena_pct || 50) + '%): ' + plata(p.sena) + ' al alias ' + (cfg.alias || '') + '. Te mando el comprobante 👇');
   }
   function linkWa(p) { return 'https://wa.me/' + String(CAT.whatsapp || '').replace(/\D/g, '') + '?text=' + encodeURIComponent(msgWa(p)); }
   function mostrarListo(p) {
@@ -328,7 +344,8 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     $('lNum').innerHTML = 'Pedido <b>#' + p.numero + '</b> para el ' + esc(fechaLarga(p.fecha)) + ' · Total ' + plata(p.total);
     $('lSena').textContent = plata(p.sena); $('lPct').textContent = +cfg.sena_pct || 50;
     $('lAlias').textContent = cfg.alias || ''; $('lTit').textContent = cfg.titular ? 'a nombre de ' + cfg.titular : '';
-    $('bWa').href = linkWa(p);
+    $('bWa').href = $('bWaM').href = linkWa(p);
+    $('lMay').classList.toggle('oculto', !MAY); $('lMin').classList.toggle('oculto', MAY);
     ver('vListo');
   }
   $('bCopiar').onclick = function () {
@@ -349,13 +366,15 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
         var its = (x.items || []).map(function (i) { return cant(i.cantidad, i.unidad) + ' ' + esc(i.producto); }).join(' · ');
         var saldo = (+x.total || 0) - (+x.sena || 0);
         var acc = '';
-        if (x.estado === 'por_confirmar') {
+        if (x.estado === 'por_confirmar' && x.lista === 'mayorista') {
+          acc = '<p style="margin:8px 0 0;font-size:14px">Poly lo revisa y te lo confirma por WhatsApp. Va a tu cuenta corriente.</p><button class="link" style="margin-top:8px" data-cancel="' + x.id + '">Cancelar este pedido</button>';
+        } else if (x.estado === 'por_confirmar') {
           var pw = { numero: x.numero, total: x.total, sena: x.sena_requerida || 0, fecha: x.fecha, hora: x.hora, envio: x.envio, direccion: x.direccion, notas: x.notas, items: x.items || [] };
           acc = '<p style="margin:8px 0 0;font-size:14px">Transferí la seña de <b>' + plata(x.sena_requerida) + '</b> al alias <b>' + esc((CAT.config || {}).alias || '') + '</b> y mandanos el comprobante.</p>' +
             '<a class="btn wa" style="padding:11px;font-size:15px" target="_blank" rel="noopener" href="' + esc(linkWa(pw)) + '">📲 Mandar comprobante por WhatsApp</a>' +
             '<button class="link" style="margin-top:8px" data-cancel="' + x.id + '">Cancelar este pedido</button>';
         }
-        return '<div class="card ped"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>Pedido #' + x.numero + '</b><span class="estado e-' + esc(x.estado) + '">' + (ESTADOS[x.estado] || esc(x.estado)) + '</span></div>' +
+        return '<div class="card ped"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>Pedido #' + x.numero + '</b><span class="estado e-' + esc(x.estado) + '">' + (x.estado === 'por_confirmar' && x.lista === 'mayorista' ? '⏳ Por confirmar' : (ESTADOS[x.estado] || esc(x.estado))) + '</span></div>' +
           '<div class="muted" style="margin:4px 0">' + (x.fecha ? esc(fechaLarga(x.fecha)) : '') + (x.hora ? ' · ' + esc(x.hora) : '') + ' · ' + (x.envio ? '🛵 Envío' : '🏪 Retiro') + '</div>' +
           '<div style="font-size:14px">' + its + '</div>' +
           '<div style="margin-top:6px;font-size:14px">Total <b>' + plata(x.total) + '</b>' + (x.costo_envio ? ' (incluye envío ' + plata(x.costo_envio) + ')' : '') + (x.sena > 0 ? ' · Seña ' + plata(x.sena) + ' · Saldo ' + plata(saldo) : '') + '</div>' + acc + '</div>';

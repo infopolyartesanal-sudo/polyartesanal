@@ -2839,8 +2839,8 @@ function renderTareas(){
         return '<div class="pw-c" id="pw-' + p.id + '"><div style="display:flex;justify-content:space-between;gap:8px"><b>#' + p.numero + ' · ' + esc(p.cliente) + '</b><span style="font-size:13px;opacity:.75">' + esc(p.telefono || '') + '</span></div>' +
           '<div style="font-size:14px;margin:4px 0"><b>' + esc(fecha(p.fecha_retiro)) + '</b>' + (p.hora_retiro ? ' · ' + esc(p.hora_retiro) : '') + ' · ' + (p.envio ? '🛵 Envío: ' + esc(p.direccion || '') : '🏪 Retira en el local') + '</div>' +
           '<div style="font-size:14px">' + its + '</div>' + (p.notas ? '<div style="font-size:13px;margin-top:4px">📝 ' + esc(p.notas) + '</div>' : '') +
-          '<div style="margin-top:6px">Total <b>' + plata(p.total) + '</b> · Seña pedida <b>' + plata(p.sena_requerida) + '</b></div>' +
-          '<div class="pw-f"><button class="pw-b" onclick="PW.confirmar(' + p.id + ')">✅ Llegó la seña: confirmar</button>' +
+          '<div style="margin-top:6px">Total <b>' + plata(p.total) + '</b> · ' + (p.lista_precios === 'mayorista' ? '<b>🏪 MAYORISTA</b> · a cuenta corriente, sin seña' : 'Seña pedida <b>' + plata(p.sena_requerida) + '</b>') + '</div>' +
+          '<div class="pw-f"><button class="pw-b" onclick="PW.confirmar(' + p.id + ')">' + (p.lista_precios === 'mayorista' ? '✅ Confirmar pedido mayorista' : '✅ Llegó la seña: confirmar') + '</button>' +
           (wa(p.telefono) ? '<button class="pw-b g" onclick="PW.chat(' + p.id + ')">💬 WhatsApp</button>' : '') +
           '<button class="pw-b r" onclick="PW.rechazar(' + p.id + ')">Rechazar</button></div></div>';
       }).join('') : '<p style="margin-top:14px">No hay pedidos web esperando confirmación. 👌</p>');
@@ -2882,7 +2882,7 @@ function renderTareas(){
         var s = +document.getElementById('pw-s' + id).value || 0, m = document.getElementById('pw-m' + id).value, e = p.envio ? (+document.getElementById('pw-e' + id).value || 0) : null;
         rpc('pedido_web_confirmar', { p_pedido: id, p_sena: s, p_medio: m, p_usuario: usr(), p_costo_envio: e }).then(function () {
           var tot = (+p.total || 0) + (e || 0), saldo = tot - s;
-          var msg = '¡Hola ' + String(p.cliente).split(' ')[0] + '! 🥐 Recibimos tu seña de ' + plata(s) + '. Tu pedido #' + p.numero + ' para el ' + fecha(p.fecha_retiro) + (p.hora_retiro ? ' (' + p.hora_retiro + ')' : '') + ' quedó *confirmado* ✅\n' +
+          var msg = p.lista_precios === 'mayorista' ? '¡Hola ' + String(p.cliente).split(' ')[0] + '! 🥐 Tu pedido #' + p.numero + ' para el ' + fecha(p.fecha_retiro) + (p.hora_retiro ? ' (' + p.hora_retiro + ')' : '') + ' quedó *confirmado* ✅ Total ' + plata(tot) + ', va a tu cuenta corriente. ¡Gracias!' : '¡Hola ' + String(p.cliente).split(' ')[0] + '! 🥐 Recibimos tu seña de ' + plata(s) + '. Tu pedido #' + p.numero + ' para el ' + fecha(p.fecha_retiro) + (p.hora_retiro ? ' (' + p.hora_retiro + ')' : '') + ' quedó *confirmado* ✅\n' +
             (e ? 'Envío: ' + plata(e) + '. ' : '') + 'Saldo a pagar ' + (p.envio ? 'al recibirlo' : 'al retirar') + ': ' + plata(saldo) + '.\n¡Gracias por elegir Poly Artesanal!';
           c.innerHTML = '<b>✅ Pedido #' + p.numero + ' confirmado.</b> Ya está en los sectores y en el Salón.' +
             (wa(p.telefono) ? '<div class="pw-f"><a class="pw-b g" style="text-decoration:none" target="_blank" href="https://wa.me/' + wa(p.telefono) + '?text=' + encodeURIComponent(msg) + '">💬 Avisarle al cliente por WhatsApp</a></div>' : '');
