@@ -413,10 +413,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#estadisticas">📊 Estadísticas</a>
-  <a href="#mayoristas">🤝 Clientes</a>
-  <a href="#comunidad">⭐ Comunidad</a>
-  <a href="#campanias">📣 Campañas</a>
-  <a href="#contenidos">📝 Contenidos</a>
+  <a href="#mayoristas" data-grupo="mayoristas comunidad campanias contenidos instagram cuentas">⭐ Comunidad</a>
   <a href="#rrhh">👥 RRHH</a>
   <a href="#usuarios">🔐 Usuarios</a>
 </nav>
@@ -830,10 +827,10 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,cuentas:vCuentas,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
-  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual));
+  document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual||(a.dataset.grupo||'').split(' ').includes(vistaActual)));
   try{VISTAS[vistaActual]()}catch(e){console.error(e);$('#app').innerHTML='<div class="card">Error mostrando la pantalla: '+esc(e.message)+'</div>'}
   window.scrollTo(0,0);}
 window.addEventListener('hashchange',ir);
@@ -1646,8 +1643,31 @@ function crmWa(tel){const n=telNorm(tel);return n&&n.length===10?'549'+n:null}
 function igNorm(x){return (String(x||'').replace(/[?#].*$/,'').replace(/^\s*@|\s|https?:\/\/(www\.)?instagram\.com\/|\/.*$/g,'').toLowerCase())||null}
 function crmPrimerNombre(c){const base=c.tipo==='mayorista'?(c.contacto||''):(c.contacto||c.nombre||'');const w=base.trim().split(/\s+/)[0]||'';return w?w[0].toUpperCase()+w.slice(1).toLowerCase():''}
 function crmPersonalizar(txt,c){const n=crmPrimerNombre(c);return String(txt||'').replace(/\s?\{nombre\}/g,n?' '+n:'').replace(/\{negocio\}/g,c.nombre||'')}
-function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['comunidad','⭐ Comunidad'],['campanias','📣 Campañas'],['contenidos','📝 Contenidos'],['instagram','📸 Instagram'+(IG.noLeidos?' ('+IG.noLeidos+')':'')]].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
+function crmTabs(on){return `<div class="tabs2" style="margin-bottom:10px">${[['mayoristas','👥 Clientes'],['cuentas','💳 Cuentas corrientes'],['comunidad','🎁 Club de beneficios'],['campanias','📣 Campañas'],['contenidos','📝 Contenidos'],['instagram','📸 Instagram'+(IG.noLeidos?' ('+IG.noLeidos+')':'')]].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
 
+// ───────── CUENTAS CORRIENTES (todos los clientes que compran a cuenta) ─────────
+async function vCuentas(){
+  if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando cuentas…</div>';await cargarCRM()}
+  let mov=[];try{mov=await sbGet('cc_movimientos','order=fecha.asc')}catch(e){}
+  const por={};mov.forEach(m=>{const x=por[m.cliente_id]||(por[m.cliente_id]={saldo:0,ultCompra:null,ultPago:null,compras30:0});x.saldo+=+m.monto;
+    if(m.tipo==='venta'){x.ultCompra=m.fecha;if(new Date(m.fecha)>new Date(Date.now()-30*864e5))x.compras30+=+m.monto}else if(m.tipo==='pago')x.ultPago=m.fecha});
+  const filas=Object.entries(por).map(([id,x])=>({c:CRM.clis.find(c=>c.id===+id)||{id:+id,nombre:'Cliente #'+id},...x})).sort((a,b)=>b.saldo-a.saldo);
+  const deben=filas.filter(f=>f.saldo>0.009),total=deben.reduce((a,f)=>a+f.saldo,0);
+  const dias=d=>d?Math.floor((Date.now()-new Date(d))/864e5):null;
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('cuentas')}
+  <p class="muted">Clientes que compran a cuenta. Las compras se cargan solas desde la Caja (medio de pago "Cuenta corriente", con remito) y los pagos desde la Caja o desde acá.</p>
+  <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Total por cobrar</div><div class="val" style="color:${total>0?'var(--rojo)':'var(--verde)'}">${$$(total)}</div></div>
+  <div class="card kpi"><div class="lbl">Clientes que deben</div><div class="val">${deben.length}</div></div>
+  <div class="card kpi"><div class="lbl">Vendido a cuenta (30 días)</div><div class="val">${$$(filas.reduce((a,f)=>a+f.compras30,0))}</div></div></div>
+  <div class="card">${filas.length?`<div class="scroll"><table><tr><th>Cliente</th><th class="num">Saldo</th><th>Última compra</th><th>Último pago</th><th></th></tr>
+  ${filas.map(f=>{const dp=dias(f.ultPago),dc=dias(f.ultCompra);const atraso=f.saldo>0.009&&(dp===null?dc:dp)>30;
+    return `<tr><td><a href="#" onclick="crmFicha(${f.c.id});return false"><b>${esc(f.c.nombre)}</b></a>${f.c.razon_social&&f.c.razon_social!==f.c.nombre?`<div class="muted" style="font-size:11px">${esc(f.c.razon_social)}</div>`:''}</td>
+    <td class="num" style="font-weight:800;color:${f.saldo>0.009?'var(--rojo)':f.saldo<-0.009?'var(--verde)':'inherit'}">${f.saldo>0.009?$$(f.saldo):f.saldo<-0.009?'A favor '+$$(-f.saldo):'Al día ✅'}</td>
+    <td>${f.ultCompra?fechaCorta(diaLocal(f.ultCompra))+` <span class="muted">(${dc} d)</span>`:'—'}</td>
+    <td>${f.ultPago?fechaCorta(diaLocal(f.ultPago))+` <span class="muted">(${dp} d)</span>`:'—'}${atraso?' <span class="chip mal">+30 días</span>':''}</td>
+    <td style="white-space:nowrap"><button class="btn peq" onclick="crmPagoCC(${f.c.id})">➕ Pago</button> <button class="btn peq sec" onclick="crmFicha(${f.c.id})">Ver</button></td></tr>`}).join('')}</table></div>`
+  :'<p class="muted">Todavía nadie compró a cuenta. Cuando en la Caja se cobre con "Cuenta corriente", el cliente aparece acá.</p>'}</div>`;
+}
 // ───────── LISTA DE CLIENTES ─────────
 async function vMayoristas(){
   if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando clientes…</div>';await cargarCRM()}
@@ -1659,7 +1679,7 @@ async function vMayoristas(){
   const mes=act.reduce((a,c)=>a+c._mes,0),compraron=act.filter(c=>c._mes>0).length;
   const promos=act.filter(c=>c.acepta_promos!==false&&(crmWa(c.telefono)||c.instagram)).length,cumple=act.filter(c=>c._cumpleMes).length;
   const porTipo=k=>CRM.clis.filter(c=>c._estado!=='baja'&&c.tipo===k).length;
-  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('mayoristas')}
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('mayoristas')}
   <p class="muted">Todos tus clientes: mayoristas, los que encargan pedidos, los del mostrador y los que llegan por Instagram. Los clientes de pedidos se suman solos cuando el Salón carga un pedido con teléfono. Los del mostrador se anotan desde el Salón (Pedidos → 📇 Anotar cliente).</p>
   <div class="tabs2" style="margin-bottom:10px"><button class="${!CRM.tipo?'on':''}" onclick="CRM.tipo='';vMayoristas()">Todos (${CRM.clis.filter(c=>c._estado!=='baja').length})</button>${Object.entries(CRM_TCLI).map(([k,[t]])=>`<button class="${CRM.tipo===k?'on':''}" onclick="CRM.tipo='${k}';vMayoristas()">${t} (${porTipo(k)})</button>`).join('')}</div>
   <div class="grid g4" style="margin-bottom:12px">
@@ -1769,12 +1789,12 @@ function crmPagoCC(id){const c=CRM.clis.find(x=>x.id===id);
   <div class="fila"><div><label>Medio</label><select id="ppP">${['Transferencia','Efectivo','Mercado Pago / QR','Cheque','Débito','Crédito','Otro'].map(m=>`<option>${m}</option>`).join('')}</select></div><div><label>N° de operación / referencia</label><input id="ppR"></div></div>
   <label>Notas</label><input id="ppN" placeholder="ej: paga remitos 12 y 13">
   <label>Ticket / comprobante (foto o PDF)</label><input id="ppA" type="file" accept="image/*,application/pdf">
-  <div class="acciones" style="margin-top:12px"><button class="btn" id="bPP">💾 Guardar pago</button><button class="btn sec" onclick="crmFicha(${id})">Volver</button></div>`);
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="bPP">💾 Guardar pago</button><button class="btn sec" onclick="${vistaActual==='cuentas'?'cerrarModal()':'crmFicha('+id+')'}">Volver</button></div>`);
   $('#bPP').onclick=async()=>{const m=+$('#ppM').value;if(!(m>0))return toast('Poné el importe');$('#bPP').disabled=true;
     try{const comp=await crmArchivo(($('#ppA').files||[])[0]);
       const r=await polyRPC('cc_registrar_pago',{p_cliente:id,p_monto:m,p_medio:$('#ppP').value,p_ref:$('#ppR').value||null,p_notas:$('#ppN').value||null,p_fecha:$('#ppF').value||null});
       if(comp)await sbIns('cc_comprobantes',[Object.assign({mov_id:r.mov_id,cliente_id:id},comp)]);
-      toast('Pago guardado ✅ · saldo '+$$(r.saldo));crmFicha(id)}catch(e){toast('⚠️ '+e.message,5000);$('#bPP').disabled=false}}}
+      toast('Pago guardado ✅ · saldo '+$$(r.saldo));if(vistaActual==='cuentas'){cerrarModal();vCuentas()}else crmFicha(id)}catch(e){toast('⚠️ '+e.message,5000);$('#bPP').disabled=false}}}
 function crmAdjComp(cli,mov){const i=document.createElement('input');i.type='file';i.accept='image/*,application/pdf';
   i.onchange=async()=>{try{const comp=await crmArchivo(i.files[0]);if(!comp)return;await sbIns('cc_comprobantes',[Object.assign({mov_id:mov,cliente_id:cli},comp)]);toast('Comprobante adjuntado ✅');crmCargarCC(cli)}catch(e){toast('⚠️ '+e.message,5000)}};i.click()}
 async function crmVerComp(id){const w=window.open('','_blank');try{const [x]=await sb('cc_comprobantes?select=nombre,tipo,datos&id=eq.'+id);
@@ -1873,7 +1893,7 @@ async function vCampanias(){
   if(!CRM.cargado){$('#app').innerHTML='<div class="cargando">Cargando campañas…</div>';await cargarCRM()}
   if(CRM.camp){const k=CRM.camps.find(x=>x.id===CRM.camp);if(k)return crmVerCampania(k);CRM.camp=null}
   const L=CRM.camps;
-  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('campanias')}
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('campanias')}
   <p class="muted">Armá una campaña, elegí a quién le llega y el mensaje. El sistema te da la lista y vos mandás cada mensaje con un toque (WhatsApp se abre con el texto listo; en Instagram se copia para pegarlo). Después marcás quién respondió, y las compras se cuentan solas cuando ese cliente hace un pedido. Para los <b>anuncios pagos</b> de Instagram o Facebook, el sistema te da un link y un código para saber cuántos clientes y ventas trajo.</p>
   <div class="acciones" style="margin-bottom:10px"><button class="btn oro" onclick="crmNuevaCampania()">📣 Nueva campaña</button>
     <span class="muted" style="font-size:13px">WhatsApp del local: <b>${CRM.waLocal?'+'+esc(CRM.waLocal):'sin cargar'}</b> <a href="javascript:crmWaLocal()">cambiar</a></span></div>
@@ -2019,7 +2039,7 @@ async function vComunidad(){
   const nuevosMes=miembros.filter(c=>c.comunidad_at&&diaLocal(c.comunidad_at)>=m1).length;
   const proximos=CRM.clis.filter(c=>c.activo!==false&&c.cumpleanos).map(c=>({c,d:comDiasCumple(c.cumpleanos)})).filter(x=>x.d>=-2&&x.d<=14).sort((a,b)=>a.d-b.d);
   const ranking=miembros.map(c=>({c,n:comCompras(c)})).sort((a,b)=>b.n-a.n).slice(0,15);
-  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('comunidad')}
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('comunidad')}
   <p class="muted">Tus clientes se suman solos desde un link. En cada compra, en el Salón (Pedidos → ⭐ Comunidad) se busca el WhatsApp y se suma un sello; al completar la tarjeta tienen un beneficio, y en la semana de su cumple, un regalo. Los pedidos con teléfono también cuentan como compra (si superan la compra mínima).</p>
   <div class="grid g4" style="margin-bottom:12px">
     <div class="card kpi"><div class="lbl">Miembros</div><div class="val">${miembros.length}</div><div class="sub muted">${nuevosMes} nuevos este mes</div></div>
@@ -2135,7 +2155,7 @@ async function vContenidos(){
   const porDia={};L.forEach(x=>(porDia[x.fecha]=porDia[x.fecha]||[]).push(x));
   const atras=CRM.contenidos.filter(x=>x.estado==='pendiente'&&x.fecha<H).length;
   const diaTxt=f=>f===H?'Hoy':f===sumaDias(H,1)?'Mañana':new Date(f+'T12:00:00').toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
-  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('contenidos')}
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('contenidos')}
   <p class="muted">Un asistente con IA te arma el calendario de qué publicar y qué mandar: el texto listo para copiar, qué foto o video sacar y el guion de los reels. Las placas con la marca se generan acá mismo. Publicar lo hacés vos desde Instagram (sin conexión oficial no se puede publicar automático).</p>
   <div class="card" style="margin-bottom:12px"><h3>✨ Armar calendario</h3>
     <div class="fila" style="flex-wrap:wrap">
@@ -2704,11 +2724,11 @@ async function igCargarContactos(){
   const c=await sb('ig_contactos?select=*,crm_clientes(id,nombre)&order=ultimo.desc&limit=200');IG.contactos=c||[];
   IG.noLeidos=IG.contactos.reduce((a,x)=>a+(+x.no_leidos||0),0)}
 async function vInstagram(){
-  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}<div class="cargando">Cargando Instagram…</div>`;
-  try{IG.estado=await igApi('estado')}catch(e){$('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}<div class="card">${esc(e.message)}</div>`;return}
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('instagram')}<div class="cargando">Cargando Instagram…</div>`;
+  try{IG.estado=await igApi('estado')}catch(e){$('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('instagram')}<div class="card">${esc(e.message)}</div>`;return}
   const e=IG.estado,admin=window.POLY_USUARIO&&window.POLY_USUARIO.rol==='admin';
   if(!e.conectado){
-    $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}
+    $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('instagram')}
     <div class="card"><h3>📸 Conectar Instagram</h3><p class="muted">Para ver y responder los mensajes privados de Instagram desde acá.</p>
     ${!admin?'<p>Lo conecta la administradora.</p>':`
     <ol style="line-height:1.7;padding-left:18px">
@@ -2733,7 +2753,7 @@ function igPintar(){
     <textarea id="igTxt" rows="3" placeholder="Escribí tu respuesta…" style="width:100%"></textarea>
     <div class="acciones" style="margin-top:6px"><button class="btn" onclick="igEnviar()">Enviar</button><button class="btn sec" onclick="igSugerir()">✨ Sugerir respuesta</button></div>
     <p class="muted" style="font-size:12px">Instagram solo deja responder dentro de los 7 días del último mensaje del cliente.</p>`;
-  $('#app').innerHTML=`<h2>🤝 Clientes</h2>${crmTabs('instagram')}
+  $('#app').innerHTML=`<h2>⭐ Comunidad</h2>${crmTabs('instagram')}
   <p class="muted">Conectado a <b>@${esc(e.ig||'')}</b> (${esc(e.page||'')}). Los mensajes privados llegan solos y cada persona queda en Clientes. ${window.POLY_USUARIO&&window.POLY_USUARIO.rol==='admin'?'<a href="javascript:igReconectar()">🔄 Reconectar con un código nuevo</a>':''}</p>
   <div class="grid" style="grid-template-columns:minmax(220px,1fr) 2fr;gap:12px"><div class="card" style="padding:0;max-height:70vh;overflow:auto">${lista}</div><div class="card">${chat}</div></div>`;
   const ch=$('#igChat');if(ch)ch.scrollTop=ch.scrollHeight}
