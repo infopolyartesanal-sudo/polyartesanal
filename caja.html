@@ -181,7 +181,17 @@
     #ticket .c{text-align:center}#ticket .r{text-align:right}#ticket hr{border:0;border-top:1px dashed #000;margin:4px 0}
     #ticket table{width:100%;border-collapse:collapse}#ticket td{vertical-align:top;padding:1px 0}
     #ticket .g{font-size:15px;font-weight:700}
+    #ticket.a4{page:remito;width:auto;padding:0;font:12px/1.35 Arial,sans-serif}
+    #ticket.a4 .hoja{padding:2mm;break-inside:avoid}
+    #ticket.a4 .corte{border-top:1px dashed #000;margin:10mm 0 8mm;text-align:center;font-size:10px}
+    #ticket.a4 table.det{border-collapse:collapse;width:100%;margin-top:6px}
+    #ticket.a4 table.det th,#ticket.a4 table.det td{border:1px solid #000;padding:4px 6px;text-align:left}
+    #ticket.a4 table.det td.n,#ticket.a4 table.det th.n{text-align:right}
+    #ticket.a4 .cab{display:flex;justify-content:space-between;gap:10px;border:1px solid #000;padding:8px}
+    #ticket.a4 .box{border:1px solid #000;padding:6px 8px;margin-top:6px}
+    #ticket.a4 .firmas{display:flex;gap:14px;margin-top:28px}#ticket.a4 .firmas div{flex:1;border-top:1px solid #000;padding-top:3px;text-align:center;font-size:11px}
   }
+  @page remito{size:A4;margin:12mm}
 </style>
 </head>
 <body>
@@ -232,14 +242,14 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#ov').style.disp
 const LISTAS={minorista:['Minorista','precio_lpu','#8e5bd6'],mayorista:['Mayorista','precio_may','#3d8bd9'],pedidosya:['PedidosYa','precio_pey','#e05252']};
 const MEDIOS=['Efectivo','Mercado Pago / QR','Transferencia','Débito','Crédito','Cuenta corriente'];
 const COND={cf:'Consumidor final',ri:'Responsable inscripto',mono:'Monotributista',ex:'Exento'};
-let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'};
+let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''};
 
 async function cargar(){
   const desde=new Date(Date.now()-30*864e5).toISOString();
   const [p,cfg,cl,cc,ci]=await Promise.all([
     api('productos_venta?select=codigo,nombre,precio_may,precio_lpu,precio_pey,iva,por_kg,activo&activo=eq.true&order=nombre'),
     api('config?select=valor&clave=eq.caja'),
-    api('crm_clientes?select=id,nombre,razon_social,cuit,tipo,lista&activo=is.true&order=nombre').catch(()=>[]),
+    api('crm_clientes?select=id,nombre,razon_social,cuit,tipo,lista,direccion,zona&activo=is.true&order=nombre').catch(()=>[]),
     api('cc_movimientos?select=cliente_id,monto').catch(()=>[]),
     api('cierres_caja?select=items&fecha=gte.'+desde).catch(()=>[])]);
   PROD=(p||[]).filter(x=>!/^articulo libre$/i.test(norm(x.nombre).trim()));
@@ -311,7 +321,7 @@ function elegirCliente(){modal(`<h3>👤 Cliente</h3>
   <p class="muted" style="margin-top:8px">Responsable inscripto → Factura A. Consumidor final, monotributista o exento → Factura B.</p>
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="datosCliente()">Guardar datos</button></div>`)}
 function usarCliente(){const v=$('#clB').value.trim();const c=CLIENTES.find(x=>norm(x.nombre)===norm(v));if(!c)return toast('Elegilo de la lista');
-  const cuit=(c.cuit||'').replace(/\D/g,'');cliente={id:c.id,nombre:c.razon_social||c.nombre,doc:cuit||'',tipo:cuit.length===11?'ri':'cf'};
+  const cuit=(c.cuit||'').replace(/\D/g,'');cliente={id:c.id,nombre:c.razon_social||c.nombre,doc:cuit||'',tipo:cuit.length===11?'ri':'cf',dir:[c.direccion,c.zona].filter(Boolean).join(', '),mayorista:c.tipo==='mayorista'};
   if(c.lista&&LISTAS[norm(c.lista)])cambiarLista(norm(c.lista));else if(c.tipo==='mayorista')cambiarLista('mayorista');
   cerrar();pintarCarrito();if(cuit.length===11)toast('Se va a hacer Factura A a nombre de '+cliente.nombre+'. Si es monotributista, cambialo en "Cambiar".',4500)}
 function datosCliente(){const t=$('#clT').value,d=$('#clD').value.replace(/\D/g,''),n=$('#clN').value.trim();
@@ -321,11 +331,27 @@ function datosCliente(){const t=$('#clT').value,d=$('#clD').value.replace(/\D/g,
 // ---------- cobro ----------
 let PAGOS=[];
 function abrirCobro(){if(!carrito.length)return;const t=total();PAGOS=[];
-  modal(`<h3>💰 Cobrar ${plata(t)}</h3><p class="muted">Tocá cómo paga. Si paga con dos medios, tocá los dos y repartí el importe.</p>
+  REM={on:!!(cliente.mayorista||lista==='mayorista'),dir:cliente.dir||'',notas:''};carrito.forEach(it=>{if(it.kg==null&&it.unidad==='kg')it.kg=it.cantidad});
+  modal(`<h3>💰 Cobrar ${plata(t)}</h3>
+  <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--tx);margin:4px 0 8px;cursor:pointer"><input type="checkbox" id="remOn" style="width:auto" ${REM.on?'checked':''} onchange="REM.on=this.checked;pintarRemito()"> 📦 Hacer remito de entrega (bultos, kilos y unidades)</label>
+  <div id="remBox"></div>
+  <p class="muted">Tocá cómo paga. Si paga con dos medios, tocá los dos y repartí el importe. Si paga después, elegí <b>Cuenta corriente</b>.</p>
   <div class="medios">${MEDIOS.map(m=>`<button onclick="addPago('${m}')">${m==='Efectivo'?'💵':m.startsWith('Mercado')?'📱':m==='Transferencia'?'🏦':m==='Cuenta corriente'?'📒':'💳'} ${m}</button>`).join('')}</div>
   <div id="pagos"></div><div id="pagoRes" style="margin-top:12px"></div>
   <div class="acc"><button class="b-no" onclick="cerrar()">Volver</button><button class="b-ok" id="bOk" onclick="confirmar()" disabled>✅ Confirmar venta</button></div>`);
+  pintarRemito();
 }
+function pintarRemito(){const b=$('#remBox');if(!b)return;if(!REM.on){b.innerHTML='';return}
+  b.innerHTML=`<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;margin-bottom:10px;background:var(--bg)">
+  <div style="display:grid;grid-template-columns:1fr 70px 70px 80px;gap:6px;font-size:12px;color:var(--tx2);margin-bottom:4px"><span>Producto</span><span>Cant.</span><span>Bultos</span><span>Kilos</span></div>
+  ${carrito.map((it,k)=>`<div style="display:grid;grid-template-columns:1fr 70px 70px 80px;gap:6px;align-items:center;margin-bottom:4px"><span style="font-size:13px">${esc(it.nombre)}</span><span style="font-size:13px">${it.unidad==='kg'?kgTxt(it.cantidad)+' kg':it.cantidad+' u'}</span>
+    <input inputmode="numeric" value="${it.bultos==null?'':it.bultos}" placeholder="0" oninput="carrito[${k}].bultos=this.value===''?null:num(this.value);remTot()" style="padding:6px">
+    <input inputmode="decimal" value="${it.kg==null?'':kgTxt(it.kg)}" placeholder="—" oninput="carrito[${k}].kg=this.value===''?null:num(this.value);remTot()" style="padding:6px"></div>`).join('')}
+  <div id="remTot" class="muted" style="margin:4px 0 6px"></div>
+  <label style="margin-top:4px">Dirección de entrega</label><input value="${esc(REM.dir)}" oninput="REM.dir=this.value" placeholder="Calle, número, localidad">
+  <label>Observaciones</label><input value="${esc(REM.notas)}" oninput="REM.notas=this.value" placeholder="Horario, quién recibe, etc."></div>`;remTot()}
+function remTot(){const e=$('#remTot');if(!e)return;const bu=carrito.reduce((a,it)=>a+(+it.bultos||0),0),kg=carrito.reduce((a,it)=>a+(+it.kg||0),0),un=carrito.filter(it=>it.unidad!=='kg').reduce((a,it)=>a+it.cantidad,0);
+  e.textContent='Total: '+bu+' bultos · '+kgTxt(kg)+' kg · '+un+' unidades'}
 function addPago(m){const t=total();const ya=PAGOS.reduce((a,p)=>a+p.monto,0);
   if(m==='Cuenta corriente'&&!cliente.id)return toast('Para cuenta corriente, elegí primero el cliente (botón "Cambiar")',4000);
   if(PAGOS.some(p=>p.medio===m))return;PAGOS.push({medio:m,monto:Math.max(0,Math.round((t-ya)*100)/100),recibe:null});pintarPagos();
@@ -344,17 +370,19 @@ async function confirmar(){if(guardando||$('#bOk').disabled)return;guardando=tru
   const ef=PAGOS.find(p=>p.medio==='Efectivo');const vuelto=ef&&ef.recibe!=null?Math.max(0,ef.recibe-ef.monto):0;
   const body={lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
     pagos:PAGOS.filter(p=>p.monto>0).map(p=>({medio:p.medio,monto:Math.round(p.monto*100)/100,...(p.medio==='Efectivo'&&p.recibe!=null?{recibe:p.recibe}:{})})),
-    items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio}))};
+    remito:REM.on,entrega_direccion:REM.on?REM.dir:'',entrega_notas:REM.on?REM.notas:'',
+    items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio,bultos:REM.on&&it.bultos!=null?it.bultos:'',kg:REM.on&&it.kg!=null?it.kg:''}))};
   try{const r=await rpc('caja_vender',{p:body});
     const venta={id:r.id,fecha:new Date(),items:carrito.slice(),pagos:body.pagos,vuelto,total:r.total,cliente:Object.assign({},cliente),lista,fiscal:r.fiscal_estado};
     if(cliente.id&&body.pagos.some(p=>p.medio==='Cuenta corriente'))SALDOS[cliente.id]=(SALDOS[cliente.id]||0)+body.pagos.find(p=>p.medio==='Cuenta corriente').monto;
+    venta.remito=r.remito_nro?{nro:r.remito_nro,dir:REM.dir,notas:REM.notas}:null;
     carrito=[];cliente={tipo:'cf'};if(lista!=='minorista')cambiarLista('minorista');
-    cerrar();imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
+    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
   }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bOk').textContent='✅ Confirmar venta'}
   guardando=false}
 
 // ---------- ticket ----------
-function imprimirTicket(v){const C=CFG;const prueba=(v.fiscal||'')!=='autorizada';
+function imprimirTicket(v){const C=CFG;$('#ticket').className='';const prueba=(v.fiscal||'')!=='autorizada';
   const iva={};v.items.forEach(it=>{const a=it.iva==null?21:+it.iva;const s=it.cantidad*it.precio;iva[a]=(iva[a]||0)+s});
   const ivaCont=Object.entries(iva).reduce((a,[al,s])=>a+s-s/(1+al/100),0);
   $('#ticket').innerHTML=`<div class="c g">${esc(C.nombre_fantasia||'Poly Artesanal')}</div>${C.razon_social&&C.razon_social!==C.nombre_fantasia?`<div class="c">${esc(C.razon_social)}</div>`:''}
@@ -368,14 +396,28 @@ function imprimirTicket(v){const C=CFG;const prueba=(v.fiscal||'')!=='autorizada
   <hr><div class="c">¡Gracias por elegirnos!</div><div class="c">@polyartesanal</div>`;
   setTimeout(()=>window.print(),80)}
 
+function nroRem(n){return '0001-'+String(n).padStart(8,'0')}
+function imprimirRemito(v){const C=CFG,r=v.remito;const cc=(v.pagos||[]).some(p=>p.medio==='Cuenta corriente');
+  const bu=v.items.reduce((a,it)=>a+(+it.bultos||0),0),kg=v.items.reduce((a,it)=>a+(+it.kg||0),0),un=v.items.filter(it=>it.unidad!=='kg').reduce((a,it)=>a+(+it.cantidad||0),0);
+  const hoja=copia=>`<div class="hoja"><div class="cab"><div><div style="font-size:20px;font-weight:800">${esc(C.nombre_fantasia||'Poly Artesanal')}</div><div>${esc(C.razon_social||'')}</div><div>${esc(C.domicilio||'')}</div><div>${esc(C.cond_iva||'')}</div></div>
+    <div style="text-align:right"><div style="font-size:18px;font-weight:800">REMITO DE ENTREGA</div><div style="font-size:16px;font-weight:700">N° ${nroRem(r.nro)}</div><div>Fecha: ${v.fecha.toLocaleDateString('es-AR')}</div>${C.cuit?`<div>CUIT ${esc(C.cuit)}</div><div>IIBB ${esc(C.iibb||'')} · Inicio act. ${esc(C.inicio_actividades||'')}</div>`:''}<div style="font-size:11px;margin-top:4px">${copia}</div></div></div>
+    <div class="box"><b>Cliente:</b> ${esc(v.cliente&&v.cliente.nombre||'Consumidor final')}${v.cliente&&v.cliente.doc?' · CUIT '+esc(v.cliente.doc):''}<br><b>Entregar en:</b> ${esc(r.dir||'—')}${r.notas?'<br><b>Observaciones:</b> '+esc(r.notas):''}<br><b>Condición:</b> ${cc?'Cuenta corriente':'Pagado'} · Venta #${v.id}</div>
+    <table class="det"><tr><th class="n" style="width:70px">Cantidad</th><th style="width:50px">Unid.</th><th>Producto</th><th class="n" style="width:70px">Bultos</th><th class="n" style="width:80px">Kilos</th></tr>
+    ${v.items.map(it=>`<tr><td class="n">${it.unidad==='kg'?kgTxt(it.cantidad):it.cantidad}</td><td>${it.unidad==='kg'?'kg':'u'}</td><td>${esc(it.nombre)}</td><td class="n">${it.bultos?it.bultos:''}</td><td class="n">${it.kg?kgTxt(it.kg):''}</td></tr>`).join('')}
+    <tr><td class="n"><b>${un}</b></td><td>u</td><td><b>TOTALES</b></td><td class="n"><b>${bu}</b></td><td class="n"><b>${kgTxt(kg)}</b></td></tr></table>
+    <div style="font-size:11px;margin-top:6px">Documento no válido como factura.</div>
+    <div class="firmas"><div>Firma de quien recibe</div><div>Aclaración</div><div>DNI</div><div>Fecha y hora</div></div></div>`;
+  const t=$('#ticket');t.className='a4';t.innerHTML=hoja('ORIGINAL')+'<div class="corte">✂</div>'+hoja('DUPLICADO');setTimeout(()=>window.print(),80)}
+
 // ---------- ventas del turno / anular ----------
 async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
-  const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,fiscal_estado,ventas_items(nombre,cantidad,unidad,precio,iva)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
+  const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,cliente_doc,fiscal_estado,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
   modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
     <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span></span>
-    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
+    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
     <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
-function reimprimir(id){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;imprimirTicket({id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre},fiscal:x.fiscal_estado})}
+function reimprimir(id,rem){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;const v={id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva,bultos:i.bultos==null?null:+i.bultos,kg:i.kg==null?null:+i.kg})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre,doc:x.cliente_doc},fiscal:x.fiscal_estado};
+  if(rem&&x.remito_nro){v.remito={nro:x.remito_nro,dir:x.entrega_direccion,notas:x.entrega_notas};imprimirRemito(v)}else imprimirTicket(v)}
 async function anular(id){const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
   try{await rpc('caja_anular',{p_id:id,p_motivo:m||'sin motivo'});toast('Venta #'+id+' anulada');await estadoTurno();verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
 
@@ -410,9 +452,20 @@ function cobrarCC(){if(!TURNO)return toast('Primero abrí el turno');const conDe
   modal(`<h3>💳 Cobrar cuenta corriente</h3>${conDeuda.length?`<div style="margin-bottom:6px">${conDeuda.map(c=>`<div class="resu"><span>${esc(c.nombre)}</span><b>${plata(SALDOS[c.id])}</b></div>`).join('')}</div>`:'<p class="muted">Nadie debe nada.</p>'}
   <label>Cliente</label><select id="ccC">${CLIENTES.map(c=>`<option value="${c.id}">${esc(c.nombre)}${SALDOS[c.id]?' · debe '+plata(SALDOS[c.id]):''}</option>`).join('')}</select>
   <div class="fila"><div><label>Importe</label><input id="ccM" inputmode="decimal" autofocus></div><div><label>Cómo paga</label><select id="ccP">${MEDIOS.filter(m=>m!=='Cuenta corriente').map(m=>`<option>${m}</option>`).join('')}</select></div></div>
-  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okCC()">Registrar pago</button></div>`)}
-async function okCC(){const id=+$('#ccC').value,m=num($('#ccM').value);if(!(m>0))return toast('Poné el importe');
-  try{const r=await rpc('caja_cobrar_cc',{p_cliente:id,p_monto:m,p_medio:$('#ccP').value});SALDOS[id]=+r.saldo;cerrar();toast('✅ Pago registrado · saldo '+plata(r.saldo),4000);estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
+  <label>N° de operación / referencia (opcional)</label><input id="ccR" placeholder="ej: n° de transferencia">
+  <label>Comprobante de pago (foto o PDF, opcional)</label><input id="ccF" type="file" accept="image/*,application/pdf">
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" id="bCC" onclick="okCC()">Registrar pago</button></div>`)}
+async function archivoADatos(f){if(!f)return null;
+  if(/^image\//.test(f.type)){const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(f)});
+    const sc=Math.min(1,1400/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return {nombre:f.name,tipo:'image/jpeg',datos:c.toDataURL('image/jpeg',0.72)}}
+  if(f.size>4e6)throw new Error('El PDF es muy pesado (máx. 4 MB)');
+  const d=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});return {nombre:f.name,tipo:f.type||'application/pdf',datos:d}}
+async function okCC(){const id=+$('#ccC').value,m=num($('#ccM').value);if(!(m>0))return toast('Poné el importe');$('#bCC').disabled=true;
+  try{const comp=await archivoADatos(($('#ccF').files||[])[0]);
+    const r=await rpc('cc_registrar_pago',{p_cliente:id,p_monto:m,p_medio:$('#ccP').value,p_ref:$('#ccR').value||null});
+    if(comp)await api('cc_comprobantes',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify([Object.assign({mov_id:r.mov_id,cliente_id:id},comp)])});
+    SALDOS[id]=+r.saldo;cerrar();toast('✅ Pago registrado'+(comp?' con comprobante':'')+' · saldo '+plata(r.saldo),4000);estadoTurno()}catch(e){toast('⚠️ '+e.message,6000);$('#bCC').disabled=false}}
 
 cargar().catch(e=>{$('#estado').textContent='⚠️ No se pudo cargar: '+e.message});
 setTimeout(()=>$('#bus').focus(),300);

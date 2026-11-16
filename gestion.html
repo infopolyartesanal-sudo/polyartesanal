@@ -1695,6 +1695,7 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
     <div class="card kpi"><div class="lbl">Este mes</div><div class="val" style="font-size:20px">${$$(c._mes)}</div></div>
     <div class="card kpi"><div class="lbl">Histórico</div><div class="val" style="font-size:20px">${$$(c._total)}</div><div class="sub muted">${c._n} pedidos${c._n?' · promedio '+$$(c._total/c._n):''}</div></div>
   </div>
+  <div id="crmCC"></div>
   ${c.comunidad?(()=>{const cfg=comCfg(),n=comCompras(c),cj=CRM.canjes.filter(x=>x.cliente_id===c.id);return `<div class="alerta" style="background:#fbf6e6">⭐ <b>Miembro de la ${esc(cfg.nombre)}</b>${c.comunidad_at?' desde '+fechaCorta(diaLocal(c.comunidad_at)):''} · ${n} compra${n===1?'':'s'} · ${cj.filter(x=>x.tipo==='fidelidad').length} beneficio(s) y ${cj.filter(x=>x.tipo==='cumple').length} regalo(s) de cumple entregados</div>`})():''}
   <div class="grid g4" style="margin-bottom:10px">${dato('Teléfono',c.telefono)}${dato('Instagram',c.instagram?'@'+c.instagram:'')}${dato('Email',c.email)}${dato('Cumpleaños',c.cumpleanos?new Date(c.cumpleanos+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long'}):'')}${dato('Nos conoció por',ori)}${dato('Contacto',c.contacto)}${dato('Rubro',c.rubro)}${dato('Dirección',[c.direccion,c.zona].filter(Boolean).join(' · '))}${dato('Entrega',c.dias_entrega)}${dato('Pago',c.condicion_pago)}${dato('CUIT',[c.cuit,c.razon_social].filter(Boolean).join(' · '))}</div>
   ${c.notas?`<div class="alerta" style="white-space:pre-wrap">${esc(c.notas)}</div>`:''}
@@ -1708,7 +1709,57 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
   ${envs.length?`<div class="card" style="margin-top:10px"><h3>📣 Campañas</h3><table>${envs.map(({e,k})=>`<tr><td><a href="javascript:cerrarModal();CRM.camp=${k.id};location.hash='#campanias'">${esc(k.nombre)}</a> ${crmChip(k.canal,CRM_CANAL)}</td><td>${e.enviado_at?fechaCorta(diaLocal(e.enviado_at)):''}</td><td>${crmChip(e.estado,CRM_ENV)}</td></tr>`).join('')}</table></div>`:''}
   <div class="card" style="margin-top:10px"><h3>🧾 Pedidos</h3>${c._peds.length?`<div class="scroll" style="max-height:280px"><table><tr><th>#</th><th>Fecha</th><th>Productos</th><th class="num">Total</th><th>Estado</th></tr>
     ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando el Salón carga un pedido con este teléfono (o elige este mayorista).</p>'}</div>`);
+  crmCargarCC(id);
 }
+// ---------- Cuenta corriente (ventas a cuenta desde la Caja, remitos y pagos con comprobante) ----------
+async function crmCargarCC(id){const el=$('#crmCC');if(!el)return;
+  let mov=[],comp=[],vts=[];try{[mov,comp]=await Promise.all([sbGet('cc_movimientos','cliente_id=eq.'+id+'&order=fecha.asc,id.asc'),sb('cc_comprobantes?select=id,mov_id,nombre,tipo&cliente_id=eq.'+id)]);
+    const ids=[...new Set(mov.filter(m=>m.venta_id).map(m=>m.venta_id))];if(ids.length)vts=await sb('ventas?select=id,remito_nro,created_at,ventas_items(nombre,cantidad,unidad)&id=in.('+ids.join(',')+')')}catch(e){el.innerHTML='';return}
+  const c=CRM.clis.find(x=>x.id===id);if(!mov.length&&c&&c.tipo!=='mayorista'){el.innerHTML='';return}
+  let run=0;const filas=mov.map(m=>{run+=+m.monto;return {m,saldo:run}}).reverse();const saldo=run;
+  const cp={};(comp||[]).forEach(x=>(cp[x.mov_id]=cp[x.mov_id]||[]).push(x));const vm={};(vts||[]).forEach(v=>vm[v.id]=v);
+  el.innerHTML=`<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">💳 Cuenta corriente</h3>
+    <div style="display:flex;gap:10px;align-items:center"><div style="font-size:20px;font-weight:800;color:${saldo>0.009?'var(--rojo)':'var(--verde)'}">${saldo>0.009?'Debe '+$$(saldo):saldo<-0.009?'A favor '+$$(-saldo):'Al día ✅'}</div><button class="btn" onclick="crmPagoCC(${id})">➕ Registrar pago</button></div></div>
+    ${filas.length?`<div class="scroll" style="max-height:300px;margin-top:8px"><table><tr><th>Fecha</th><th>Concepto</th><th class="num">Compra</th><th class="num">Pago</th><th class="num">Saldo</th><th></th></tr>
+    ${filas.map(({m,saldo})=>{const v=m.venta_id?vm[m.venta_id]:null;const cs=cp[m.id]||[];
+      return `<tr><td>${new Date(m.fecha).toLocaleDateString('es-AR',{timeZone:TZ,day:'2-digit',month:'2-digit',year:'2-digit'})}</td>
+      <td>${m.tipo==='venta'?`${v&&v.remito_nro?'📦 Remito N° '+v.remito_nro:'🧾 Venta #'+(m.venta_id||'')}${v?`<div class="muted" style="font-size:11px">${esc((v.ventas_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.nombre).join(', ').slice(0,90))}</div>`:''}`:`💵 Pago · ${esc(m.medio||'')}${m.referencia?' · '+esc(m.referencia):''}${m.notas?`<div class="muted" style="font-size:11px">${esc(m.notas)}</div>`:''}`}</td>
+      <td class="num">${m.monto>0?$$(m.monto):''}</td><td class="num">${m.monto<0?$$(-m.monto):''}</td><td class="num">${$$(saldo)}</td>
+      <td style="white-space:nowrap">${v&&v.remito_nro?`<button class="btn peq sec" onclick="crmRemito(${v.id})" title="Imprimir remito">📦</button> `:''}${cs.map(x=>`<button class="btn peq sec" onclick="crmVerComp(${x.id})" title="${esc(x.nombre||'comprobante')}">📎</button>`).join(' ')}${m.tipo==='pago'?` <button class="btn peq sec" onclick="crmAdjComp(${id},${m.id})" title="Adjuntar comprobante">＋📎</button>`:''}</td></tr>`}).join('')}</table></div>`
+    :'<p class="muted" style="margin-top:8px">Todavía no tiene compras a cuenta. Se cargan desde la Caja eligiendo "Cuenta corriente" como medio de pago.</p>'}</div>`}
+async function crmArchivo(f){if(!f)return null;
+  if(/^image\//.test(f.type)){const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=URL.createObjectURL(f)});
+    const sc=Math.min(1,1400/Math.max(img.width,img.height));const cv=document.createElement('canvas');cv.width=Math.round(img.width*sc);cv.height=Math.round(img.height*sc);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+    return {nombre:f.name,tipo:'image/jpeg',datos:cv.toDataURL('image/jpeg',0.72)}}
+  if(f.size>4e6)throw new Error('El PDF es muy pesado (máx. 4 MB)');
+  return {nombre:f.name,tipo:f.type||'application/pdf',datos:await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)})}}
+function crmPagoCC(id){const c=CRM.clis.find(x=>x.id===id);
+  modal(`<h3>💵 Registrar pago · ${esc(c?c.nombre:'')}</h3><div class="fila"><div><label>Importe</label><input id="ppM" type="number" step="any"></div><div><label>Fecha del pago</label><input id="ppF" type="date" value="${hoy()}"></div></div>
+  <div class="fila"><div><label>Medio</label><select id="ppP">${['Transferencia','Efectivo','Mercado Pago / QR','Cheque','Débito','Crédito','Otro'].map(m=>`<option>${m}</option>`).join('')}</select></div><div><label>N° de operación / referencia</label><input id="ppR"></div></div>
+  <label>Notas</label><input id="ppN" placeholder="ej: paga remitos 12 y 13">
+  <label>Ticket / comprobante (foto o PDF)</label><input id="ppA" type="file" accept="image/*,application/pdf">
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="bPP">💾 Guardar pago</button><button class="btn sec" onclick="crmFicha(${id})">Volver</button></div>`);
+  $('#bPP').onclick=async()=>{const m=+$('#ppM').value;if(!(m>0))return toast('Poné el importe');$('#bPP').disabled=true;
+    try{const comp=await crmArchivo(($('#ppA').files||[])[0]);
+      const r=await polyRPC('cc_registrar_pago',{p_cliente:id,p_monto:m,p_medio:$('#ppP').value,p_ref:$('#ppR').value||null,p_notas:$('#ppN').value||null,p_fecha:$('#ppF').value||null});
+      if(comp)await sbIns('cc_comprobantes',[Object.assign({mov_id:r.mov_id,cliente_id:id},comp)]);
+      toast('Pago guardado ✅ · saldo '+$$(r.saldo));crmFicha(id)}catch(e){toast('⚠️ '+e.message,5000);$('#bPP').disabled=false}}}
+function crmAdjComp(cli,mov){const i=document.createElement('input');i.type='file';i.accept='image/*,application/pdf';
+  i.onchange=async()=>{try{const comp=await crmArchivo(i.files[0]);if(!comp)return;await sbIns('cc_comprobantes',[Object.assign({mov_id:mov,cliente_id:cli},comp)]);toast('Comprobante adjuntado ✅');crmCargarCC(cli)}catch(e){toast('⚠️ '+e.message,5000)}};i.click()}
+async function crmVerComp(id){const w=window.open('','_blank');try{const [x]=await sb('cc_comprobantes?select=nombre,tipo,datos&id=eq.'+id);
+  if(/^image\//.test(x.tipo))w.document.write(`<title>${esc(x.nombre||'Comprobante')}</title><img src="${x.datos}" style="max-width:100%">`);
+  else{const b=await (await fetch(x.datos)).blob();w.location=URL.createObjectURL(b)}}catch(e){w.close();toast('⚠️ No se pudo abrir')}}
+async function crmRemito(vid){const w=window.open('','_blank');try{
+  const [[v],[cfg]]=await Promise.all([sb('ventas?select=*,ventas_items(*)&id=eq.'+vid),sb('config?select=valor&clave=eq.caja')]);const C=(cfg&&cfg.valor)||{};
+  const it=v.ventas_items||[];const kt=q=>String(Math.round(q*1000)/1000).replace('.',',');const cc=(v.pagos||[]).some(p=>p.medio==='Cuenta corriente');
+  const bu=it.reduce((a,i)=>a+(+i.bultos||0),0),kg=it.reduce((a,i)=>a+(+i.kg||0),0),un=it.filter(i=>i.unidad!=='kg').reduce((a,i)=>a+(+i.cantidad||0),0);
+  const nro='0001-'+String(v.remito_nro).padStart(8,'0');
+  const hoja=cp=>`<div class="hoja"><div class="cab"><div><div style="font-size:20px;font-weight:800">${esc(C.nombre_fantasia||'Poly Artesanal')}</div><div>${esc(C.razon_social||'')}</div><div>${esc(C.domicilio||'')}</div><div>${esc(C.cond_iva||'')}</div></div><div style="text-align:right"><div style="font-size:18px;font-weight:800">REMITO DE ENTREGA</div><div style="font-size:16px;font-weight:700">N° ${nro}</div><div>Fecha: ${new Date(v.created_at).toLocaleDateString('es-AR',{timeZone:TZ})}</div>${C.cuit?`<div>CUIT ${esc(C.cuit)}</div><div>IIBB ${esc(C.iibb||'')} · Inicio act. ${esc(C.inicio_actividades||'')}</div>`:''}<div style="font-size:11px;margin-top:4px">${cp}</div></div></div>
+    <div class="box"><b>Cliente:</b> ${esc(v.cliente_nombre||'')}${v.cliente_doc?' · CUIT '+esc(v.cliente_doc):''}<br><b>Entregar en:</b> ${esc(v.entrega_direccion||'—')}${v.entrega_notas?'<br><b>Observaciones:</b> '+esc(v.entrega_notas):''}<br><b>Condición:</b> ${cc?'Cuenta corriente':'Pagado'} · Venta #${v.id}</div>
+    <table><tr><th class="n">Cantidad</th><th>Unid.</th><th>Producto</th><th class="n">Bultos</th><th class="n">Kilos</th></tr>${it.map(i=>`<tr><td class="n">${i.unidad==='kg'?kt(i.cantidad):+i.cantidad}</td><td>${i.unidad==='kg'?'kg':'u'}</td><td>${esc(i.nombre)}</td><td class="n">${i.bultos?+i.bultos:''}</td><td class="n">${i.kg?kt(i.kg):''}</td></tr>`).join('')}
+    <tr><td class="n"><b>${un}</b></td><td>u</td><td><b>TOTALES</b></td><td class="n"><b>${bu}</b></td><td class="n"><b>${kt(kg)}</b></td></tr></table><div style="font-size:11px;margin-top:6px">Documento no válido como factura.</div>
+    <div class="firmas"><div>Firma de quien recibe</div><div>Aclaración</div><div>DNI</div><div>Fecha y hora</div></div></div>`;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Remito ${nro}</title><style>@page{size:A4;margin:12mm}body{font:12px/1.35 Arial,sans-serif;color:#000}.cab{display:flex;justify-content:space-between;border:1px solid #000;padding:8px}.box{border:1px solid #000;padding:6px 8px;margin-top:6px}table{border-collapse:collapse;width:100%;margin-top:6px}th,td{border:1px solid #000;padding:4px 6px;text-align:left}.n{text-align:right}.firmas{display:flex;gap:14px;margin-top:28px}.firmas div{flex:1;border-top:1px solid #000;padding-top:3px;text-align:center;font-size:11px}.corte{border-top:1px dashed #000;margin:10mm 0 8mm}.hoja{break-inside:avoid}</style></head><body>${hoja('ORIGINAL')}<div class="corte"></div>${hoja('DUPLICADO')}<script>setTimeout(()=>print(),300)<\/script></body></html>`);w.document.close()}catch(e){w.close();toast('⚠️ No se pudo abrir el remito')}}
 async function crmNota(id,tipo,detalle,silencio){tipo=tipo||$('#crmIT').value;detalle=detalle??$('#crmID').value.trim();if(!detalle)return toast('Escribí qué hablaron');
   const [x]=await sbIns('crm_interacciones',[{cliente_id:id,tipo,detalle,usuario:(window.POLY_USUARIO||{}).usuario||null}]);CRM.inter.unshift(x);if(silencio)return;toast('Agregado ✅');crmFicha(id)}
 async function crmProxima(id,hecha){const c=CRM.clis.find(x=>x.id===id);
