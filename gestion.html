@@ -859,8 +859,9 @@ async function solMayCargar(){try{
   const L=await sbGet('crm_clientes','tipo=neq.mayorista&proxima_accion=like.'+encodeURIComponent('Pidió cuenta MAYORISTA*')+'&order=created_at.desc');
   const nuevos=SOLMAY.vistos?L.filter(c=>!SOLMAY.vistos.has(c.id)):[];
   SOLMAY.lista=L;SOLMAY.vistos=new Set(L.map(c=>c.id));
-  if(nuevos.length){toast('🏪 Nuevo pedido de cuenta mayorista: '+nuevos.map(c=>c.razon_social||c.nombre).join(', '),8000);try{new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=').play()}catch(e){}}
+  if(nuevos.length){toast('🏪 Nuevo pedido de cuenta mayorista: '+nuevos.map(c=>c.razon_social||c.nombre).join(', '),8000);solMaySonido()}
   solMayPintar()}catch(e){console.warn('solMay',e)}}
+function solMaySonido(){try{const C=new (window.AudioContext||window.webkitAudioContext)();[0,.35,.7].forEach(t=>{const o=C.createOscillator(),g=C.createGain();o.frequency.value=880;g.gain.setValueAtTime(.3,C.currentTime+t);g.gain.exponentialRampToValueAtTime(.001,C.currentTime+t+.3);o.connect(g);g.connect(C.destination);o.start(C.currentTime+t);o.stop(C.currentTime+t+.3)})}catch(e){}}
 function solMayPintar(){const el=$('#solMay');if(!el)return;const L=SOLMAY.lista;
   el.innerHTML=L.length?`<div class="card" style="margin-bottom:12px;border:2px solid #1565C0;background:#eef4fc"><h3 style="margin-top:0">🏪 ${L.length} pedido${L.length>1?'s':''} de cuenta mayorista</h3>${L.map(c=>`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #d6e2f3"><div style="flex:1;min-width:200px"><b>${esc(c.razon_social||'(sin nombre de negocio)')}</b> · ${esc(c.nombre)}<div class="muted" style="font-size:12px">📱 ${esc(c.telefono||'sin teléfono')} · se registró ${fechaCorta(diaLocal(c.created_at))}</div></div>
     <button class="btn peq" onclick="solMayAprobar(${c.id})">✅ Aprobar mayorista</button>${crmWa(c.telefono)?`<a class="btn sec peq" target="_blank" href="https://wa.me/${crmWa(c.telefono)}">💬 WhatsApp</a>`:''}<button class="btn sec peq" onclick="solMayRechazar(${c.id})">✖ No es mayorista</button></div>`).join('')}</div>`:''}
