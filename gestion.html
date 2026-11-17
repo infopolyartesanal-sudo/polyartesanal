@@ -412,6 +412,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <a href="#papelera">🧻 Papelera y limpieza</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
+  <a href="#mantenimiento">🔧 Mantenimiento</a>
   <a href="#estadisticas">📊 Estadísticas</a>
   <a href="#mayoristas" data-grupo="mayoristas comunidad campanias contenidos instagram cuentas">⭐ Comunidad</a>
   <a href="#rrhh">👥 RRHH</a>
@@ -827,7 +828,7 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,cuentas:vCuentas,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,mantenimiento:vMantenimiento,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,cuentas:vCuentas,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual||(a.dataset.grupo||'').split(' ').includes(vistaActual)));
@@ -880,6 +881,65 @@ async function solMayRechazar(id){const c=SOLMAY.lista.find(x=>x.id===id);if(!c)
     try{await sbIns('crm_interacciones',[{cliente_id:id,tipo:'nota',detalle:'✖ Pedido de cuenta mayorista no aprobado'}])}catch(e){}
     toast('Listo, queda como cliente común');CRM.cargado=false;await solMayCargar()}catch(e){toast('⚠️ '+e.message,5000)}}
 setTimeout(solMayCargar,1500);setInterval(solMayCargar,60000);
+// ================= MANTENIMIENTO =================
+const MANT={eq:'',anio:null};
+const MANT_EQ=['Aire acondicionado','Heladera','Cámara de frío','Freezer','Horno','Amasadora','Sobadora','Batidora','Laminadora','Fermentadora','Cafetera','Balanza','Caja / computadora','Electricidad','Plomería / gas','Local / edificio','Otro'];
+const esMant=f=>f.categoria==='MANTENIMIENTO';
+function mantItem(f,k){const i=(f.items||[]).find(x=>x.tipo===k);return i?+i.total||0:0}
+function vMantenimiento(){
+  const H=hoy(),anio=MANT.anio||H.slice(0,4),[m1,m2]=mesRango(0);
+  const todas=D.facturas.filter(esMant);
+  const anios=[...new Set(todas.map(f=>(f.fecha||'').slice(0,4)).filter(Boolean).concat([H.slice(0,4)]))].sort().reverse();
+  const delAnio=todas.filter(f=>(f.fecha||'').startsWith(anio));
+  const L=delAnio.filter(f=>!MANT.eq||(f.equipo||'Sin equipo')===MANT.eq);
+  const tMes=todas.filter(f=>f.fecha>=m1&&f.fecha<=m2).reduce((a,f)=>a+(+f.total||0),0);
+  const tAnio=delAnio.reduce((a,f)=>a+(+f.total||0),0);
+  const pend=todas.filter(f=>f.estado!=='pagada'),tPend=pend.reduce((a,f)=>a+(+f.total||0),0);
+  const por={};delAnio.forEach(f=>{const k=f.equipo||'Sin equipo';por[k]=por[k]||{n:0,t:0,u:''};por[k].n++;por[k].t+=+f.total||0;if((f.fecha||'')>por[k].u)por[k].u=f.fecha});
+  const porL=Object.entries(por).sort((a,b)=>b[1].t-a[1].t);window._mantEq=porL.map(x=>x[0]);
+  $('#app').innerHTML=`<h2>🔧 Mantenimiento</h2>
+  <p class="muted">Arreglos y service de equipos y del local: técnico, mano de obra y materiales. Se suman a los gastos en Finanzas y no tocan el stock.</p>
+  <div class="acciones"><button class="btn" onclick="mantForm()">➕ Cargar arreglo</button>
+  <select style="max-width:110px" onchange="MANT.anio=this.value;vMantenimiento()">${anios.map(a=>`<option ${a===anio?'selected':''}>${a}</option>`).join('')}</select>
+  ${MANT.eq?`<button class="btn sec" onclick="MANT.eq='';vMantenimiento()">✕ Ver todos los equipos</button>`:''}</div>
+  <div class="grid g4">
+    <div class="card kpi"><div class="lbl">Este mes</div><div class="val">${$$(tMes)}</div></div>
+    <div class="card kpi"><div class="lbl">En ${anio}</div><div class="val">${$$(tAnio)}</div><div class="sub muted">${delAnio.length} arreglo${delAnio.length===1?'':'s'}</div></div>
+    <div class="card kpi"><div class="lbl">Pendiente de pago</div><div class="val" style="color:${tPend?'var(--rojo)':'var(--verde)'}">${$$(tPend)}</div><div class="sub muted">${pend.length} factura${pend.length===1?'':'s'}</div></div>
+    <div class="card kpi"><div class="lbl">Equipo que más gastó</div><div class="val" style="font-size:18px">${porL.length?esc(porL[0][0]):'—'}</div><div class="sub muted">${porL.length?$$(porL[0][1].t)+' en '+anio:''}</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:12px;align-items:start">
+    <div class="card"><h3>Por equipo · ${anio}</h3>${porL.length?`<table><tr><th>Equipo</th><th class="num">Arreglos</th><th class="num">Total</th><th>Último</th></tr>${porL.map(([k,v],i)=>`<tr class="click" onclick="MANT.eq=window._mantEq[${i}];vMantenimiento()"><td><b>${esc(k)}</b></td><td class="num">${v.n}</td><td class="num">${$$(v.t)}</td><td>${fechaCorta(v.u)}</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no cargaste arreglos este año.</p>'}</div>
+    <div class="card scroll"><h3>Arreglos${MANT.eq?' · '+esc(MANT.eq):''}</h3>${L.length?`<table><tr><th>Fecha</th><th>Equipo / qué se hizo</th><th>Técnico</th><th class="num">Mano de obra</th><th class="num">Materiales</th><th class="num">Total</th><th></th></tr>
+    ${L.map(f=>`<tr class="click" onclick="mantForm('${f.id}')"><td>${fechaCorta(f.fecha)}</td><td><b>${esc(f.equipo||'Sin equipo')}</b>${f.detalle?`<div class="muted" style="font-size:12px">${esc(f.detalle)}</div>`:''}</td><td>${esc(f.proveedor||'')}${f.numero?`<div class="muted" style="font-size:11px">${esc(f.tipo||'')} ${esc(f.numero)}</div>`:''}</td><td class="num">${$$(mantItem(f,'mano_obra'))}</td><td class="num">${$$(mantItem(f,'materiales'))}</td><td class="num"><b>${$$(f.total)}</b></td><td><span class="chip ${f.estado==='pagada'?'ok':'med'}">${f.estado==='pagada'?'pagada':'pendiente'}</span></td></tr>`).join('')}</table>`:'<p class="muted">No hay arreglos para mostrar.</p>'}</div>
+  </div>`;
+}
+function mantForm(id){const f=id?D.facturas.find(x=>x.id===id):null;const v=(k,d='')=>f&&f[k]!=null?f[k]:d;
+  const provs=[...new Set(D.proveedores.map(p=>p.nombre).concat(D.facturas.filter(esMant).map(x=>x.proveedor)).filter(Boolean))].sort();
+  modal(`<h2>${f?'Editar':'Cargar'} arreglo</h2>
+  <datalist id="dlEq">${MANT_EQ.concat(D.facturas.filter(esMant).map(x=>x.equipo)).filter((x,i,a)=>x&&a.indexOf(x)===i).map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+  <datalist id="dlTec">${provs.map(p=>`<option value="${esc(p)}">`).join('')}</datalist>
+  <div class="fila"><div><label>Fecha</label><input id="mF" type="date" value="${v('fecha',hoy())}"></div><div><label>Equipo o lugar</label><input id="mE" list="dlEq" placeholder="ej: Aire acondicionado" value="${esc(v('equipo'))}"></div></div>
+  <label>Qué se hizo</label><input id="mD" placeholder="ej: carga de gas y cambio de capacitor" value="${esc(v('detalle'))}">
+  <div class="fila"><div><label>Técnico / proveedor</label><input id="mT" list="dlTec" placeholder="ej: Refrigerista Juan" value="${esc(v('proveedor'))}"></div>
+    <div><label>Comprobante</label><div class="fila" style="gap:6px"><select id="mTi" style="max-width:120px">${['A','B','C','X','Sin factura'].map(t=>`<option ${v('tipo','Sin factura')===t?'selected':''}>${t}</option>`).join('')}</select><input id="mN" placeholder="N° (opcional)" value="${esc(v('numero'))}"></div></div></div>
+  <div class="fila"><div><label>Mano de obra $</label><input id="mMo" type="number" step="any" value="${f?mantItem(f,'mano_obra')||'':''}" oninput="mantTot()"></div><div><label>Materiales $</label><input id="mMa" type="number" step="any" value="${f?mantItem(f,'materiales')||'':''}" oninput="mantTot()"></div></div>
+  <p style="margin:6px 0">Total: <b id="mTot">${$$(f?f.total:0)}</b></p>
+  <label>Pago</label><select id="mP"><option value="pagada" ${v('estado','pagada')==='pagada'?'selected':''}>Ya está pagado</option><option value="pendiente" ${v('estado')==='pendiente'?'selected':''}>Falta pagar</option></select>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="bMG">💾 Guardar</button>${f?`<button class="btn rojo" onclick="confirmar('¿Borrar este arreglo?',()=>mantBorrar('${f.id}'))">Borrar</button>`:''}</div>`);
+  $('#bMG').onclick=()=>mantGuardar(id)}
+function mantTot(){$('#mTot').textContent=$$((+$('#mMo').value||0)+(+$('#mMa').value||0))}
+async function mantGuardar(id){
+  const mo=+$('#mMo').value||0,ma=+$('#mMa').value||0,tot=mo+ma,eq=$('#mE').value.trim(),tec=$('#mT').value.trim();
+  if(!eq)return toast('Poné qué equipo o lugar se arregló');if(!tec)return toast('Poné quién hizo el arreglo');if(!tot)return toast('Poné el monto de mano de obra o materiales');
+  const est=$('#mP').value;
+  const row={fecha:$('#mF').value||hoy(),equipo:eq,detalle:$('#mD').value.trim()||null,proveedor:tec,tipo:$('#mTi').value,numero:$('#mN').value.trim()||null,
+    subtotal:tot,impuestos:0,total:tot,categoria:'MANTENIMIENTO',estado:est,condicion_pago:est==='pagada'?'Contado':'Cuenta corriente',impacta_stock:false,
+    items:[{tipo:'mano_obra',descripcion:'Mano de obra',cantidad:1,total:mo},{tipo:'materiales',descripcion:'Materiales',cantidad:1,total:ma}].filter(i=>i.total)};
+  try{if(id){const [x]=await sbUpd('facturas','id=eq.'+id,row);Object.assign(D.facturas.find(f=>f.id===id),x)}
+    else{const [x]=await sbIns('facturas',[row]);D.facturas.unshift(x);D.facturas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))}
+    cerrarModal();toast('Arreglo guardado ✅');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000)}}
+async function mantBorrar(id){try{await sbDel('facturas','id=eq.'+id);D.facturas=D.facturas.filter(f=>f.id!==id);toast('Borrado');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000)}}
 // ================= INICIO =================
 function ventasDia(ymd){return D.cierres.filter(c=>diaLocal(c.fecha)===ymd).reduce((a,c)=>a+(+c.total||0),0)}
 function ventasRango(a,b){return D.cierres.filter(c=>{const d=diaLocal(c.fecha);return d>=a&&d<=b}).reduce((s,c)=>s+(+c.total||0),0)}
@@ -904,7 +964,7 @@ function insights(){
   D.gastosFijos.filter(g=>g.activo!==false&&g.proximo_vencimiento).forEach(g=>{const dias=Math.round((new Date(g.proximo_vencimiento+'T12:00:00')-new Date(H+'T12:00:00'))/864e5);
     if(dias<=(+g.dias_aviso||3))out.push({r:dias<0,t:(dias<0?'Vencido: ':'Vence pronto: ')+g.nombre,d:`${$$(g.monto)} · ${dias<0?'venció hace '+(-dias)+' días':dias===0?'vence hoy':'vence en '+dias+' días'}`,a:'#finanzas',al:'Pagar'})});
   const pend=D.facturas.filter(f=>f.estado==='pendiente');if(pend.length)out.push({t:`${pend.length} facturas pendientes de pago`,d:'Total '+$$(pend.reduce((a,f)=>a+(+f.total||0),0)),a:'#facturas',al:'Ver'});
-  const desde=sumaDias(H,-60),porProv={};let tot=0;D.facturas.filter(f=>f.fecha&&f.fecha>=desde).forEach(f=>{porProv[f.proveedor]=(porProv[f.proveedor]||0)+(+f.total||0);tot+=(+f.total||0)});
+  const desde=sumaDias(H,-60),porProv={};let tot=0;D.facturas.filter(f=>f.fecha&&f.fecha>=desde&&f.categoria!=='MANTENIMIENTO').forEach(f=>{porProv[f.proveedor]=(porProv[f.proveedor]||0)+(+f.total||0);tot+=(+f.total||0)});
   Object.entries(porProv).forEach(([p,v])=>{if(tot>0&&v/tot>.5)out.push({t:'Dependencia alta de '+p,d:`${fnum(v/tot*100,0)}% de tus compras de los últimos 60 días. Pedí cotización a otro proveedor para comparar.`,a:'#compras',al:'Proveedores'})});
   const caros=D.recetas.filter(r=>{const c=cmv(r);return c!=null&&c>40}).sort((a,b)=>cmv(b)-cmv(a));
   if(caros.length)out.push({t:`${caros.length} productos con costo de mercadería alto (más del 40%)`,d:caros.slice(0,4).map(r=>r.nombre+' '+fnum(cmv(r),0)+'%').join(' · '),a:'#recetas',al:'Revisar'});
@@ -1106,7 +1166,7 @@ function formFactura(j){
   <datalist id="dlIns">${D.insumos.map(i=>`<option value="${esc(i.nombre)}">${esc(i.unidad)}</option>`).join('')}</datalist>
   <div class="fila"><div><label>Proveedor</label><input id="fP" list="dlProv" value="${esc(j.proveedor||'')}"></div><div><label>Número</label><input id="fN" value="${esc(j.numero||'')}"></div><div style="max-width:90px"><label>Tipo</label><input id="fT" value="${esc(j.tipo||'')}"></div></div>
   <div class="fila"><div><label>Fecha</label><input id="fF" type="date" value="${esc(j.fecha||hoy())}"></div><div><label>Condición</label><select id="fC"><option>Contado</option><option ${/corr|cta/i.test(j.condicion_pago||'')?'selected':''}>Cuenta corriente</option></select></div>
-  <div><label>Categoría</label><select id="fCat"><option>ALIMENTOS</option><option>DESCARTABLES</option><option>LIMPIEZA</option><option>BEBIDAS</option><option>SERVICIOS</option><option>OTROS</option></select></div></div>
+  <div><label>Categoría</label><select id="fCat"><option>ALIMENTOS</option><option>DESCARTABLES</option><option>LIMPIEZA</option><option>BEBIDAS</option><option>SERVICIOS</option><option>MANTENIMIENTO</option><option>OTROS</option></select></div></div>
   <label>Ítems <span class="muted">· "Insumo" es a qué producto de tu inventario corresponde. Si no existe, dejalo con el nombre nuevo y se crea.</span></label>
   <div class="scroll"><table id="tFI"><tr><th>Texto en la factura</th><th>Insumo</th><th>Bultos</th><th>× contenido</th><th>Unidad</th><th>Total línea</th><th>$/unidad</th><th></th></tr>
   ${items.map(filaFI).join('')}</table></div>
