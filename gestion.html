@@ -852,6 +852,33 @@ function porCanal(cierres){const o={};cierres.forEach(c=>{const fp=c.formas_pago
 function comisiones(){return D.config.comisiones||{}}
 function comisionDe(canal,monto){return monto*((+comisiones()[canal]||0)/100)}
 
+// ================= SOLICITUDES DE CUENTA MAYORISTA (web) =================
+const SOLMAY={lista:[],vistos:null};
+const esSolMay=c=>c&&c.tipo!=='mayorista'&&String(c.proxima_accion||'').startsWith('Pidió cuenta MAYORISTA');
+async function solMayCargar(){try{
+  const L=await sbGet('crm_clientes','tipo=neq.mayorista&proxima_accion=like.'+encodeURIComponent('Pidió cuenta MAYORISTA*')+'&order=created_at.desc');
+  const nuevos=SOLMAY.vistos?L.filter(c=>!SOLMAY.vistos.has(c.id)):[];
+  SOLMAY.lista=L;SOLMAY.vistos=new Set(L.map(c=>c.id));
+  if(nuevos.length){toast('🏪 Nuevo pedido de cuenta mayorista: '+nuevos.map(c=>c.razon_social||c.nombre).join(', '),8000);try{new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=').play()}catch(e){}}
+  solMayPintar()}catch(e){console.warn('solMay',e)}}
+function solMayPintar(){const el=$('#solMay');if(!el)return;const L=SOLMAY.lista;
+  el.innerHTML=L.length?`<div class="card" style="margin-bottom:12px;border:2px solid #1565C0;background:#eef4fc"><h3 style="margin-top:0">🏪 ${L.length} pedido${L.length>1?'s':''} de cuenta mayorista</h3>${L.map(c=>`<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #d6e2f3"><div style="flex:1;min-width:200px"><b>${esc(c.razon_social||'(sin nombre de negocio)')}</b> · ${esc(c.nombre)}<div class="muted" style="font-size:12px">📱 ${esc(c.telefono||'sin teléfono')} · se registró ${fechaCorta(diaLocal(c.created_at))}</div></div>
+    <button class="btn peq" onclick="solMayAprobar(${c.id})">✅ Aprobar mayorista</button>${crmWa(c.telefono)?`<a class="btn sec peq" target="_blank" href="https://wa.me/${crmWa(c.telefono)}">💬 WhatsApp</a>`:''}<button class="btn sec peq" onclick="solMayRechazar(${c.id})">✖ No es mayorista</button></div>`).join('')}</div>`:''}
+async function solMayAprobar(id){const c=SOLMAY.lista.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`¿Habilitar a ${c.razon_social||c.nombre} como MAYORISTA? Va a ver precios mayoristas y sus pedidos van a cuenta corriente.`))return;
+  try{const patch={tipo:'mayorista',proxima_accion:null,proxima_fecha:null,updated_at:new Date().toISOString()};
+    if(c.razon_social){patch.nombre=c.razon_social;patch.contacto=c.nombre}
+    await sbUpd('crm_clientes','id=eq.'+id,patch);
+    try{await sbIns('crm_interacciones',[{cliente_id:id,tipo:'nota',detalle:'✔ Cuenta mayorista aprobada (pedido por la web)'}])}catch(e){}
+    toast('Aprobado ✅ Ya ve precios mayoristas');CRM.cargado=false;
+    const w=crmWa(c.telefono);if(w)window.open('https://wa.me/'+w+'?text='+encodeURIComponent(`¡Hola ${String(c.nombre).split(' ')[0]}! 🥐 Te habilitamos la cuenta mayorista de Poly Artesanal. Ya podés entrar a la página de pedidos y ver los precios mayoristas. ¡Gracias!`),'_blank');
+    await solMayCargar()}catch(e){toast('⚠️ '+e.message,5000)}}
+async function solMayRechazar(id){const c=SOLMAY.lista.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`¿Dejar a ${c.nombre} como cliente común (sin precios mayoristas)?`))return;
+  try{await sbUpd('crm_clientes','id=eq.'+id,{proxima_accion:null,proxima_fecha:null,updated_at:new Date().toISOString()});
+    try{await sbIns('crm_interacciones',[{cliente_id:id,tipo:'nota',detalle:'✖ Pedido de cuenta mayorista no aprobado'}])}catch(e){}
+    toast('Listo, queda como cliente común');CRM.cargado=false;await solMayCargar()}catch(e){toast('⚠️ '+e.message,5000)}}
+setTimeout(solMayCargar,1500);setInterval(solMayCargar,60000);
 // ================= INICIO =================
 function ventasDia(ymd){return D.cierres.filter(c=>diaLocal(c.fecha)===ymd).reduce((a,c)=>a+(+c.total||0),0)}
 function ventasRango(a,b){return D.cierres.filter(c=>{const d=diaLocal(c.fecha);return d>=a&&d<=b}).reduce((s,c)=>s+(+c.total||0),0)}
@@ -865,7 +892,7 @@ function difCaja(c){return c.total_articulos==null?null:Math.round((+c.total||0)
 function turnoTxt(c){return (c.turno||'')}
 function insights(){
   const out=[];const H=hoy();
-  if(CRM.cargado){crmCalcular();const tar=CRM.clis.filter(c=>c._estado==='tarea'),con=CRM.clis.filter(c=>c._estado==='contactar'&&c.tipo==='mayorista');
+  if(CRM.cargado){crmCalcular();const tar=CRM.clis.filter(c=>c._estado==='tarea'&&!esSolMay(c)),con=CRM.clis.filter(c=>c._estado==='contactar'&&c.tipo==='mayorista');
     if(tar.length)out.push({r:1,t:`${tar.length} tarea${tar.length>1?'s':''} con clientes para hoy`,d:tar.slice(0,4).map(c=>c.nombre+': '+(c.proxima_accion||'')).join(' · '),a:'#mayoristas',al:'Ver'});
     const pub=contHoy();if(pub.length)out.push({t:`Hoy toca publicar: ${pub.length} contenido${pub.length>1?'s':''}`,d:pub.slice(0,4).map(x=>(CONT_CANAL[x.canal]||[x.canal])[0]+' '+(x.titulo||'')).join(' · '),a:'#contenidos',al:'Ver'});
     const cum=CRM.clis.filter(c=>c.activo!==false&&c.cumpleanos&&comDiasCumple(c.cumpleanos)===0);if(cum.length)out.push({t:`🎂 Hoy cumple${cum.length>1?'n':''} años: ${cum.slice(0,4).map(c=>c.nombre).join(', ')}`,d:'Mandale un saludo con su regalo de cumpleaños.',a:'#comunidad',al:'Saludar'});
@@ -884,7 +911,7 @@ function insights(){
   return out;
 }
 function vInicio(){
-  setTimeout(ccAlertasInicio,0);
+  setTimeout(ccAlertasInicio,0);setTimeout(solMayPintar,0);
   if(!CRM.cargado&&!CRM._cargando){CRM._cargando=true;cargarCRM().then(()=>{if(!location.hash||location.hash.startsWith('#inicio'))vInicio()})}
   const H=hoy(),vh=ventasDia(H),vay=ventasDia(sumaDias(H,-1)),vsp=ventasDia(sumaDias(H,-7));
   const [m1,m2]=mesRango(0),[p1,p2]=mesRango(-1);const vm=ventasRango(m1,m2);
@@ -899,6 +926,7 @@ function vInicio(){
   <div class="acciones"><button class="btn" onclick="location.hash='#facturas';setTimeout(nuevaFactura,50)">🧾 Cargar factura</button>
   <button class="btn sec" onclick="location.hash='#finanzas';setTimeout(nuevoCierre,50)">💵 Cargar venta del día</button>
   <button class="btn sec" onclick="location.hash='#recetas';setTimeout(()=>editarReceta(),50)">➕ Nueva receta</button></div>
+  <div id="solMay"></div>
   <div class="grid g4">
     <div class="card kpi"><div class="lbl">Ventas de hoy</div><div class="val">${$$(vh)}</div><div class="sub ${vh>=vay?'up':'down'}">${vay?pct((vh-vay)/vay*100)+' vs ayer':'ayer sin datos'}</div>${(()=>{const pc=porCanal(D.cierres.filter(c=>diaLocal(c.fecha)===H));const ef=pc['Efectivo']||0;return vh?`<div class="sub muted">💵 ${$$(ef)} efectivo · 📱 ${$$(vh-ef)} online</div>`:''})()}</div>
     <div class="card kpi"><div class="lbl">Mismo día semana pasada</div><div class="val">${$$(vsp)}</div><div class="sub muted">${fechaCorta(sumaDias(H,-7))}</div></div>
