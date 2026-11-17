@@ -259,7 +259,7 @@
   // Regla de leudado: con 24° o más se avisa a las 7:00; con 10° o menos, a las 14:00; en el medio, proporcional.
   var REGLA = { calor: 24, horaCalor: 7, frio: 10, horaFrio: 14 };
   var pagina = (location.pathname.split('/').pop() || 'index.html').replace('.html', '');
-  var CON_AVISO = { asistente_panaderia: 1, asistente_madrugada: 1, gestion: 1, central: 1, index: 1 };
+  var CON_AVISO = { asistente_cocina: 1 };
 
   function horaLeudado(t) {
     if (t >= REGLA.calor) return REGLA.horaCalor;
