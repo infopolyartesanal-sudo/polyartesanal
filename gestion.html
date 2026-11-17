@@ -882,11 +882,31 @@ async function solMayRechazar(id){const c=SOLMAY.lista.find(x=>x.id===id);if(!c)
     toast('Listo, queda como cliente común');CRM.cargado=false;await solMayCargar()}catch(e){toast('⚠️ '+e.message,5000)}}
 setTimeout(solMayCargar,1500);setInterval(solMayCargar,60000);
 // ================= MANTENIMIENTO =================
-const MANT={eq:'',anio:null};
+const MANT={eq:'',anio:null,arch:null,nuevo:null};
+async function mantCargarArch(){try{const L=await sb('facturas_archivos?select=id,factura_id,nombre,tipo,bytes&order=id');MANT.arch={};(L||[]).forEach(a=>(MANT.arch[a.factura_id]=MANT.arch[a.factura_id]||[]).push(a))}catch(e){console.warn(e)}}
+// Lee la foto o PDF: las fotos se achican a JPG (máx 1800 px) para que pesen poco
+function mantLeerArchivo(file){return new Promise((ok,mal)=>{
+  if(!file)return ok(null);const esPdf=/pdf/i.test(file.type)||/\.pdf$/i.test(file.name);
+  if(!esPdf&&!/^image\//.test(file.type))return mal(new Error('Subí una foto o un PDF'));
+  if(esPdf&&file.size>4e6)return mal(new Error("El PDF pesa más de 4 MB: sacale una foto mejor"));
+  const rd=new FileReader();rd.onerror=()=>mal(new Error('No pude leer el archivo'));
+  rd.onload=()=>{const url=rd.result;
+    if(esPdf)return ok({nombre:file.name,tipo:'application/pdf',datos:url.split(',')[1],bytes:file.size});
+    const img=new Image();img.onerror=()=>mal(new Error('No pude abrir la foto'));
+    img.onload=()=>{const k=Math.min(1,1800/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);const d=c.toDataURL('image/jpeg',.8).split(',')[1];
+      ok({nombre:(file.name||'factura').replace(/\.[^.]+$/,'')+'.jpg',tipo:'image/jpeg',datos:d,bytes:Math.round(d.length*.75)})};img.src=url};
+  rd.readAsDataURL(file)})}
+async function verArchivo(id){const w=window.open('','_blank');try{
+  const [a]=await sb('facturas_archivos?select=nombre,tipo,datos&id=eq.'+id);if(!a)throw new Error('No encontré el archivo');
+  const b=atob(a.datos),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([u],{type:a.tipo||'application/octet-stream'}));if(w)w.location=url;else location.href=url}catch(e){if(w)w.close();toast('⚠️ '+e.message,5000)}}
+async function borrarArchivo(id,fid){try{await sbDel('facturas_archivos','id=eq.'+id);if(MANT.arch&&MANT.arch[fid])MANT.arch[fid]=MANT.arch[fid].filter(a=>a.id!==id);toast('Archivo quitado');mantForm(fid)}catch(e){toast('⚠️ '+e.message,5000)}}
 const MANT_EQ=['Aire acondicionado','Heladera','Cámara de frío','Freezer','Horno','Amasadora','Sobadora','Batidora','Laminadora','Fermentadora','Cafetera','Balanza','Caja / computadora','Electricidad','Plomería / gas','Local / edificio','Otro'];
 const esMant=f=>f.categoria==='MANTENIMIENTO';
 function mantItem(f,k){const i=(f.items||[]).find(x=>x.tipo===k);return i?+i.total||0:0}
 function vMantenimiento(){
+  if(!MANT.arch){MANT.arch={};mantCargarArch().then(()=>{if(location.hash.startsWith('#mantenimiento'))vMantenimiento()})}
   const H=hoy(),anio=MANT.anio||H.slice(0,4),[m1,m2]=mesRango(0);
   const todas=D.facturas.filter(esMant);
   const anios=[...new Set(todas.map(f=>(f.fecha||'').slice(0,4)).filter(Boolean).concat([H.slice(0,4)]))].sort().reverse();
@@ -911,7 +931,7 @@ function vMantenimiento(){
   <div class="grid g2" style="margin-top:12px;align-items:start">
     <div class="card"><h3>Por equipo · ${anio}</h3>${porL.length?`<table><tr><th>Equipo</th><th class="num">Arreglos</th><th class="num">Total</th><th>Último</th></tr>${porL.map(([k,v],i)=>`<tr class="click" onclick="MANT.eq=window._mantEq[${i}];vMantenimiento()"><td><b>${esc(k)}</b></td><td class="num">${v.n}</td><td class="num">${$$(v.t)}</td><td>${fechaCorta(v.u)}</td></tr>`).join('')}</table>`:'<p class="muted">Todavía no cargaste arreglos este año.</p>'}</div>
     <div class="card scroll"><h3>Arreglos${MANT.eq?' · '+esc(MANT.eq):''}</h3>${L.length?`<table><tr><th>Fecha</th><th>Equipo / qué se hizo</th><th>Técnico</th><th class="num">Mano de obra</th><th class="num">Materiales</th><th class="num">Total</th><th></th></tr>
-    ${L.map(f=>`<tr class="click" onclick="mantForm('${f.id}')"><td>${fechaCorta(f.fecha)}</td><td><b>${esc(f.equipo||'Sin equipo')}</b>${f.detalle?`<div class="muted" style="font-size:12px">${esc(f.detalle)}</div>`:''}</td><td>${esc(f.proveedor||'')}${f.numero?`<div class="muted" style="font-size:11px">${esc(f.tipo||'')} ${esc(f.numero)}</div>`:''}</td><td class="num">${$$(mantItem(f,'mano_obra'))}</td><td class="num">${$$(mantItem(f,'materiales'))}</td><td class="num"><b>${$$(f.total)}</b></td><td><span class="chip ${f.estado==='pagada'?'ok':'med'}">${f.estado==='pagada'?'pagada':'pendiente'}</span></td></tr>`).join('')}</table>`:'<p class="muted">No hay arreglos para mostrar.</p>'}</div>
+    ${L.map(f=>`<tr class="click" onclick="mantForm('${f.id}')"><td>${fechaCorta(f.fecha)}</td><td><b>${esc(f.equipo||'Sin equipo')}</b>${f.detalle?`<div class="muted" style="font-size:12px">${esc(f.detalle)}</div>`:''}</td><td>${esc(f.proveedor||'')}${f.numero?`<div class="muted" style="font-size:11px">${esc(f.tipo||'')} ${esc(f.numero)}</div>`:''}</td><td class="num">${$$(mantItem(f,'mano_obra'))}</td><td class="num">${$$(mantItem(f,'materiales'))}</td><td class="num"><b>${$$(f.total)}</b></td><td>${(MANT.arch&&MANT.arch[f.id]||[]).length?`<button class="btn sec peq" title="Ver factura" onclick="event.stopPropagation();verArchivo(${MANT.arch[f.id][0].id})">📎</button> `:''}<span class="chip ${f.estado==='pagada'?'ok':'med'}">${f.estado==='pagada'?'pagada':'pendiente'}</span></td></tr>`).join('')}</table>`:'<p class="muted">No hay arreglos para mostrar.</p>'}</div>
   </div>`;
 }
 function mantForm(id){const f=id?D.facturas.find(x=>x.id===id):null;const v=(k,d='')=>f&&f[k]!=null?f[k]:d;
@@ -924,6 +944,9 @@ function mantForm(id){const f=id?D.facturas.find(x=>x.id===id):null;const v=(k,d
   <div class="fila"><div><label>Técnico / proveedor</label><input id="mT" list="dlTec" placeholder="ej: Refrigerista Juan" value="${esc(v('proveedor'))}"></div>
     <div><label>Comprobante</label><div class="fila" style="gap:6px"><select id="mTi" style="max-width:120px">${['A','B','C','X','Sin factura'].map(t=>`<option ${v('tipo','Sin factura')===t?'selected':''}>${t}</option>`).join('')}</select><input id="mN" placeholder="N° (opcional)" value="${esc(v('numero'))}"></div></div></div>
   <div class="fila"><div><label>Mano de obra $</label><input id="mMo" type="number" step="any" value="${f?mantItem(f,'mano_obra')||'':''}" oninput="mantTot()"></div><div><label>Materiales $</label><input id="mMa" type="number" step="any" value="${f?mantItem(f,'materiales')||'':''}" oninput="mantTot()"></div></div>
+  <label>Factura (foto o PDF)</label>
+  ${f&&MANT.arch&&(MANT.arch[f.id]||[]).length?`<div style="margin:4px 0 6px">${MANT.arch[f.id].map(a=>`<span class="chip neu" style="margin-right:6px">📎 ${esc(a.nombre||'factura')} <a href="#" onclick="event.preventDefault();verArchivo(${a.id})">Ver</a> · <a href="#" style="color:var(--rojo)" onclick="event.preventDefault();confirmar('¿Quitar este archivo?',()=>borrarArchivo(${a.id},'${f.id}'))">Quitar</a></span>`).join('')}</div>`:''}
+  <input id="mA" type="file" accept="image/*,application/pdf"><p class="muted" style="margin:2px 0 0;font-size:12px">Podés sacarle una foto con el celular o subir el PDF que te mandó.</p>
   <p style="margin:6px 0">Total: <b id="mTot">${$$(f?f.total:0)}</b></p>
   <label>Pago</label><select id="mP"><option value="pagada" ${v('estado','pagada')==='pagada'?'selected':''}>Ya está pagado</option><option value="pendiente" ${v('estado')==='pendiente'?'selected':''}>Falta pagar</option></select>
   <div class="acciones" style="margin-top:12px"><button class="btn" id="bMG">💾 Guardar</button>${f?`<button class="btn rojo" onclick="confirmar('¿Borrar este arreglo?',()=>mantBorrar('${f.id}'))">Borrar</button>`:''}</div>`);
@@ -932,13 +955,17 @@ function mantTot(){$('#mTot').textContent=$$((+$('#mMo').value||0)+(+$('#mMa').v
 async function mantGuardar(id){
   const mo=+$('#mMo').value||0,ma=+$('#mMa').value||0,tot=mo+ma,eq=$('#mE').value.trim(),tec=$('#mT').value.trim();
   if(!eq)return toast('Poné qué equipo o lugar se arregló');if(!tec)return toast('Poné quién hizo el arreglo');if(!tot)return toast('Poné el monto de mano de obra o materiales');
-  const est=$('#mP').value;
+  const est=$('#mP').value;let arch=null;
+  try{arch=await mantLeerArchivo(($('#mA').files||[])[0])}catch(e){return toast('⚠️ '+e.message,5000)}
+  $('#bMG').disabled=true;$('#bMG').textContent='Guardando…';
   const row={fecha:$('#mF').value||hoy(),equipo:eq,detalle:$('#mD').value.trim()||null,proveedor:tec,tipo:$('#mTi').value,numero:$('#mN').value.trim()||null,
     subtotal:tot,impuestos:0,total:tot,categoria:'MANTENIMIENTO',estado:est,condicion_pago:est==='pagada'?'Contado':'Cuenta corriente',impacta_stock:false,
     items:[{tipo:'mano_obra',descripcion:'Mano de obra',cantidad:1,total:mo},{tipo:'materiales',descripcion:'Materiales',cantidad:1,total:ma}].filter(i=>i.total)};
-  try{if(id){const [x]=await sbUpd('facturas','id=eq.'+id,row);Object.assign(D.facturas.find(f=>f.id===id),x)}
-    else{const [x]=await sbIns('facturas',[row]);D.facturas.unshift(x);D.facturas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))}
-    cerrarModal();toast('Arreglo guardado ✅');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000)}}
+  try{let fid=id;if(id){const [x]=await sbUpd('facturas','id=eq.'+id,row);Object.assign(D.facturas.find(f=>f.id===id),x)}
+    else{const [x]=await sbIns('facturas',[row]);fid=x.id;D.facturas.unshift(x);D.facturas.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))}
+    if(arch){try{const [a]=await sbIns('facturas_archivos',[{factura_id:fid,nombre:arch.nombre,tipo:arch.tipo,bytes:arch.bytes,datos:arch.datos}]);MANT.arch=MANT.arch||{};(MANT.arch[fid]=MANT.arch[fid]||[]).push({id:a.id,factura_id:fid,nombre:a.nombre,tipo:a.tipo})}
+      catch(e){cerrarModal();vMantenimiento();return toast('⚠️ El arreglo se guardó pero la factura no se pudo subir: '+e.message,7000)}}
+    cerrarModal();toast(arch?'Arreglo y factura guardados ✅':'Arreglo guardado ✅');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000);const b=$('#bMG');if(b){b.disabled=false;b.textContent='💾 Guardar'}}}
 async function mantBorrar(id){try{await sbDel('facturas','id=eq.'+id);D.facturas=D.facturas.filter(f=>f.id!==id);toast('Borrado');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000)}}
 // ================= INICIO =================
 function ventasDia(ymd){return D.cierres.filter(c=>diaLocal(c.fecha)===ymd).reduce((a,c)=>a+(+c.total||0),0)}
@@ -1112,9 +1139,11 @@ function verFactura(id){
   modal(`<h2>${esc(f.proveedor)}</h2><p class="muted">${esc(f.tipo||'')} ${esc(f.numero||'')} · ${fechaCorta(f.fecha)} · ${esc(f.condicion_pago||'')}</p>
   <div class="scroll"><table><tr><th>Ítem</th><th class="num">Cantidad</th><th class="num">Total</th></tr>${(f.items||[]).map(i=>`<tr><td>${esc(i.nombre||i.descripcion)}${i.insumo_id&&insMap[i.insumo_id]?` <span class="muted">→ ${esc(insMap[i.insumo_id].nombre)}</span>`:''}</td><td class="num">${i.cantidad_base!=null?fnum(i.cantidad_base)+' '+esc(i.unidad||''):i.empaques!=null?fnum(i.empaques)+' × '+fnum(i.contenido_por_empaque)+' '+esc(i.unidad||''):fnum(i.cantidad)}</td><td class="num">${$$(i.total??(i.cantidad*i.precio_unitario))}</td></tr>`).join('')}
   <tr><td colspan="2" class="num">Subtotal</td><td class="num">${$$(f.subtotal)}</td></tr><tr><td colspan="2" class="num">Impuestos</td><td class="num">${$$(f.impuestos)}</td></tr><tr><td colspan="2" class="num"><b>Total</b></td><td class="num"><b>${$$(f.total)}</b></td></tr></table></div>
-  ${f.archivo_url?`<p><a href="${esc(f.archivo_url)}" target="_blank">Ver archivo original</a></p>`:''}
+  ${f.archivo_url?`<p><a href="${esc(f.archivo_url)}" target="_blank">Ver archivo original</a></p>`:''}<div id="vfArch"></div>
   <div class="acciones">${f.estado!=='pagada'?`<button class="btn" onclick="marcarPagada('${f.id}')">✅ Marcar pagada</button>`:''}<button class="btn rojo" onclick="confirmar('¿Borrar esta factura? (no revierte el stock ya sumado)',()=>borrarFactura('${f.id}'))">Borrar</button></div>`);
+  vfArchivos(id);
 }
+async function vfArchivos(id){try{const L=await sb('facturas_archivos?select=id,nombre&factura_id=eq.'+id);const el=$('#vfArch');if(el&&L&&L.length)el.innerHTML='<p>'+L.map(a=>`<button class="btn sec peq" onclick="verArchivo(${a.id})">📎 Ver ${esc(a.nombre||'factura')}</button>`).join(' ')+'</p>'}catch(e){}}
 async function marcarPagada(id){await sbUpd('facturas','id=eq.'+id,{estado:'pagada'});D.facturas.find(f=>f.id===id).estado='pagada';cerrarModal();vFacturas()}
 async function borrarFactura(id){await sbDel('facturas','id=eq.'+id);D.facturas=D.facturas.filter(f=>f.id!==id);vFacturas()}
 function nuevaFactura(manual){
