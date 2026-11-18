@@ -404,12 +404,11 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <a href="#recetas">📖 Recetas</a>
   <a href="#facturas">🧾 Facturas</a>
   <a href="#produccion">🏭 Producción</a>
-  <a href="#inventario">📦 Inventario</a>
+  <a href="#inventario" data-grupo="inventario papelera">📦 Inventario</a>
   <a href="#depositos">🧊 Depósitos</a>
   <a href="#churrero">🍩 Churrero</a>
   <a href="#invsalon">🏪 Inventario Salón</a>
   <a href="#venta">🏷️ Productos de venta</a>
-  <a href="#papelera">🧻 Papelera y limpieza</a>
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#mantenimiento">🔧 Mantenimiento</a>
@@ -2465,7 +2464,7 @@ async function vVenta(){
     const q=norm(fPV);const lista=PV.prods.filter(p=>!q||norm(p.nombre).includes(q)||p.codigo===fPV.trim());
     html+=`<div class="acciones" style="margin-bottom:10px"><input placeholder="Buscar por nombre o código…" value="${esc(fPV)}" oninput="fPV=this.value;clearTimeout(window._tpv);window._tpv=setTimeout(()=>{vVenta();const i=document.querySelector('#app input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" style="max-width:320px"><button class="btn" onclick="pvEditar(null)">➕ Nuevo producto</button></div>
     <div class="card scroll"><table><tr><th>Código</th><th>Producto</th><th>Tipo</th><th class="num">Mayorista</th><th class="num">Local (LPU)</th><th class="num">PedidosYa</th><th>IVA</th><th class="num">Recetas / nombres vinculados</th><th>Estado</th></tr>
-    ${lista.map(p=>{const n=PV.alias.filter(a=>a.codigo===p.codigo).length;return `<tr class="click" onclick="pvEditar('${esc(p.codigo)}')" style="${p.activo?'':'opacity:.5'}"><td>${esc(p.codigo)}</td><td><b>${esc(p.nombre)}</b></td><td>${esc(p.tipo||'')}</td>
+    ${lista.map(p=>{const n=PV.alias.filter(a=>a.codigo===p.codigo).length;return `<tr class="click" onclick="pvEditar('${esc(p.codigo)}')" style="${p.activo?'':'opacity:.5'}"><td>${esc(p.codigo)}</td><td><b>${esc(p.nombre)}</b>${(p.variantes||[]).length?` <span class="muted" style="font-size:12px">· ${(p.variantes||[]).length} variedades${(p.variantes||[]).some(v=>v.v)?' ('+(p.variantes||[]).filter(v=>v.v).length+' 🌱)':''}${(p.variantes||[]).some(v=>v.st)?' ('+(p.variantes||[]).filter(v=>v.st).length+' 🌰)':''}</span>`:''} <span title="${p.vegano?'Vegano: tocá para quitar':'Tocá para marcarlo vegano'}" onclick="event.stopPropagation();pvVegano('${esc(p.codigo)}')" style="cursor:pointer;${p.vegano?'':'opacity:.25;filter:grayscale(1)'}">🌱</span> <span title="${p.sin_trigo?'Sin trigo: tocá para quitar':'Tocá para marcarlo sin trigo (harina de almendras)'}" onclick="event.stopPropagation();pvSinTrigo('${esc(p.codigo)}')" style="cursor:pointer;${p.sin_trigo?'':'opacity:.25;filter:grayscale(1)'}">🌰</span></td><td>${esc(p.tipo||'')}</td>
       <td class="num">${p.precio_may!=null?$$(p.precio_may):'—'}</td><td class="num">${p.precio_lpu!=null?$$(p.precio_lpu):'—'}${p.por_kg?' <span class="muted" style="font-size:11px">/kg</span>':''}</td><td class="num">${p.precio_pey!=null?$$(p.precio_pey):'—'}</td><td>${p.iva==null?'<span class="chip mal">falta</span>':ivaTxt(p.iva)}</td><td class="num">${n||'—'}</td><td>${p.activo?'<span class="chip ok">activo</span>':'<span class="chip neu">de baja</span>'}</td></tr>`}).join('')}
     </table></div>`;
   }
@@ -2476,6 +2475,18 @@ async function pvGuardarVinc(k){IS.cargado=false;const l=PV._filas[k];const v=$(
   if(!p){const a=pvAliasDe(l.k);if(a)return pvQuitarVinc(a.alias);return toast('Elegí un producto de venta');}
   const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:l.k,codigo:p.codigo}],true);
   PV.alias=PV.alias.filter(a=>a.alias!==l.k).concat([x]);toast('Vinculado ✅ '+l.nombre+' → '+p.nombre);vVenta()}
+function pvVarsLeer(){const nn=v=>{const x=String(v||'').replace(',','.').trim();return x===''?null:+x};
+  return [...document.querySelectorAll('#pvVars .pvvar')].map(r=>({n:r.querySelector('.vn').value.trim(),v:r.querySelector('.vv').checked,st:r.querySelector('.vs').checked,may:nn(r.querySelector('.vm').value),lpu:nn(r.querySelector('.vl').value)}))
+    .filter(x=>x.n).map(x=>{const o={n:x.n,v:x.v};if(x.st)o.st=true;if(x.may>0)o.may=x.may;if(x.lpu>0)o.lpu=x.lpu;return o})}
+function pvVarsPintar(){const b=$('#pvVars');if(!b)return;const a=window._pvVars||[];
+  b.innerHTML=a.length?`<div class="muted" style="font-size:12px;display:flex;gap:6px;margin-bottom:2px"><span style="flex:3">Nombre</span><span style="width:52px">🌱</span><span style="width:52px">🌰</span><span style="flex:1">$ mayor.*</span><span style="flex:1">$ local*</span><span style="width:30px"></span></div>`+a.map((x,i)=>`<div class="pvvar" style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+    <input class="vn" style="flex:3" value="${esc(x.n)}" placeholder="Ej: Medialuna"><label style="width:52px;display:flex;gap:3px;align-items:center;margin:0"><input type="checkbox" class="vv" ${x.v?'checked':''} style="width:auto">veg</label><label style="width:52px;display:flex;gap:3px;align-items:center;margin:0"><input type="checkbox" class="vs" ${x.st?'checked':''} style="width:auto">s/t</label>
+    <input class="vm" style="flex:1" inputmode="decimal" value="${x.may!=null?x.may:''}" placeholder="igual"><input class="vl" style="flex:1" inputmode="decimal" value="${x.lpu!=null?x.lpu:''}" placeholder="igual">
+    <button class="btn peq sec" type="button" style="width:30px;padding:4px" onclick="window._pvVars=pvVarsLeerTodas();window._pvVars.splice(${i},1);pvVarsPintar()">✕</button></div>`).join('')+'<p class="muted" style="font-size:12px;margin:2px 0 6px">* Precio propio solo si esa variedad cuesta distinto (ej: cremona chica). Vacío = el precio del producto.</p>':'<p class="muted" style="font-size:13px">Sin variedades: se pide el producto solo.</p>'}
+function pvVarsLeerTodas(){return [...document.querySelectorAll('#pvVars .pvvar')].map(r=>({n:r.querySelector('.vn').value,v:r.querySelector('.vv').checked,st:r.querySelector('.vs').checked,may:r.querySelector('.vm').value===''?null:r.querySelector('.vm').value,lpu:r.querySelector('.vl').value===''?null:r.querySelector('.vl').value}))}
+function pvVarAdd(){window._pvVars=pvVarsLeerTodas();window._pvVars.push({n:'',v:false});pvVarsPintar();const r=[...document.querySelectorAll('#pvVars .vn')].pop();if(r)r.focus()}
+async function pvSinTrigo(cod){const p=pvPorCod(cod);if(!p)return;try{const [x]=await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),{sin_trigo:!p.sin_trigo,updated_at:new Date().toISOString()});Object.assign(p,x);toast(x.sin_trigo?'🌰 Marcado sin trigo':'Ya no figura sin trigo',1500);vVenta()}catch(e){toast('⚠️ '+(e.message||'No se pudo guardar'),5000)}}
+async function pvVegano(cod){const p=pvPorCod(cod);if(!p)return;try{const [x]=await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),{vegano:!p.vegano,updated_at:new Date().toISOString()});Object.assign(p,x);toast(x.vegano?'🌱 Marcado vegano':'Ya no figura como vegano',1500);vVenta()}catch(e){toast('⚠️ '+(e.message||'No se pudo guardar'),5000)}}
 async function pvQuitarVinc(alias){IS.cargado=false;await sbDel('productos_venta_alias','alias=eq.'+encodeURIComponent(alias));PV.alias=PV.alias.filter(a=>a.alias!==alias);toast('Vínculo quitado');vVenta()}
 async function pvVincularNuevo(){const n=normV($('#pvNn').value);const p=pvLeer($('#pvNp').value);if(!n)return toast('Escribí el nombre');if(!p)return toast('Elegí el producto de venta de la lista');
   const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:n,codigo:p.codigo}],true);PV.alias=PV.alias.filter(a=>a.alias!==n).concat([x]);
@@ -2497,12 +2508,20 @@ function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Art�
   const recs=cod?pvRecetasDe(cod):[];const recK=new Set(recs.map(r=>normV(r.nombre)));
   const otros=cod?PV.alias.filter(a=>a.codigo===cod&&!recK.has(a.alias)):[];
   const nv=v=>v==null?'':v;const ivaAct=p.iva==null?'':String(+p.iva);
+  window._pvVars=JSON.parse(JSON.stringify(p.variantes||[]));
   modal(`<h3>${cod?'Editar producto de venta':'Nuevo producto de venta'}</h3>
   <div class="fila"><div><label>Código (el de la caja)</label><input id="pvC" value="${esc(p.codigo)}" ${cod?'disabled':''}></div><div><label>Tipo</label><select id="pvT">${['Artículo','Combo'].map(x=>`<option ${x===p.tipo?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>Nombre (como se cobra en la caja)</label><input id="pvN" value="${esc(p.nombre)}">
   <div class="fila"><div><label>Precio mayorista</label><input id="pvM" type="number" step="any" value="${nv(p.precio_may)}"></div><div><label>Precio local (LPU)</label><input id="pvL" type="number" step="any" value="${nv(p.precio_lpu)}"></div><div><label>Precio PedidosYa</label><input id="pvP" type="number" step="any" value="${nv(p.precio_pey)}"></div></div>
   <div class="fila"><div><label>IVA</label><select id="pvI">${IVA_OPC.map(([v,t])=>`<option value="${v}" ${v===ivaAct?'selected':''}>${t}</option>`).join('')}</select></div><div></div></div>
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvK" ${p.por_kg?'checked':''} style="width:auto"> Se vende por kilo (los precios son por kg)</label>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvV" ${p.vegano?'checked':''} style="width:auto"> 🌱 Vegano (todo el producto; si solo algunas variedades lo son, marcalas abajo)</label>
+  <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvS" ${p.sin_trigo?'checked':''} style="width:auto"> 🌰 Sin trigo, a base de harina de almendras (todo el producto; si son solo algunas variedades, marcalas abajo)</label>
+  <h4 style="margin-top:14px">Variedades <span class="muted" style="font-weight:400;font-size:12px">(en la página de pedidos se despliegan con una flecha y el cliente elige cuánto de cada una)</span></h4>
+  <div id="pvVars"></div>
+  <button class="btn peq sec" type="button" onclick="pvVarAdd()">+ Agregar variedad</button>
+  <label style="margin-top:10px">Presentación que puede elegir el cliente <span class="muted" style="font-weight:400">(separadas por coma; vacío = no se elige)</span></label>
+  <input id="pvO" value="${esc((p.opciones||[]).join(', '))}" placeholder="Ej: Horneado, Congelado, Crudo">
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvA" ${p.activo?'checked':''} style="width:auto"> Activo (se vende y aparece en el Control del Salón)</label>
   ${cod?`<h4 style="margin-top:16px">🧾 Recetas que se venden como este producto</h4>
     ${recs.length?recs.map(r=>{const a=pvAliasDe(normV(r.nombre));return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #eee"><span>${esc(r.nombre)} <span class="muted" style="font-size:12px">${esc(r.sector||'')}${r.tipo==='BASE'?' · base':''}</span></span>${a?`<button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button>`:'<span class="muted" style="font-size:11px">mismo nombre</span>'}</div>`}).join(''):'<p class="muted">Ninguna todavía.</p>'}
@@ -2510,8 +2529,9 @@ function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Art�
     ${otros.length?`<h4 style="margin-top:14px">Otros nombres vinculados <span class="muted" style="font-weight:400;font-size:12px">(como lo mandan los sectores o el churrero)</span></h4>${otros.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #eee"><span>${esc(a.alias)}</span><button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button></div>`).join('')}`:''}`
   :'<p class="muted" style="margin-top:12px">Guardá el producto y después vas a poder vincularle las recetas.</p>'}
   <div class="acciones" style="margin-top:14px"><button class="btn" id="bPV">💾 Guardar</button><button class="btn sec" onclick="cerrarModal()">${cod?'Cerrar':'Cancelar'}</button></div>`);
+  pvVarsPintar();
   $('#bPV').onclick=async()=>{const num=id=>$(id).value===''?null:+$(id).value;
-    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),iva:num('#pvI'),por_kg:$('#pvK').checked,activo:$('#pvA').checked,updated_at:new Date().toISOString()};
+    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),iva:num('#pvI'),por_kg:$('#pvK').checked,vegano:$('#pvV').checked,sin_trigo:$('#pvS').checked,variantes:pvVarsLeer(),opciones:$('#pvO').value.split(',').map(x=>x.trim()).filter(Boolean),activo:$('#pvA').checked,updated_at:new Date().toISOString()};
     if(!row.codigo||!row.nombre)return toast('Completá código y nombre');
     if(!cod&&pvPorCod(row.codigo))return toast('Ya existe un producto con el código '+row.codigo);
     try{const [x]=cod?await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),row):await sbIns('productos_venta',[row]);
@@ -2536,29 +2556,43 @@ function papProd(cods){if(!cods||!cods.length)return '<span class="muted">todos<
 function papModo(r){return (PAP_MODO[r.modo]||r.modo).replace('{kg}',fnum(r.kg_limite,3)).replace('{cada}',fnum(r.cada_kg,2))+(r.modo==='por_dia'&&r.cantidad_lunes!=null?' (lunes '+fnum(r.cantidad_lunes,3)+')':'')}
 async function vPapelera(){
   if(!PAP.cargado){$('#app').innerHTML='<div class="cargando">Cargando papelera y limpieza…</div>';try{await cargarPAP()}catch(e){$('#app').innerHTML='<div class="card">No se pudo cargar: '+esc(e.message)+'</div>';return}}
-  const al=PAP.alertas;const bajo=al.filter(a=>a.tipo==='stock_bajo'),otras=al.filter(a=>a.tipo!=='stock_bajo');
-  let html=`<h2>🧻 Papelera y limpieza</h2><p class="muted">Cada regla descuenta del <a href="#inventario">Inventario</a> lo que se usa. Cuando un insumo llega a su mínimo aparece acá y en Inicio, y desde <a href="#compras">Compras</a> se arma el pedido. Si un nombre no coincide con tu proveedor, corregilo al hacer el pedido.</p>
+  const al=PAP.alertas;const otras=al.filter(a=>a.tipo!=='stock_bajo');
+  // insumos de papelera y limpieza (los que usan las reglas) en o debajo del mínimo
+  const papIns=[...new Set(PAP.reglas.filter(r=>r.activo&&r.insumo_id).map(r=>r.insumo_id))].map(id=>insMap[id]).filter(Boolean);
+  const bajo=papIns.filter(i=>(+i.stock_minimo||0)>0&&(+i.stock||0)<=(+i.stock_minimo||0));
+  const sinMin=papIns.filter(i=>!((+i.stock_minimo||0)>0));
+  let html=`<h2>📦 Inventario</h2>${invTabs('papelera')}<p class="muted">Stock de papelera y limpieza y cuánto descuenta cada regla. La papelera se le pide a <b>Polipel</b>; la limpieza se compra en el día. Corregí el stock y el mínimo acá mismo.</p>
   <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Reglas activas</div><div class="val">${PAP.reglas.filter(r=>r.activo).length}</div></div>
   <div class="card kpi"><div class="lbl">Para pedir</div><div class="val" style="color:${bajo.length?'var(--rojo)':'var(--verde)'}">${bajo.length}</div></div>
-  <div class="card kpi"><div class="lbl">Datos que faltan</div><div class="val" style="color:${otras.length?'#a07000':'var(--verde)'}">${otras.length}</div></div></div>`;
-  if(al.length)html+=`<div class="card" style="margin-bottom:12px"><h3>🔔 Alertas</h3>${bajo.map(a=>`<div style="padding:5px 0;border-bottom:1px solid #eee">🛒 ${esc(a.mensaje)}</div>`).join('')}${otras.map(a=>`<div style="padding:5px 0;border-bottom:1px solid #eee;color:#a07000">⚠️ ${esc(a.mensaje)}</div>`).join('')}
-    ${bajo.length?`<div class="acciones" style="margin-top:10px"><button class="btn" onclick="location.hash='#compras'">🛒 Armar pedido en Compras</button></div>`:''}</div>`;
+  <div class="card kpi"><div class="lbl">Datos que faltan</div><div class="val" style="color:${otras.length?'#a07000':'var(--verde)'}">${otras.length}</div></div>
+  <div class="card kpi"><div class="lbl">Sin mínimo cargado</div><div class="val" style="color:${sinMin.length?'#a07000':'var(--verde)'}">${sinMin.length}</div><div class="sub muted">sin mínimo no avisa cuándo pedir</div></div></div>`;
+  if(!PAP.reglas.length)html+=`<div class="card" style="margin-bottom:12px;color:var(--rojo)">⚠️ No llegaron las reglas desde la base. Probá tocar <b>Salir</b> y volver a entrar: suele ser la sesión vencida.</div>`;
+  const esLimp=i=>norm(i.categoria||'')==='limpieza';
+  const filaBajo=i=>`<tr><td>${esc(i.nombre)}</td><td class="num" style="color:var(--rojo);font-weight:700">${fnum(i.stock,3)} ${esc(i.unidad||'')}</td><td class="num">${fnum(i.stock_minimo,3)}</td><td class="num">${+i.stock_optimo?fnum(i.stock_optimo,3):'—'}</td></tr>`;
+  const cab='<tr><th>Insumo</th><th class="num">Stock</th><th class="num">Mínimo</th><th class="num">Óptimo</th></tr>';
+  const bPap=bajo.filter(i=>!esLimp(i)),bLim=bajo.filter(esLimp);
+  if(bPap.length)html+=`<div class="card" style="margin-bottom:12px"><h3>🛒 Papelera para pedir a Polipel</h3><table>${cab}${bPap.map(filaBajo).join('')}</table>
+    <div class="acciones" style="margin-top:10px"><button class="btn" onclick="location.hash='#compras'">🛒 Armar pedido a Polipel en Compras</button></div></div>`;
+  if(bLim.length)html+=`<div class="card" style="margin-bottom:12px"><h3>🧽 Limpieza para comprar en el día</h3><p class="muted">No tiene proveedor fijo: es la lista para la próxima compra. Cuando compres, cargá el stock en la tabla de abajo.</p><table>${cab}${bLim.map(filaBajo).join('')}</table></div>`;
+  if(otras.length)html+=`<div class="card" style="margin-bottom:12px"><h3>🔔 Datos que faltan</h3>${otras.map(a=>`<div style="padding:5px 0;border-bottom:1px solid #eee;color:#a07000">⚠️ ${esc(a.mensaje)}</div>`).join('')}</div>`;
   html+=`<datalist id="dlInsPap">${D.insumos.filter(i=>i.activo!==false).map(i=>`<option value="${esc(i.nombre)}">`).join('')}</datalist>`;
   for(const [g,tit,sub] of PAP_GRUPOS){const rs=PAP.reglas.filter(r=>r.grupo===g);if(!rs.length)continue;
-    html+=`<div class="card" style="margin-bottom:12px"><h3>${tit}</h3><p class="muted">${sub}</p><div class="scroll"><table><tr><th>Qué</th>${g!=='tiempo'?'<th>Productos</th>':''}<th>Insumo del stock</th><th class="num">Cantidad</th><th>Cuándo</th><th class="num" title="Cuántos usos equivalen a 1 unidad del stock (ej. 100 fajas = 1 kg). Vacío = no se descuenta.">Usos por unidad de stock</th><th class="num">Stock</th><th class="num">Usado 30 días</th><th>Activa</th></tr>
+    html+=`<div class="card" style="margin-bottom:12px"><h3>${tit}</h3><p class="muted">${sub}</p><div class="scroll"><table><tr><th>Qué</th>${g!=='tiempo'?'<th>Productos</th>':''}<th>Insumo del stock</th><th class="num">Cantidad</th><th>Cuándo</th><th class="num" title="Cuántos usos equivalen a 1 unidad del stock (ej. 100 fajas = 1 kg). Vacío = no se descuenta.">Usos por unidad de stock</th><th class="num">Stock</th><th class="num">Mínimo</th><th class="num">Usado 30 días</th><th>Activa</th></tr>
     ${rs.map(r=>{const i=r.insumo_id?insMap[r.insumo_id]:null;const crit=i&&(+i.stock||0)<=(+i.stock_minimo||0);
       return `<tr style="${r.activo?'':'opacity:.5'}"><td>${esc(r.descripcion)}</td>${g!=='tiempo'?`<td style="font-size:12px">${papProd(r.productos)}</td>`:''}
       <td><input list="dlInsPap" value="${esc(i?i.nombre:r.insumo_nombre)}" style="min-width:230px;${i?'':'border-color:var(--rojo)'}" onchange="papInsumo(${r.id},this.value)">${i?'':'<div style="font-size:11px;color:var(--rojo)">no está en el stock</div>'}</td>
       <td class="num"><input class="mini" type="number" step="any" value="${+r.cantidad}" onchange="papCampo(${r.id},'cantidad',this.value)"></td>
       <td style="font-size:12px">${papModo(r)}</td>
       <td class="num"><input class="mini" type="number" step="any" value="${r.usos_por_unidad==null?'':+r.usos_por_unidad}" placeholder="?" style="${r.usos_por_unidad==null?'border-color:#e0a800':''}" onchange="papCampo(${r.id},'usos_por_unidad',this.value)"></td>
-      <td class="num" style="${crit?'color:var(--rojo);font-weight:700':''}">${i?fnum(i.stock,3)+' '+esc(i.unidad||''):'—'}</td>
+      <td class="num" style="white-space:nowrap">${i?`<input class="mini" type="number" step="any" value="${+i.stock}" style="${crit?'color:var(--rojo);font-weight:700':''}" onchange="papAjuste('${i.id}','stock',this.value)"> ${esc(i.unidad||'')}`:'—'}</td>
+      <td class="num">${i?`<input class="mini" type="number" step="any" value="${+i.stock_minimo||''}" placeholder="?" onchange="papAjuste('${i.id}','stock_minimo',this.value)">`:'—'}</td>
       <td class="num">${PAP.uso[r.id]?fnum(PAP.uso[r.id],2):'—'}</td>
       <td><input type="checkbox" ${r.activo?'checked':''} style="width:auto" onchange="papCampo(${r.id},'activo',this.checked)"></td></tr>`}).join('')}
     </table></div></div>`}
   html+=`<p class="muted" style="font-size:12px">La bolsa camiseta se calcula ticket por ticket: con 3 productos distintos, 1 bolsa; con 4 o 5, 2 bolsas; y una bolsa más cada 4 productos. Las bolsas para productos por peso se eligen según lo que pesa cada venta. Si la venta se carga sin el Excel de artículos de Ayres (por foto o a mano), no se descuenta la papelera de ese turno.</p>`;
   $('#app').innerHTML=html;
 }
+async function papAjuste(id,campo,v){const [x]=await sbUpd('insumos','id=eq.'+id,{[campo]:+v||0,updated_at:new Date().toISOString()});Object.assign(insMap[id],x);toast('Guardado ✅',1200);vPapelera()}
 async function papCampo(id,campo,v){const r=PAP.reglas.find(x=>x.id===id);let val=v;
   if(campo!=='activo'){val=v===''?null:+v;if(campo==='cantidad'&&!(val>0))return toast('Poné una cantidad mayor a 0');if(val!=null&&!(val>0))return toast('Tiene que ser mayor a 0')}
   const [x]=await sbUpd('papelera_reglas','id=eq.'+id,{[campo]:val,updated_at:new Date().toISOString()});Object.assign(r,x);toast('Guardado ✅');vPapelera()}
@@ -2568,11 +2602,12 @@ async function papInsumo(id,v){const r=PAP.reglas.find(x=>x.id===id);const i=D.i
 
 // ================= INVENTARIO =================
 let fInv={q:'',cat:'',solo:''};
+function invTabs(on){return `<div class="tabs2">${[['inventario','📦 Insumos'],['papelera','🧻 Papelera y limpieza']].map(([k,n])=>`<button class="${on===k?'on':''}" onclick="location.hash='#${k}'">${n}</button>`).join('')}</div>`}
 function vInventario(){
   const cats=[...new Set(D.insumos.map(i=>i.categoria).filter(Boolean))].sort();
   const lista=D.insumos.filter(i=>(!fInv.q||norm(i.nombre+' '+(i.proveedor||'')).includes(norm(fInv.q)))&&(!fInv.cat||i.categoria===fInv.cat)&&(fInv.solo!=='crit'||criticos().includes(i))&&(fInv.solo!=='sinmin'||!(+i.stock_minimo>0)));
   const valor=D.insumos.reduce((a,i)=>a+Math.max(0,+i.stock||0)*(+i.costo_unitario||0),0);
-  $('#app').innerHTML=`<h2>📦 Inventario de insumos</h2>
+  $('#app').innerHTML=`<h2>📦 Inventario</h2>${invTabs('inventario')}
   <div class="grid g4" style="margin-bottom:12px"><div class="card kpi"><div class="lbl">Insumos</div><div class="val">${D.insumos.length}</div></div><div class="card kpi"><div class="lbl">Valor del stock</div><div class="val">${$$(valor)}</div></div><div class="card kpi"><div class="lbl">Críticos</div><div class="val" style="color:var(--rojo)">${criticos().length}</div></div><div class="card kpi"><div class="lbl">Sin mínimo configurado</div><div class="val">${D.insumos.filter(i=>!(+i.stock_minimo>0)).length}</div><div class="sub muted">sin mínimo no hay alertas ni sugerencias de compra</div></div></div>
   <div class="acciones"><button class="btn" onclick="editarInsumo()">➕ Nuevo insumo</button><button class="btn rojo" onclick="confirmar('¿Poner en 0 el stock de TODOS los sectores (insumos, depósito, salón, freezer, cámara, pastelería y cocina)? Se guarda un respaldo antes.',resetStock)">0️⃣ Poner todo en 0</button><input placeholder="Buscar…" style="max-width:220px" value="${esc(fInv.q)}" onchange="fInv.q=this.value;vInventario()">
   <select style="max-width:180px" onchange="fInv.cat=this.value;vInventario()"><option value="">Todas las categorías</option>${cats.map(c=>`<option ${c===fInv.cat?'selected':''}>${esc(c)}</option>`).join('')}</select>

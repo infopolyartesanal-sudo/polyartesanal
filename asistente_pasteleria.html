@@ -784,10 +784,15 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
     <div id="deposito-modal">
       <h3>¿A dónde va esta tanda?</h3>
       <p class="dep-rendimiento" id="dep-rendimiento-label"></p>
-      <div class="dep-row"><label>🏪 Local</label><input type="number" id="dep-local" min="0" value="0" oninput="updateDepTotal()" /></div>
-      <div class="dep-row"><label>❄️ Heladera</label><input type="number" id="dep-heladera" min="0" value="0" oninput="updateDepTotal()" /></div>
-      <div class="dep-row"><label>🧊 Freezer</label><input type="number" id="dep-freezer" min="0" value="0" oninput="updateDepTotal()" /></div>
-      <div class="dep-row"><label>📦 Estante</label><input type="number" id="dep-estante" min="0" value="0" oninput="updateDepTotal()" /></div>
+      <div style="display:flex;gap:8px;margin:6px 0 4px">
+        <button type="button" id="dep-modo-t" onclick="setDepModo('t')" style="flex:1;padding:9px 6px;border-radius:8px;cursor:pointer;font-weight:700;font-family:system-ui,sans-serif">Tanda completa</button>
+        <button type="button" id="dep-modo-q" onclick="setDepModo('q')" style="flex:1;padding:9px 6px;border-radius:8px;cursor:pointer;font-weight:700;font-family:system-ui,sans-serif">Un poco</button>
+      </div>
+      <p id="dep-modo-ayuda" style="font-size:12px;color:#666;margin:0 0 8px"></p>
+      <div class="dep-row"><label>🏪 Local</label><input type="number" id="dep-local" min="0" step="any" inputmode="decimal" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>❄️ Heladera</label><input type="number" id="dep-heladera" min="0" step="any" inputmode="decimal" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>🧊 Freezer</label><input type="number" id="dep-freezer" min="0" step="any" inputmode="decimal" value="0" oninput="updateDepTotal()" /></div>
+      <div class="dep-row"><label>📦 Estante</label><input type="number" id="dep-estante" min="0" step="any" inputmode="decimal" value="0" oninput="updateDepTotal()" /></div>
       <div class="dep-total-row"><span>Total distribuido</span><span id="dep-total-val">0</span></div>
       <div style="display:flex;gap:8px;margin-top:12px">
         <button onclick="closeDepModal()" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;background:white;cursor:pointer;font-family:system-ui,sans-serif;">Cancelar</button>
@@ -931,11 +936,11 @@ async function sbLog(sector, tipo, descripcion, cantidad=null, productoId=null, 
 // ── PRODUCCIÓN → DESCUENTO DE STOCK (función central en Supabase) ──
 // Descuenta del inventario (tabla insumos) los ingredientes de la receta costeada.
 // Si el producto no tiene receta vinculada, queda registrado y aparece en Gestión → Producción.
-async function registrarProduccion(sector, producto, tandas = 1, unidades = null, unidadesPorTanda = null) {
+async function registrarProduccion(sector, producto, tandas = 1, unidades = null, unidadesPorTanda = null, porCantidad = false) {
   try {
     const r = await sbFetch('POST', 'rpc/registrar_produccion', {
       p_sector: sector, p_producto: producto, p_tandas: tandas,
-      p_unidades: unidades, p_unidades_por_tanda: unidadesPorTanda
+      p_unidades: unidades, p_unidades_por_tanda: unidadesPorTanda, p_por_cantidad: !!porCantidad
     });
     if (!r) { console.error('registrarProduccion: sin respuesta'); return null; }
     if (r.ok) {
@@ -1532,23 +1537,36 @@ function completeRecipe() {
   if (!currentRecipe) return;
   document.getElementById('dep-rendimiento-label').textContent = 'Rendimiento: ' + (currentRecipe.rendimiento || '—') + ' · Destino sugerido: ' + depLabel(currentRecipe.deposito || 'local');
   ['dep-local','dep-heladera','dep-freezer','dep-estante'].forEach(id => document.getElementById(id).value = 0);
+  setDepModo('t');
   updateDepTotal();
   document.getElementById('deposito-modal-overlay').classList.add('open');
 }
 
+// "Tanda completa" descuenta la receta entera; "Un poco" descuenta solo lo proporcional a lo que se hizo
+let depModo = 't';
+function setDepModo(m) {
+  depModo = m === 'q' ? 'q' : 't';
+  [['t','dep-modo-t'],['q','dep-modo-q']].forEach(([k,id]) => { const b = document.getElementById(id); if (!b) return; const on = depModo === k;
+    b.style.background = on ? '#C2185B' : '#fff'; b.style.color = on ? '#fff' : '#333'; b.style.border = '2px solid ' + (on ? '#C2185B' : '#ddd'); });
+  const a = document.getElementById('dep-modo-ayuda');
+  if (a) a.textContent = depModo === 'q' ? 'Poné cuánto hiciste (unidades o kilos): se descuenta solo la materia prima de esa cantidad.' : 'Se descuenta la receta completa. Poné cuánto salió y a dónde va.';
+}
+function depNum(id) { const v = String(document.getElementById(id).value || '').replace(',', '.'); return parseFloat(v) || 0; }
 function updateDepTotal() {
-  const t = ['dep-local','dep-heladera','dep-freezer','dep-estante'].reduce((sum,id) => sum + (parseInt(document.getElementById(id).value)||0), 0);
-  document.getElementById('dep-total-val').textContent = t;
+  const t = ['dep-local','dep-heladera','dep-freezer','dep-estante'].reduce((sum,id) => sum + depNum(id), 0);
+  document.getElementById('dep-total-val').textContent = Math.round(t * 1000) / 1000;
 }
 
 function closeDepModal() { document.getElementById('deposito-modal-overlay').classList.remove('open'); }
 
 function confirmDeposito() {
   if (!currentRecipe) return;
-  const local = parseInt(document.getElementById('dep-local').value) || 0;
-  const heladera = parseInt(document.getElementById('dep-heladera').value) || 0;
-  const freezer = parseInt(document.getElementById('dep-freezer').value) || 0;
-  const estante = parseInt(document.getElementById('dep-estante').value) || 0;
+  const local = depNum('dep-local');
+  const heladera = depNum('dep-heladera');
+  const freezer = depNum('dep-freezer');
+  const estante = depNum('dep-estante');
+  const porCantidad = depModo === 'q';
+  if (porCantidad && !(local + heladera + freezer + estante > 0)) { alert('Poné cuánto hiciste (unidades o kilos) para descontar solo eso.'); return; }
 
   if (!stockState[currentRecipe.name]) stockState[currentRecipe.name] = { local:0, heladera:0, freezer:0, estante:0 };
   const s = stockState[currentRecipe.name];
@@ -1556,7 +1574,7 @@ function confirmDeposito() {
   saveStock();
 
   // Descontar la materia prima de esta tanda del depósito
-  registrarProduccion('pasteleria', currentRecipe.name, 1, (local + heladera + freezer + estante) || null);
+  registrarProduccion('pasteleria', currentRecipe.name, 1, (local + heladera + freezer + estante) || null, null, porCantidad);
 
   // Lo que va a "🏪 Local directo" se despacha al Salón como pendiente de confirmar
   if (local > 0) {

@@ -44,6 +44,18 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--or);border-color
 .step button{width:36px;height:36px;border-radius:50%;border:0;background:var(--v);color:#fff;font:700 20px/1 Lato,sans-serif;cursor:pointer}
 .step button.menos{background:#e9e3d8;color:var(--v)}
 .step .q{min-width:44px;text-align:center;font-weight:700}
+.pgrp{background:#fff;border-radius:12px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.05);overflow:hidden}
+.pgrp>.prod{box-shadow:none;margin:0}
+.vars{border-top:1px dashed #e6dfd2;padding:6px 12px 10px;background:#fcfaf6}
+.vars .prod{box-shadow:none;background:transparent;padding:7px 0;margin:0;border-bottom:1px solid #f0ebe2;border-radius:0}
+.ops{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 0 4px;font-size:13px;color:#6b5d48}
+.ops button{border:1.5px solid var(--v);background:#fff;color:var(--v);border-radius:16px;padding:4px 11px;font:700 13px Lato,sans-serif;cursor:pointer}
+.ops button.on{background:var(--v);color:#fff}
+.tog{border:0;background:none;color:var(--v);font:700 14px Lato,sans-serif;cursor:pointer;padding:6px 2px;flex-shrink:0}
+.st{display:inline-block;background:#fff4e0;color:#8a5a12;border:1px solid #f0cf94;border-radius:10px;padding:0 7px;font-size:12px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.filtros{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.filtros button{padding:7px 13px;border-radius:20px;font:700 14px Lato,sans-serif;cursor:pointer;background:#fff}
+.veg{display:inline-block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:10px;padding:0 7px;font-size:12px;font-weight:700;vertical-align:middle;white-space:nowrap}
 .add{border:2px solid var(--v);background:#fff;color:var(--v);border-radius:20px;padding:7px 14px;font:700 14px Lato,sans-serif;cursor:pointer;flex-shrink:0}
 #carritoBar{position:fixed;left:0;right:0;bottom:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:rgba(245,240,233,.96);backdrop-filter:blur(6px);border-top:1px solid #e3dccf}
 #carritoBar button{max-width:560px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}
@@ -193,32 +205,74 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     $('cF').min = d.toISOString().slice(0, 10); if (!$('cF').value) $('cF').value = $('cF').min;
     var hay = {}; CAT.productos.forEach(function (p) { hay[p.sector] = 1; });
     $('chips').innerHTML = Object.keys(GRUPOS).filter(function (k) { return k === 'todos' || hay[k]; }).map(function (k) { return '<button data-s="' + k + '"' + (k === SECTOR ? ' class="on"' : '') + '>' + GRUPOS[k] + '</button>'; }).join('');
-    Object.keys(CARRO).forEach(function (k) { if (!prod(k)) delete CARRO[k]; }); guardarCarro();
+    Object.keys(CARRO).forEach(function (k) { if (!valida(k)) delete CARRO[k]; }); guardarCarro();
     pintarLista(); pintarBarra();
   }).catch(function (e) { $('lista').innerHTML = '<p class="err">' + esc(e.message) + '</p>'; }); }
   var catP = cargarCat();
-  function prod(c) { return CAT.productos.find(function (p) { return p.codigo === c; }); }
+  // Las claves del carrito son "codigo|variedad|opción" (variedad y opción pueden ir vacías)
+  function partes(k) { var a = String(k).split('|'); return { cod: a[0], v: a[1] || '', o: a[2] || '' }; }
+  function clave(cod, v, o) { return (v || o) ? cod + '|' + (v || '') + '|' + (o || '') : cod; }
+  function prod(k) { var c = partes(k).cod; return CAT.productos.find(function (p) { return p.codigo === c; }); }
+  function vari(p, n) { return n ? (p.variantes || []).find(function (x) { return x.n === n; }) : null; }
+  function precioK(k) { var p = prod(k); if (!p) return 0; var v = vari(p, partes(k).v); var o = v && (MAY ? v.may : v.lpu); return +o > 0 ? +o : p.precio; }
+  function nombreK(k) { var p = prod(k), x = partes(k); return p ? p.nombre + (x.v ? ' — ' + x.v : '') + (x.o ? ' (' + x.o + ')' : '') : ''; }
+  function valida(k) { var p = prod(k), x = partes(k); if (!p) return false; if (x.v && !vari(p, x.v)) return false; if (x.o && (p.opciones || []).indexOf(x.o) < 0) return false; return true; }
+  var ABIERTO = {}, OPC = {};
+  function opcDe(p) { var o = p.opciones || []; return o.length ? (o.indexOf(OPC[p.codigo]) >= 0 ? OPC[p.codigo] : o[0]) : ''; }
+  function veganoAlgo(p) { return p.vegano || (p.variantes || []).some(function (v) { return v.v; }); }
+  function stAlgo(p) { return p.sin_trigo || (p.variantes || []).some(function (v) { return v.st; }); }
+  var FILTRO = '';
+  function pasaVar(p, v) { return !FILTRO || (FILTRO === 'veg' ? (v.v || p.vegano) : (v.st || p.sin_trigo)); }
+  function etiquetas(p, v) { var veg = v ? v.v && !p.vegano : p.vegano, st = v ? v.st && !p.sin_trigo : p.sin_trigo, h = '';
+    if (veg) h += ' <span class="veg" title="Vegano">🌱 Vegano</span>'; else if (!v && veganoAlgo(p)) h += ' <span class="veg" title="Tiene variedades veganas">🌱 Hay veganas</span>';
+    if (st) h += ' <span class="st" title="Sin trigo, a base de harina de almendras">🌰 Sin trigo</span>'; else if (!v && stAlgo(p)) h += ' <span class="st" title="Tiene variedades sin trigo">🌰 Hay sin trigo</span>';
+    return h; }
+  function stepper(k, u) { var c = CARRO[k];
+    return c ? '<div class="step"><button class="menos" data-m="' + esc(k) + '">−</button><span class="q" data-q="' + esc(k) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(c, u) + '</span><button data-p="' + esc(k) + '">+</button></div>'
+             : '<button class="add" data-p="' + esc(k) + '">Agregar</button>'; }
   function paso(p) { return p.unidad === 'kg' ? (MAY ? 1 : 0.25) : 1; }
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
   function pintarLista() {
     var q = norm($('q').value).trim();
-    var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0); });
+    var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0 || (p.variantes || []).some(function (v) { return norm(v.n).indexOf(q) >= 0; })) && (!FILTRO || (FILTRO === 'veg' ? veganoAlgo(p) : stAlgo(p))); });
+    var hayVeg = CAT.productos.some(veganoAlgo), haySt = CAT.productos.some(stAlgo);
+    var fv = $('filtros');
+    if ((hayVeg || haySt) && !fv) { fv = document.createElement('div'); fv.id = 'filtros'; fv.className = 'filtros'; $('lista').parentNode.insertBefore(fv, $('lista'));
+      fv.onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; FILTRO = FILTRO === b.dataset.f ? '' : b.dataset.f; pintarLista(); }; }
+    if (fv) fv.innerHTML = (hayVeg ? '<button data-f="veg" style="border:2px solid #2e7d32;' + (FILTRO === 'veg' ? 'background:#2e7d32;color:#fff' : 'color:#2e7d32') + '">🌱 ' + (FILTRO === 'veg' ? 'Solo veganos · ver todo' : 'Ver solo veganos') + '</button>' : '')
+      + (haySt ? '<button data-f="st" style="border:2px solid #b07a1e;' + (FILTRO === 'st' ? 'background:#b07a1e;color:#fff' : 'color:#8a5a12') + '">🌰 ' + (FILTRO === 'st' ? 'Solo sin trigo · ver todo' : 'Ver solo sin trigo') + '</button>' : '');
     $('lista').innerHTML = ps.length ? ps.map(function (p) {
-      var c = CARRO[p.codigo];
-      return '<div class="prod"><div class="n"><b>' + esc(p.nombre) + '</b><span>' + plata(p.precio) + (p.unidad === 'kg' ? ' el kg' : '') + (MAY ? ' · mayorista' : '') + '</span></div>' +
-        (c ? '<div class="step"><button class="menos" data-m="' + esc(p.codigo) + '">−</button><span class="q" data-q="' + esc(p.codigo) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(c, p.unidad) + '</span><button data-p="' + esc(p.codigo) + '">+</button></div>'
-           : '<button class="add" data-p="' + esc(p.codigo) + '">Agregar</button>') + '</div>';
+      var vars = (p.variantes || []).filter(function (v) { return pasaVar(p, v); }), ops = p.opciones || [], op = opcDe(p);
+      var badge = etiquetas(p);
+      var cab = '<div class="n"><b>' + esc(p.nombre) + badge + '</b><span>' + plata(p.precio) + (p.unidad === 'kg' ? ' el kg' : '') + (MAY ? ' · mayorista' : '') + '</span></div>';
+      var chips = ops.length ? '<div class="ops">Presentación: ' + ops.map(function (o) { return '<button data-op="' + esc(p.codigo + '|' + o) + '"' + (o === op ? ' class="on"' : '') + '>' + esc(o) + '</button>'; }).join('') + '</div>' : '';
+      if (!vars.length) {
+        if (!ops.length) return '<div class="prod">' + cab + stepper(p.codigo, p.unidad) + '</div>';
+        return '<div class="pgrp"><div class="prod">' + cab + stepper(clave(p.codigo, '', op), p.unidad) + '</div><div class="vars" style="padding-top:0">' + chips + '</div></div>';
+      }
+      var elegidas = Object.keys(CARRO).filter(function (k) { return partes(k).cod === p.codigo; });
+      var tot = elegidas.reduce(function (a, k) { return a + CARRO[k]; }, 0);
+      var abierto = ABIERTO[p.codigo] || q && !norm(p.nombre).includes(q);
+      var tog = '<button class="tog" data-tog="' + esc(p.codigo) + '">' + (tot ? cant(tot, p.unidad) + ' · ' : '') + (abierto ? 'Cerrar ▴' : 'Elegir variedades ▾') + '</button>';
+      var filas = abierto ? '<div class="vars">' + chips + vars.map(function (v) {
+          var k = clave(p.codigo, v.n, op), pr = +(MAY ? v.may : v.lpu) > 0 ? +(MAY ? v.may : v.lpu) : 0;
+          return '<div class="prod"><div class="n"><b>' + esc(v.n) + etiquetas(p, v) + '</b>' + (pr ? '<span>' + plata(pr) + (p.unidad === 'kg' ? ' el kg' : '') + '</span>' : '') + '</div>' + stepper(k, p.unidad) + '</div>';
+        }).join('') + (elegidas.some(function (k) { return partes(k).o && partes(k).o !== op; }) ? '<p class="muted" style="font-size:12px;margin:6px 0 0">También tenés de esta en otra presentación: la ves en tu pedido.</p>' : '') + '</div>' : '';
+      return '<div class="pgrp"><div class="prod">' + cab + tog + '</div>' + filas + '</div>';
     }).join('') : '<p class="muted">No encontramos productos con esa búsqueda.</p>';
   }
   function sumar(cod, s) {
-    var p = prod(cod); if (!p) return; var st = paso(p), v = Math.round(((CARRO[cod] || 0) + s * st) * 100) / 100;
+    var p = prod(cod); if (!p) return; if (cod === p.codigo && ((p.variantes || []).length || (p.opciones || []).length)) { if ((p.variantes || []).length) { ABIERTO[p.codigo] = true; pintarLista(); return; } cod = clave(p.codigo, '', opcDe(p)); }
+    var st = paso(p), v = Math.round(((CARRO[cod] || 0) + s * st) * 100) / 100;
     if (!CARRO[cod] && s > 0 && p.unidad === 'kg') v = MAY ? 1 : 0.5;
     if (v <= 0) delete CARRO[cod]; else CARRO[cod] = v;
     guardarCarro(); pintarLista(); pintarBarra(); if (!$('vCarrito').classList.contains('oculto')) pintarCarrito();
   }
   document.addEventListener('click', function (e) {
-    var b = e.target.closest('[data-p],[data-m],[data-s],[data-x],[data-q]'); if (!b) return;
-    if (b.dataset.q) { var pq = prod(b.dataset.q); if (!pq) return; var r = prompt('¿Cuánto' + (pq.unidad === 'kg' ? 's kilos' : 's unidades') + ' de ' + pq.nombre + '?', String(CARRO[b.dataset.q] || '').replace('.', ','));
+    var b = e.target.closest('[data-p],[data-m],[data-s],[data-x],[data-q],[data-tog],[data-op]'); if (!b) return;
+    if (b.dataset.tog) { ABIERTO[b.dataset.tog] = !ABIERTO[b.dataset.tog]; pintarLista(); return; }
+    if (b.dataset.op) { var po = b.dataset.op.split('|'); OPC[po[0]] = po.slice(1).join('|'); pintarLista(); return; }
+    if (b.dataset.q) { var pq = prod(b.dataset.q); if (!pq) return; var r = prompt('¿Cuánto' + (pq.unidad === 'kg' ? 's kilos' : 's unidades') + ' de ' + nombreK(b.dataset.q) + '?', String(CARRO[b.dataset.q] || '').replace('.', ','));
       if (r == null) return; var v = parseFloat(String(r).replace(',', '.')); if (!(v > 0)) delete CARRO[b.dataset.q]; else CARRO[b.dataset.q] = pq.unidad === 'kg' ? Math.round(v * 4) / 4 : Math.round(v);
       guardarCarro(); pintarLista(); pintarBarra(); if (!$('vCarrito').classList.contains('oculto')) pintarCarrito(); return; }
     if (b.dataset.p) sumar(b.dataset.p, 1); else if (b.dataset.m) sumar(b.dataset.m, -1);
@@ -226,7 +280,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     else if (b.dataset.s) { SECTOR = b.dataset.s; Array.prototype.forEach.call($('chips').children, function (x) { x.classList.toggle('on', x === b); }); pintarLista(); }
   });
   $('q').oninput = pintarLista;
-  function total() { return Object.keys(CARRO).reduce(function (a, k) { var p = prod(k); return a + (p ? p.precio * CARRO[k] : 0); }, 0); }
+  function total() { return Object.keys(CARRO).reduce(function (a, k) { return a + precioK(k) * CARRO[k]; }, 0); }
   function pintarBarra() {
     var n = Object.keys(CARRO).length, on = n > 0 && !$('vTienda').classList.contains('oculto');
     $('carritoBar').classList.toggle('oculto', !on);
@@ -236,7 +290,8 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     var ks = Object.keys(CARRO); var cfg = CAT.config || {}, pct = +cfg.sena_pct || 50;
     if (!ks.length) { $('carLista').innerHTML = '<p class="muted">Todavía no agregaste nada.</p>'; }
     else $('carLista').innerHTML = ks.map(function (k) { var p = prod(k); if (!p) return '';
-      return '<div class="prod" style="box-shadow:none;padding:6px 0;border-bottom:1px solid #f0ebe2;border-radius:0"><div class="n"><b>' + esc(p.nombre) + '</b><span>' + plata(p.precio * CARRO[k]) + '</span></div>' +
+      var vv = vari(p, partes(k).v), vg = vv ? (vv.v || p.vegano) : p.vegano, vs = vv ? (vv.st || p.sin_trigo) : p.sin_trigo;
+      return '<div class="prod" style="box-shadow:none;padding:6px 0;border-bottom:1px solid #f0ebe2;border-radius:0"><div class="n"><b>' + esc(nombreK(k)) + (vg ? ' <span class="veg">🌱</span>' : '') + (vs ? ' <span class="st">🌰</span>' : '') + '</b><span>' + plata(precioK(k) * CARRO[k]) + '</span></div>' +
         '<div class="step"><button class="menos" data-m="' + esc(k) + '">−</button><span class="q" data-q="' + esc(k) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(CARRO[k], p.unidad) + '</span><button data-p="' + esc(k) + '">+</button></div></div>'; }).join('');
     var t = total(), s = Math.ceil(t * pct / 100 / 100) * 100;
     if (MAY) { $('carTot').innerHTML = '<div class="linea tot"><span>Total (precio mayorista)</span><span>' + plata(t) + '</span></div><div class="linea muted"><span>Va a tu cuenta corriente · sin seña</span><span>' + (envio() ? 'entrega a coordinar' : '') + '</span></div>'; return; }
@@ -315,7 +370,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   var ULTIMO = null;
   $('bPedir').onclick = function () {
     var b = this; $('ePed').textContent = '';
-    var items = Object.keys(CARRO).map(function (k) { return { codigo: k, cantidad: CARRO[k] }; });
+    var items = Object.keys(CARRO).map(function (k) { var x = partes(k); return { codigo: x.cod, variante: x.v || null, opcion: x.o || null, cantidad: CARRO[k], _k: k }; });
     if (!items.length) { $('ePed').textContent = 'Tu pedido está vacío.'; return; }
     if (envio() && !$('cD').value.trim()) { $('ePed').textContent = 'Poné la dirección de entrega.'; return; }
     if (!$('cF').value || $('cF').value < $('cF').min) { $('ePed').textContent = 'Elegí un día a partir del ' + $('cF').min.split('-').reverse().slice(0, 2).join('/') + '.'; return; }
@@ -323,7 +378,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     var p = { fecha: $('cF').value, hora: $('cH').value, envio: envio(), direccion: $('cD').value.trim(), notas: $('cN').value.trim(), items: items };
     rpc('cliente_crear_pedido', { p_token: TOKEN, p: p }).then(function (r) {
       ULTIMO = { numero: r.numero, total: r.total, sena: r.sena, fecha: p.fecha, hora: p.hora, envio: p.envio, direccion: p.direccion, notas: p.notas,
-        items: items.map(function (i) { var x = prod(i.codigo); return { producto: x.nombre, cantidad: i.cantidad, unidad: x.unidad }; }) };
+        items: items.map(function (i) { var x = prod(i._k); return { producto: nombreK(i._k), cantidad: i.cantidad, unidad: x.unidad }; }) };
       CARRO = {}; guardarCarro(); $('cN').value = '';
       mostrarListo(ULTIMO);
     }).catch(function (e) { $('ePed').textContent = e.message; if (/sesi[oó]n/i.test(e.message)) salir(true); }).then(function () { b.disabled = false; });

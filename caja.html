@@ -200,7 +200,7 @@
   <div id="estado">Cargando…</div>
   <button class="tb" onclick="verVentas()">📋 Ventas del turno</button>
   <button class="tb" onclick="pedidosEntregar()" id="bPed">📦 Entregar pedido</button>
-  <button class="tb" onclick="cobrarCC()">💳 Cobrar cuenta corriente</button>
+  <button class="tb" onclick="cobrarCC()" id="bCCtop" style="display:none">💳 Cobrar cuenta corriente</button>
   <button class="tb" id="bTurno" onclick="turnoBtn()">…</button>
   <a class="tb" href="asistente_salon.html" style="text-decoration:none">🏪 Salón</a>
 </div>
@@ -243,6 +243,8 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#ov').style.disp
 const LISTAS={minorista:['Minorista','precio_lpu','#8e5bd6'],mayorista:['Mayorista','precio_may','#3d8bd9'],pedidosya:['PedidosYa','precio_pey','#e05252']};
 const MEDIOS=['Efectivo','Mercado Pago / QR','Transferencia','Débito','Crédito','Cuenta corriente'];
 const COND={cf:'Consumidor final',ri:'Responsable inscripto',mono:'Monotributista',ex:'Exento'};
+// Solo Poly (admin) ve saldos y cobra cuentas corrientes; el Salón puede despachar a cuenta pero no ve deudas
+const ES_ADMIN=(()=>{try{return (JSON.parse(localStorage.getItem('poly_usuario')||'null')||{}).rol==='admin'}catch(e){return false}})();
 let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''},PEDIDO=null;
 
 async function cargar(){
@@ -251,13 +253,13 @@ async function cargar(){
     api('productos_venta?select=codigo,nombre,precio_may,precio_lpu,precio_pey,iva,por_kg,activo&activo=eq.true&order=nombre'),
     api('config?select=valor&clave=eq.caja'),
     api('crm_clientes?select=id,nombre,razon_social,cuit,tipo,lista,direccion,zona&activo=is.true&order=nombre').catch(()=>[]),
-    api('cc_movimientos?select=cliente_id,monto').catch(()=>[]),
-    api('cierres_caja?select=items&fecha=gte.'+desde).catch(()=>[])]);
+    ES_ADMIN?api('cc_movimientos?select=cliente_id,monto').catch(()=>[]):Promise.resolve([]),
+    rpc('caja_mas_vendidos',{p_desde:desde.slice(0,10)}).catch(()=>[])]);
   PROD=(p||[]).filter(x=>!/^articulo libre$/i.test(norm(x.nombre).trim()));
   CFG=(cfg&&cfg[0]&&cfg[0].valor)||{};
   CLIENTES=cl||[];SALDOS={};(cc||[]).forEach(m=>{SALDOS[m.cliente_id]=(SALDOS[m.cliente_id]||0)+(+m.monto||0)});
-  const cuenta={};(ci||[]).forEach(c=>(c.items||[]).forEach(i=>{if(i.codigo)cuenta[i.codigo]=(cuenta[i.codigo]||0)+(+i.total||0)}));
-  TOP=Object.entries(cuenta).sort((a,b)=>b[1]-a[1]).map(x=>x[0]).filter(c=>PROD.some(p=>p.codigo===c)).slice(0,24);
+  TOP=(ci||[]).map(String).filter(c=>PROD.some(p=>p.codigo===c)).slice(0,24);
+  if(ES_ADMIN)$('#bCCtop').style.display='';
   await estadoTurno();
   pintarListas();pintarGrid();pintarCarrito();
 }
@@ -296,7 +298,7 @@ function okKg(cod){const p=PROD.find(x=>x.codigo===cod);let q=num($('#kgIn').val
   carrito.push({codigo:cod,nombre:p.nombre,cantidad:Math.round(q*1000)/1000,unidad:'kg',precio:precio(p),iva:p.iva});cerrar();$('#bus').value='';pintarGrid();pintarCarrito()}
 function total(){return Math.round(carrito.reduce((a,it)=>a+it.cantidad*it.precio,0)*100)/100}
 function pintarCli(){const c=cliente;let t='👤 Consumidor final';
-  if(c.id){const s=SALDOS[c.id]||0;t=`👤 <b>${esc(c.nombre)}</b> <span class="muted">${COND[c.tipo]||''}${c.doc?' · '+esc(c.doc):''}${s?' · debe '+plata(s):''}</span>`}
+  if(c.id){const s=ES_ADMIN?(SALDOS[c.id]||0):0;t=`👤 <b>${esc(c.nombre)}</b> <span class="muted">${COND[c.tipo]||''}${c.doc?' · '+esc(c.doc):''}${s?' · debe '+plata(s):''}</span>`}
   else if(c.tipo!=='cf')t=`👤 <b>${esc(c.nombre||'')}</b> <span class="muted">${COND[c.tipo]} · ${esc(c.doc||'')}</span>`;
   if(PEDIDO)t=` <span class="chip" style="background:#e8f0fb;color:#1f5fa8;border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700">📦 Pedido #${PEDIDO.numero} <a href="#" onclick="PEDIDO=null;pintarCli();return false" title="Ya no es la entrega de ese pedido">✕</a></span> `+t;
   $('#cli').innerHTML=`<span class="n">${t}</span><button class="tb" onclick="elegirCliente()">Cambiar</button>${c.tipo!=='cf'||c.id?'<button class="tb" onclick="cliente={tipo:\'cf\'};pintarCli()">✕</button>':''}`}
@@ -347,10 +349,10 @@ async function cargarPedido(id){const p=(window._peds||[]).find(x=>x.id===id);if
   if(carrito.length&&!confirm('Hay productos en la venta actual. ¿Reemplazarlos por el pedido #'+p.numero+'?'))return;
   let al={};try{(await api('productos_venta_alias?select=alias,codigo')).forEach(a=>al[norm(a.alias).trim()]=a.codigo)}catch(e){}
   const falt=[];carrito=[];
-  (p.pedidos_clientes_items||[]).forEach(i=>{const n=norm(i.producto).trim();const pr=PROD.find(x=>norm(x.nombre).trim()===n)||PROD.find(x=>x.codigo===al[n]);
+  (p.pedidos_clientes_items||[]).forEach(i=>{const n=norm(String(i.producto||'').split(' — ')[0].replace(/\s*\([^)]*\)\s*$/,'')).trim();const pr=PROD.find(x=>norm(x.nombre).trim()===n)||PROD.find(x=>x.codigo===al[n]);
     const kg=i.unidad==='kg'||(pr&&pr.por_kg);
     if(!pr)falt.push(i.producto);
-    carrito.push({codigo:pr?pr.codigo:null,nombre:pr?pr.nombre:i.producto,cantidad:+i.cantidad,unidad:kg?'kg':'u',precio:+i.precio||(pr?0:0),iva:pr?pr.iva:21,manual:true})});
+    carrito.push({codigo:pr?pr.codigo:null,nombre:pr&&!/ — |\(/.test(i.producto)?pr.nombre:i.producto,cantidad:+i.cantidad,unidad:kg?'kg':'u',precio:+i.precio||(pr?0:0),iva:pr?pr.iva:21,manual:true})});
   const c=CLIENTES.find(x=>x.id===p.cliente_id);
   if(c){const cuit=(c.cuit||'').replace(/\D/g,'');cliente={id:c.id,nombre:c.razon_social||c.nombre,doc:cuit,tipo:cuit.length===11?'ri':'cf',dir:p.direccion||[c.direccion,c.zona].filter(Boolean).join(', '),mayorista:c.tipo==='mayorista'}}
   else cliente={tipo:'cf',nombre:p.cliente||''};
@@ -478,7 +480,7 @@ async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efec
     await estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
 
 // ---------- cuenta corriente ----------
-function cobrarCC(){if(!TURNO)return toast('Primero abrí el turno');const conDeuda=CLIENTES.filter(c=>(SALDOS[c.id]||0)>0.009);
+function cobrarCC(){if(!ES_ADMIN)return toast('Las cobranzas de cuenta corriente las lleva Poly');if(!TURNO)return toast('Primero abrí el turno');const conDeuda=CLIENTES.filter(c=>(SALDOS[c.id]||0)>0.009);
   modal(`<h3>💳 Cobrar cuenta corriente</h3>${conDeuda.length?`<div style="margin-bottom:6px">${conDeuda.map(c=>`<div class="resu"><span>${esc(c.nombre)}</span><b>${plata(SALDOS[c.id])}</b></div>`).join('')}</div>`:'<p class="muted">Nadie debe nada.</p>'}
   <label>Cliente</label><select id="ccC">${CLIENTES.map(c=>`<option value="${c.id}">${esc(c.nombre)}${SALDOS[c.id]?' · debe '+plata(SALDOS[c.id]):''}</option>`).join('')}</select>
   <div class="fila"><div><label>Importe</label><input id="ccM" inputmode="decimal" autofocus></div><div><label>Cómo paga</label><select id="ccP">${MEDIOS.filter(m=>m!=='Cuenta corriente').map(m=>`<option>${m}</option>`).join('')}</select></div></div>
