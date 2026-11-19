@@ -52,7 +52,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--or);border-color
 .ops button{border:1.5px solid var(--v);background:#fff;color:var(--v);border-radius:16px;padding:4px 11px;font:700 13px Lato,sans-serif;cursor:pointer}
 .ops button.on{background:var(--v);color:#fff}
 .tog{border:0;background:none;color:var(--v);font:700 14px Lato,sans-serif;cursor:pointer;padding:6px 2px;flex-shrink:0}
-.st{display:inline-block;background:#fff4e0;color:#8a5a12;border:1px solid #f0cf94;border-radius:10px;padding:0 7px;font-size:12px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.etq{display:inline-block;border-radius:10px;padding:0 7px;font-size:12px;font-weight:700;vertical-align:middle;white-space:nowrap;margin-top:2px}
 .filtros{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
 .filtros button{padding:7px 13px;border-radius:20px;font:700 14px Lato,sans-serif;cursor:pointer;background:#fff}
 .veg{display:inline-block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:10px;padding:0 7px;font-size:12px;font-weight:700;vertical-align:middle;white-space:nowrap}
@@ -219,13 +219,24 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   function valida(k) { var p = prod(k), x = partes(k); if (!p) return false; if (x.v && !vari(p, x.v)) return false; if (x.o && (p.opciones || []).indexOf(x.o) < 0) return false; return true; }
   var ABIERTO = {}, OPC = {};
   function opcDe(p) { var o = p.opciones || []; return o.length ? (o.indexOf(OPC[p.codigo]) >= 0 ? OPC[p.codigo] : o[0]) : ''; }
-  function veganoAlgo(p) { return p.vegano || (p.variantes || []).some(function (v) { return v.v; }); }
-  function stAlgo(p) { return p.sin_trigo || (p.variantes || []).some(function (v) { return v.st; }); }
+  // Etiquetas de dieta: campo del producto, letra en la variedad, emoji, texto y colores
+  var ETQ = [
+    { k: 'vegano', vk: 'v', e: '🌱', t: 'Vegano', bg: '#e8f5e9', c: '#2e7d32', b: '#a5d6a7' },
+    { k: 'sin_trigo', vk: 'st', e: '🌰', t: 'Sin trigo', bg: '#fff4e0', c: '#8a5a12', b: '#f0cf94' },
+    { k: 'integral', vk: 'i', e: '🌾', t: 'Integral', bg: '#f3ece0', c: '#6d4c1d', b: '#d9c3a0' },
+    { k: 'sin_azucar', vk: 'sa', e: '🍃', t: 'Sin azúcar', bg: '#e6f4f7', c: '#1f6f80', b: '#a8d5df' },
+    { k: 'keto', vk: 'k', e: '🥑', t: 'Keto', bg: '#eef6e3', c: '#4b6b1c', b: '#c4dc9f' }];
+  function tiene(p, q) { return !!p[q.k] || (p.variantes || []).some(function (v) { return v[q.vk]; }); }
+  function veganoAlgo(p) { return tiene(p, ETQ[0]); }
   var FILTRO = '';
-  function pasaVar(p, v) { return !FILTRO || (FILTRO === 'veg' ? (v.v || p.vegano) : (v.st || p.sin_trigo)); }
-  function etiquetas(p, v) { var veg = v ? v.v && !p.vegano : p.vegano, st = v ? v.st && !p.sin_trigo : p.sin_trigo, h = '';
-    if (veg) h += ' <span class="veg" title="Vegano">🌱 Vegano</span>'; else if (!v && veganoAlgo(p)) h += ' <span class="veg" title="Tiene variedades veganas">🌱 Hay veganas</span>';
-    if (st) h += ' <span class="st" title="Sin trigo, a base de harina de almendras">🌰 Sin trigo</span>'; else if (!v && stAlgo(p)) h += ' <span class="st" title="Tiene variedades sin trigo">🌰 Hay sin trigo</span>';
+  function etqDe(k) { return ETQ.find(function (q) { return q.k === k; }); }
+  function pasaVar(p, v) { var q = etqDe(FILTRO); return !q || !!(v[q.vk] || p[q.k]); }
+  function chip(q, txt) { return ' <span class="etq" title="' + q.t + '" style="background:' + q.bg + ';color:' + q.c + ';border:1px solid ' + q.b + '">' + q.e + (txt ? ' ' + txt : '') + '</span>'; }
+  function etiquetas(p, v) { var h = '';
+    ETQ.forEach(function (q) {
+      if (v) { if (v[q.vk] && !p[q.k]) h += chip(q, q.t); return; }
+      if (p[q.k]) h += chip(q, q.t); else if (tiene(p, q)) h += chip(q, 'Hay ' + q.t.toLowerCase());
+    });
     return h; }
   function stepper(k, u) { var c = CARRO[k];
     return c ? '<div class="step"><button class="menos" data-m="' + esc(k) + '">−</button><span class="q" data-q="' + esc(k) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(c, u) + '</span><button data-p="' + esc(k) + '">+</button></div>'
@@ -234,13 +245,14 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
   function pintarLista() {
     var q = norm($('q').value).trim();
-    var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0 || (p.variantes || []).some(function (v) { return norm(v.n).indexOf(q) >= 0; })) && (!FILTRO || (FILTRO === 'veg' ? veganoAlgo(p) : stAlgo(p))); });
-    var hayVeg = CAT.productos.some(veganoAlgo), haySt = CAT.productos.some(stAlgo);
+    var qf = etqDe(FILTRO);
+    var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0 || (p.variantes || []).some(function (v) { return norm(v.n).indexOf(q) >= 0; })) && (!qf || tiene(p, qf)); });
+    var hay = ETQ.filter(function (x) { return CAT.productos.some(function (p) { return tiene(p, x); }); });
     var fv = $('filtros');
-    if ((hayVeg || haySt) && !fv) { fv = document.createElement('div'); fv.id = 'filtros'; fv.className = 'filtros'; $('lista').parentNode.insertBefore(fv, $('lista'));
+    if (hay.length && !fv) { fv = document.createElement('div'); fv.id = 'filtros'; fv.className = 'filtros'; $('lista').parentNode.insertBefore(fv, $('lista'));
       fv.onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; FILTRO = FILTRO === b.dataset.f ? '' : b.dataset.f; pintarLista(); }; }
-    if (fv) fv.innerHTML = (hayVeg ? '<button data-f="veg" style="border:2px solid #2e7d32;' + (FILTRO === 'veg' ? 'background:#2e7d32;color:#fff' : 'color:#2e7d32') + '">🌱 ' + (FILTRO === 'veg' ? 'Solo veganos · ver todo' : 'Ver solo veganos') + '</button>' : '')
-      + (haySt ? '<button data-f="st" style="border:2px solid #b07a1e;' + (FILTRO === 'st' ? 'background:#b07a1e;color:#fff' : 'color:#8a5a12') + '">🌰 ' + (FILTRO === 'st' ? 'Solo sin trigo · ver todo' : 'Ver solo sin trigo') + '</button>' : '');
+    if (fv) fv.innerHTML = hay.map(function (x) { var on = FILTRO === x.k;
+      return '<button data-f="' + x.k + '" style="border:2px solid ' + x.c + ';' + (on ? 'background:' + x.c + ';color:#fff' : 'color:' + x.c) + '">' + x.e + ' ' + x.t + (on ? ' · ver todo' : '') + '</button>'; }).join('');
     $('lista').innerHTML = ps.length ? ps.map(function (p) {
       var vars = (p.variantes || []).filter(function (v) { return pasaVar(p, v); }), ops = p.opciones || [], op = opcDe(p);
       var badge = etiquetas(p);
@@ -290,8 +302,8 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     var ks = Object.keys(CARRO); var cfg = CAT.config || {}, pct = +cfg.sena_pct || 50;
     if (!ks.length) { $('carLista').innerHTML = '<p class="muted">Todavía no agregaste nada.</p>'; }
     else $('carLista').innerHTML = ks.map(function (k) { var p = prod(k); if (!p) return '';
-      var vv = vari(p, partes(k).v), vg = vv ? (vv.v || p.vegano) : p.vegano, vs = vv ? (vv.st || p.sin_trigo) : p.sin_trigo;
-      return '<div class="prod" style="box-shadow:none;padding:6px 0;border-bottom:1px solid #f0ebe2;border-radius:0"><div class="n"><b>' + esc(nombreK(k)) + (vg ? ' <span class="veg">🌱</span>' : '') + (vs ? ' <span class="st">🌰</span>' : '') + '</b><span>' + plata(precioK(k) * CARRO[k]) + '</span></div>' +
+      var vv = vari(p, partes(k).v), em = ETQ.filter(function (x) { return p[x.k] || (vv && vv[x.vk]); }).map(function (x) { return chip(x, ''); }).join('');
+      return '<div class="prod" style="box-shadow:none;padding:6px 0;border-bottom:1px solid #f0ebe2;border-radius:0"><div class="n"><b>' + esc(nombreK(k)) + em + '</b><span>' + plata(precioK(k) * CARRO[k]) + '</span></div>' +
         '<div class="step"><button class="menos" data-m="' + esc(k) + '">−</button><span class="q" data-q="' + esc(k) + '" style="cursor:pointer;text-decoration:underline dotted">' + cant(CARRO[k], p.unidad) + '</span><button data-p="' + esc(k) + '">+</button></div></div>'; }).join('');
     var t = total(), s = Math.ceil(t * pct / 100 / 100) * 100;
     if (MAY) { $('carTot').innerHTML = '<div class="linea tot"><span>Total (precio mayorista)</span><span>' + plata(t) + '</span></div><div class="linea muted"><span>Va a tu cuenta corriente · sin seña</span><span>' + (envio() ? 'entrega a coordinar' : '') + '</span></div>'; return; }
