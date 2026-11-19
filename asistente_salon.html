@@ -2055,7 +2055,7 @@ async function loadControl(){
     controlState={ id:existing.id, fecha, turno, responsable:existing.responsable||'', hora_apertura:existing.hora_apertura||'',
       hora_cierre:existing.hora_cierre||'', estado:existing.estado||'abierto',
       remanentes:existing.remanentes||'', devoluciones:existing.devoluciones||'', consumo_interno:existing.consumo_interno||'',
-      items:itemsMap };
+      items:itemsMap, ref:existing.referencia||null };
   } else {
     // NUEVO: inicial = final del turno anterior (arrastre)
     const inicialMap=await calcularInicialArrastre(fecha,turno);
@@ -2070,6 +2070,8 @@ async function loadControl(){
       Object.keys(itemsMap).forEach(c=>{ const it=itemsMap[c]; it.i=Math.max(0,Math.round(((it.i||0)-(it.g||0)+(it.e||0))*1000)/1000); });
       showToast('ℹ️ No hay turno anterior cerrado: el Inicial se tomó del stock del Salón');
     }
+    // lo que calculó el sistema: si alguien cambia Inicial o Ingreso, a Poly le llega un aviso
+    controlState.ref={}; Object.keys(itemsMap).forEach(c=>{ controlState.ref[c]={i:itemsMap[c].i||0, g:itemsMap[c].g||0}; });
   }
   // reflejar encabezado
   document.getElementById('ctrl-responsable').value=controlState.responsable;
@@ -2149,7 +2151,8 @@ async function traerIngresos(silent){
     else { sinMatch++; }
   });
   let aplicados=0;
-  Object.entries(acum).forEach(([cod,cant])=>{ if(controlState.items[cod]){ controlState.items[cod].g=cant; aplicados++; } });
+  Object.entries(acum).forEach(([cod,cant])=>{ if(controlState.items[cod]){ controlState.items[cod].g=cant; aplicados++;
+    if(controlState.ref){ controlState.ref[cod]=controlState.ref[cod]||{i:controlState.items[cod].i||0,g:0}; controlState.ref[cod].g=cant; } } });
   if(!silent){
     renderControlTabla(); renderControlPie();
     let msg = aplicados>0 ? ('📥 '+aplicados+' ingresos cargados de despachos') : 'No hubo despachos en este turno';
@@ -2209,7 +2212,7 @@ function renderControlEstado(){
   const el=document.getElementById('ctrl-estado-bar'); if(!el) return;
   const cerrado=controlState.estado==='cerrado';
   el.innerHTML = '<div style="background:'+(cerrado?'#dcfce7':'#fef9c3')+';color:'+(cerrado?'#166534':'#92400e')+';border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;margin:6px 0;">'
-    + (cerrado?'🔒 Turno CERRADO — guardado y listo para imprimir':'✏️ Turno abierto — cargá los conteos')+'</div>';
+    + (cerrado?'🔒 Turno CERRADO — guardado y listo para imprimir':'✏️ Turno abierto — cargá los conteos · si cambiás un Inicial o un Ingreso, le llega un aviso a Poly')+'</div>';
 }
 
 function renderControlTabla(){
@@ -2228,7 +2231,7 @@ function renderControlTabla(){
     const inp='width:52px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;font-size:12px;';
     h+='<tr style="border-bottom:1px solid #f0f0f0;">'
       +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
-      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'"></td>'
+      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
       +'<td style="text-align:center;"><input readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores" type="number" id="cg-'+p.c+'" value="'+(it.g||0)+'" style="'+inp+'background:#EEEEEE;color:#555;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ce-'+p.c+'" value="'+(it.e||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
@@ -2240,6 +2243,10 @@ function renderControlTabla(){
   el.innerHTML=h;
 }
 
+// Inicial distinto de lo que calculó el sistema: se marca en naranja y muestra el valor original
+function ctrlRefI(cod){ const r=controlState&&controlState.ref&&controlState.ref[cod]; return r?Number(r.i)||0:null; }
+function ctrlMarca(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? 'outline:3px solid #F57C00;outline-offset:1px;' : ''; }
+function ctrlMarcaTxt(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? '<div id="cim-'+cod+'" style="font-size:9px;color:#E65100;font-weight:700;margin-top:5px;">sistema: '+r+'</div>' : '<div id="cim-'+cod+'"></div>'; }
 function ctrlEdit(cod){
   if(!controlState||!controlState.items[cod]) return;
   const gi=id=>{const e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;};
@@ -2249,6 +2256,9 @@ function ctrlEdit(cod){
   const v=ctrlVendido(it);
   const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=v;
   const cm=document.getElementById('cm-'+cod); if(cm) cm.textContent=fmtPrecio(v*p.p);
+  const ci=document.getElementById('ci-'+cod), r=ctrlRefI(cod);
+  if(ci && r!==null){ const cambio=(Number(it.i)||0)!==r; ci.style.outline=cambio?'3px solid #F57C00':''; ci.style.outlineOffset='1px';
+    const m=document.getElementById('cim-'+cod); if(m){ m.textContent=cambio?'sistema: '+r:''; m.style.cssText='font-size:9px;color:#E65100;font-weight:700;margin-top:5px;'; } }
   renderControlPie(); // actualiza total
 }
 
@@ -2284,7 +2294,7 @@ function ctrlBuildRow(){
     hora_cierre:controlState.hora_cierre||'',
     estado:controlState.estado, remanentes:controlState.remanentes, devoluciones:controlState.devoluciones,
     consumo_interno:controlState.consumo_interno, total_a_rendir:ctrlTotal(),
-    items:items, updated_at:new Date().toISOString()
+    items:items, referencia:controlState.ref||null, updated_at:new Date().toISOString()
   };
 }
 
