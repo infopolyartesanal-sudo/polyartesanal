@@ -133,6 +133,8 @@
   .tab-badge{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;font-weight:700;position:absolute;top:4px;right:4px;animation:pulse 2s infinite;}
 
   .panel{display:none;flex-direction:column;flex:1;overflow:hidden;}
+  body.modo-caja #app{max-width:100% !important;height:calc(100vh - 16px) !important;}
+  body.modo-caja{padding:8px !important;}
   .panel.active{display:flex;}
 
   /* Search */
@@ -509,8 +511,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <div id="header">
     <div class="logo">🏪</div>
     <div><h1>Salón de Venta</h1><p>Stock del local · Recepciones · Insumos</p></div>
-    <a href="caja.html" style="margin-left:auto;margin-right:10px;background:#2E9E5B;color:#fff;text-decoration:none;font-weight:800;font-size:14px;padding:9px 14px;border-radius:10px;white-space:nowrap">🧾 Caja</a>
-    <div class="status" style="margin-left:0"><div id="status-dot"></div><span id="status-text">Listo</span></div>
+    <div class="status" style="margin-left:auto"><div id="status-dot"></div><span id="status-text">Listo</span></div>
   </div>
 
   <div id="api-key-section">
@@ -519,12 +520,18 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   </div>
 
   <div id="tabs">
-    <button class="tab active" onclick="switchTab('recepcion')" id="tab-recepcion"><i class="ti ti-truck-delivery"></i>Recepción</button>
+    <button class="tab active" onclick="switchTab('caja')" id="tab-caja" style="font-weight:800"><i class="ti ti-cash-register"></i>Caja</button>
+    <button class="tab" onclick="switchTab('recepcion')" id="tab-recepcion"><i class="ti ti-truck-delivery"></i>Recepción</button>
     <button class="tab" onclick="switchTab('control')" id="tab-control"><i class="ti ti-clipboard-check"></i>Control</button>
     <button class="tab" onclick="switchTab('comanda')" id="tab-comanda" style="position:relative;"><i class="ti ti-send"></i>Pedidos</button>
     <button class="tab" onclick="switchTab('egresos')" id="tab-egresos"><i class="ti ti-arrow-up"></i>Egresos</button>
     <button class="tab" onclick="switchTab('informe')" id="tab-informe"><i class="ti ti-printer"></i>Informe</button>
     <button class="tab" onclick="switchTab('chat')" id="tab-chat"><i class="ti ti-checklist"></i>Tareas</button>
+  </div>
+
+  <!-- CAJA (punto de venta adentro del Salón; el carrito se mantiene al cambiar de solapa) -->
+  <div class="panel active" id="panel-caja" style="padding:0">
+    <iframe id="caja-frame" title="Caja" style="flex:1;width:100%;border:0;min-height:0" allow="clipboard-write"></iframe>
   </div>
 
   <!-- STOCK LOCAL -->
@@ -572,7 +579,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   </div>
 
   <!-- RECEPCIÓN -->
-  <div class="panel active" id="panel-recepcion">
+  <div class="panel" id="panel-recepcion">
     <div id="despachos-pendientes-wrap" style="padding:12px 12px 0;"></div>
     <div style="margin:0 12px;padding:10px 12px;background:#F3E5F5;border-radius:10px;font-size:12px;color:#4A148C;">📦 La mercadería entra sola cuando Madrugada, Panadería, Pastelería o Cocina la mandan por sistema. Acá solo confirmás que llegó.</div>
     <div class="recepcion-history" id="recepcion-history"></div>
@@ -1481,6 +1488,9 @@ function renderInforme() {
 function imprimirInforme() { window.print(); }
 
 function switchTab(name) {
+  // La caja necesita pantalla ancha; el resto del Salón sigue con su formato
+  document.body.classList.toggle('modo-caja', name==='caja');
+  if (name==='caja') { const f=document.getElementById('caja-frame'); if (f && !f.src) f.src='caja.html'; }
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   const _tab = document.getElementById('tab-'+name);
@@ -1559,6 +1569,7 @@ window.addEventListener('DOMContentLoaded', () => {
   checkAlerts();
   const _ci=document.getElementById('chat-input'); if(_ci) _ci.addEventListener('keydown', e => { if(e.key==='Enter') sendMessage(); });
   if (typeof initTareas==='function') initTareas();
+  switchTab('caja'); // el Salón abre directo en la caja
 });
 
 

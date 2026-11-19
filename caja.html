@@ -69,6 +69,7 @@
   function destino(u) { return u.rol === 'admin' ? 'index.html' : (ARCHIVO[u.modulo] || 'index.html'); }
 
   function barra(u) {
+    if (window.top !== window) return; // dentro del Salón: la barra de sesión ya está afuera
     var b = document.createElement('div');
     b.id = 'poly-sesion';
     b.style.cssText = 'position:fixed;top:4px;left:4px;z-index:99999;font:11px system-ui,sans-serif;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:3px 4px 3px 9px;display:flex;gap:6px;align-items:center;';
@@ -202,7 +203,7 @@
   <button class="tb" onclick="pedidosEntregar()" id="bPed">📦 Entregar pedido</button>
   <button class="tb" onclick="cobrarCC()" id="bCCtop" style="display:none">💳 Cobrar cuenta corriente</button>
   <button class="tb" id="bTurno" onclick="turnoBtn()">…</button>
-  <a class="tb" href="asistente_salon.html" style="text-decoration:none">🏪 Salón</a>
+  <a class="tb" id="bSalon" href="asistente_salon.html" style="text-decoration:none">🏪 Salón</a>
 </div>
 <div id="main">
   <section id="izq">
@@ -244,6 +245,8 @@ const LISTAS={minorista:['Minorista','precio_lpu','#8e5bd6'],mayorista:['Mayoris
 const MEDIOS=['Efectivo','Mercado Pago / QR','Transferencia','Débito','Crédito','Cuenta corriente'];
 const COND={cf:'Consumidor final',ri:'Responsable inscripto',mono:'Monotributista',ex:'Exento'};
 // Solo Poly (admin) ve saldos y cobra cuentas corrientes; el Salón puede despachar a cuenta pero no ve deudas
+// Si la caja está adentro del Salón (solapa), no hace falta el botón para volver
+try{if(window.top!==window)document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('bSalon');if(b)b.style.display='none'})}catch(e){}
 const ES_ADMIN=(()=>{try{return (JSON.parse(localStorage.getItem('poly_usuario')||'null')||{}).rol==='admin'}catch(e){return false}})();
 let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''},PEDIDO=null;
 
