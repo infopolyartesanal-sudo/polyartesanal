@@ -2460,7 +2460,7 @@ function renderTareas(){
     if (ref && !document.getElementById('pcs-seccion')) {
       // Sección de pedidos de clientes arriba de todo, en la misma solapa "Pedidos"
       var p = document.createElement('div'); p.id = 'pcs-seccion';
-      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#4A148C;border:1px solid #CE93D8" onclick="pcsAnotarCliente()">📇 Anotar cliente para promos</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#0C461F;border:1px solid #9fc5a8" onclick="window.PW&&PW.codigo()">🔑 Código de contraseña web</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#C9A84C;color:#fff" onclick="pcsComunidad()">⭐ Comunidad: sumar compra o canjear</button><div id="pcs-lista"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
+      p.innerHTML = '<div style="padding:14px 14px 4px;"><div style="font-size:13px;font-weight:700;color:#4A148C;margin-bottom:8px;">🧾 Pedidos de clientes</div><button class="pcs-b" style="width:100%;padding:14px;font-size:15px;margin-bottom:12px" onclick="pcsNuevo()">➕ Nuevo pedido de cliente</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#4A148C;border:1px solid #CE93D8" onclick="pcsAnotarCliente()">📇 Anotar cliente para promos</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#fff;color:#0C461F;border:1px solid #9fc5a8" onclick="window.PW&&PW.codigo()">🔑 Código de contraseña web</button><button class="pcs-b" style="width:100%;padding:11px;font-size:14px;margin:-4px 0 12px;background:#C9A84C;color:#fff" onclick="pcsComunidad()">⭐ Comunidad: sumar compra o canjear</button><div id="pcs-lista"></div><button class="pcs-b" style="width:100%;padding:10px;font-size:13px;margin:8px 0 0;background:#fff;color:#555;border:1px solid #ccc" onclick="pcsVerHist()">📦 Pedidos entregados · reimprimir remito</button><div id="pcs-hist"></div><div style="border-top:2px dashed #E1BEE7;margin:14px 0 4px;"></div><div style="font-size:13px;font-weight:700;color:#4A148C;">📤 Pedidos a los sectores</div></div>';
       ref.insertBefore(p, ref.firstChild);
     }
     if (!document.getElementById('pcs-pill')) {
@@ -2562,9 +2562,40 @@ function renderTareas(){
         '<div style="font-size:12px;color:#555;margin:4px 0">' + (p.telefono ? '📞 ' + esc(p.telefono) + (tel ? ' · <a href="https://wa.me/' + (tel.length <= 10 ? '549' + tel : tel) + '" target="_blank">WhatsApp</a>' : '') + ' · ' : '') + (p.envio ? '🛵 Envío: ' + esc(p.direccion) : '🏪 Retira en el local') + '</div>' +
         '<div style="font-size:12px;color:#555;margin-bottom:6px">' + (function () { var L = LISTAS[p.lista_precios || 'minorista'] || LISTAS.minorista; return '<span class="pcs-chip" style="background:' + L[2] + ';color:#fff">' + L[0] + '</span> '; })() + 'Total ' + plata(p.total) + ' · Seña ' + plata(p.sena) + (p.sena_medio ? ' (' + esc(p.sena_medio) + ')' : '') + ' · <b>Saldo ' + plata(saldo) + '</b>' + (p.notas ? '<br>📝 ' + esc(p.notas) : '') + '</div>' +
         its.map(function (i) { var e = estadoItem(i); return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed #eee;font-size:14px"><span>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + ' <span style="color:#999;font-size:11px">' + (SECT[i.sector] || i.sector) + '</span></span><span class="pcs-chip" style="background:' + e[1] + ';color:' + e[2] + '">' + e[0] + '</span></div>'; }).join('') +
-        '<div style="display:flex;gap:8px;margin-top:10px"><button class="pcs-b" style="flex:1;background:' + (listo ? '#2E7D32' : '#9E9E9E') + '" onclick="pcsEntregar(' + p.id + ')">📦 Entregado al cliente</button><button class="pcs-b" style="background:#fff;color:#C62828;border:1px solid #ef9a9a" onclick="pcsCancelar(' + p.id + ')">Cancelar</button></div></div>';
+        '<div style="display:flex;gap:8px;margin-top:10px"><button class="pcs-b" style="flex:1;background:' + (listo ? '#2E7D32' : '#9E9E9E') + '" onclick="pcsEntregar(' + p.id + ')">📦 Entregado al cliente</button><button class="pcs-b" style="background:#fff;color:#555;border:1px solid #ccc" onclick="pcsRemito(' + p.id + ')" title="Imprimir remito">🖨</button><button class="pcs-b" style="background:#fff;color:#C62828;border:1px solid #ef9a9a" onclick="pcsCancelar(' + p.id + ')">Cancelar</button></div></div>';
     }).join('');
   }
+
+  // ── Pedidos entregados (últimos 45 días) para reimprimir el remito ──
+  var pcsHistOn = false;
+  window.pcsVerHist = function () {
+    var el = document.getElementById('pcs-hist'); if (!el) return;
+    pcsHistOn = !pcsHistOn; if (!pcsHistOn) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div style="color:#999;font-size:13px;padding:8px">Cargando…</div>';
+    api('pedidos_clientes?select=id,numero,cliente,fecha_retiro,hora_retiro,envio&estado=eq.entregado&fecha_retiro=gte.' + ymd(-45) + '&order=fecha_retiro.desc,numero.desc&limit=200')
+      .then(function (r) { r = r || [];
+        el.innerHTML = r.length ? r.map(function (p) { return '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #eee;border-radius:10px;margin-top:6px;background:#fff"><div style="flex:1;min-width:0"><b>#' + p.numero + ' · ' + esc(p.cliente) + '</b><div style="font-size:12px;color:#666">' + new Date(p.fecha_retiro + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' }) + ' · ' + (p.envio ? '🛵 envío' : '🏪 retiro') + '</div></div><button class="pcs-b" style="background:#555" onclick="pcsRemito(' + p.id + ')">🖨 Remito</button></div>'; }).join('')
+          : '<div style="color:#999;font-size:13px;padding:8px">No hay pedidos entregados en los últimos 45 días.</div>'; })
+      .catch(function (e) { el.innerHTML = '<div style="color:#C62828;font-size:13px;padding:8px">No se pudieron cargar: ' + esc(e.message || '') + '</div>'; });
+  };
+  // Remito de entrega sin precios (para mandar o acompañar el pedido)
+  window.pcsRemito = function (pid) {
+    var w = window.open('', '_blank'); if (!w) { alert('Permití las ventanas emergentes para imprimir.'); return; }
+    w.document.write('<p style="font-family:sans-serif">Preparando remito…</p>');
+    api('pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,estado)&id=eq.' + pid).then(function (rows) {
+      var p = rows && rows[0]; if (!p) { w.document.body.innerHTML = 'No se encontró el pedido.'; return; }
+      var its = (p.pedidos_clientes_items || []).filter(function (i) { return i.estado !== 'cancelado'; });
+      var f = (p.fecha_retiro || '').split('-').reverse().join('/');
+      w.document.open();
+      w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Remito pedido ' + p.numero + '</title><style>@page{size:A4;margin:12mm}body{font:13px/1.4 Arial,sans-serif;color:#000}h1{font-size:20px;margin:0}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eee}.r{text-align:right}.cab{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:8px}.firma{margin-top:60px;display:flex;gap:40px}.firma div{flex:1;border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>' +
+        '<div class="cab"><div><h1>Poly Artesanal</h1><div>Panadería de Autor · Galván 3512, Villa Urquiza</div></div><div style="text-align:right"><b style="font-size:16px">REMITO DE ENTREGA</b><div>Pedido N° ' + p.numero + '</div><div>Fecha: ' + f + (p.hora_retiro ? ' · ' + esc(p.hora_retiro) : '') + '</div></div></div>' +
+        '<p><b>Cliente:</b> ' + esc(p.cliente) + (p.telefono ? ' · Tel. ' + esc(p.telefono) : '') + '<br><b>Entrega:</b> ' + (p.envio ? 'Envío a ' + esc(p.direccion || '') : 'Retira en el local') + (p.notas ? '<br><b>Notas:</b> ' + esc(p.notas) : '') + '</p>' +
+        '<table><tr><th>Producto</th><th class="r">Cantidad</th><th>Unidad</th></tr>' + its.map(function (i) { return '<tr><td>' + esc(i.producto) + '</td><td class="r">' + (+i.cantidad) + '</td><td>' + esc(i.unidad || 'u') + '</td></tr>'; }).join('') + '</table>' +
+        '<p style="margin-top:10px">Bultos: ________</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>' +
+        '<script>setTimeout(function(){window.print()},300)<\/script></body></html>');
+      w.document.close();
+    }).catch(function () { w.document.body.innerHTML = 'No se pudo cargar el pedido. Revisá la conexión.'; });
+  };
 
   // ── Formulario de pedido nuevo ──
   window.pcsNuevo = function () {
