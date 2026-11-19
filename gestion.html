@@ -1978,7 +1978,7 @@ async function crmVerComp(id){const w=window.open('','_blank');try{const [x]=awa
   if(/^image\//.test(x.tipo))w.document.write(`<title>${esc(x.nombre||'Comprobante')}</title><img src="${x.datos}" style="max-width:100%">`);
   else{const b=await (await fetch(x.datos)).blob();w.location=URL.createObjectURL(b)}}catch(e){w.close();toast('⚠️ No se pudo abrir')}}
 // Remito de un pedido de cliente (web o cargado a mano): para reimprimir y mandar
-async function pedRemito(pid){const conP=confirm('¿Con precios?\n\nAceptar = con precios y total\nCancelar = sin precios');const w=window.open('','_blank');if(!w)return toast('Permití las ventanas emergentes para imprimir');try{
+async function pedRemito(pid){const conP=true;const w=window.open('','_blank');if(!w)return toast('Permití las ventanas emergentes para imprimir');try{
   const [p]=await sb('pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,precio,estado)&id=eq.'+pid);if(!p){w.close();return toast('No encontré el pedido')}
   const its=(p.pedidos_clientes_items||[]).filter(i=>i.estado!=='cancelado');const f=(p.fecha_retiro||'').split('-').reverse().join('/');const pl=n=>'$ '+Math.round(+n||0).toLocaleString('es-AR');
   const tot=its.reduce((a,i)=>a+(+i.cantidad||0)*(+i.precio||0),0),pago=+p.sena||0;
