@@ -276,7 +276,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
       var tog = '<button class="tog" data-tog="' + esc(p.codigo) + '">' + (tot ? cant(tot, p.unidad) + ' · ' : '') + (abierto ? 'Cerrar ▴' : 'Elegir variedades ▾') + '</button>';
       var filas = abierto ? '<div class="vars">' + chips + vars.map(function (v) {
           var k = clave(p.codigo, v.n, op), pr = +(MAY ? v.may : v.lpu) > 0 ? +(MAY ? v.may : v.lpu) : 0;
-          return '<div class="prod"><div class="n"><b>' + esc(v.n) + etiquetas(p, v) + '</b>' + (pr ? '<span>' + plata(pr) + (p.unidad === 'kg' ? ' el kg' : '') + '</span>' : '') + '</div>' + stepper(k, p.unidad) + '</div>';
+          return '<div class="prod">' + (v.f ? '<img class="ft" style="width:60px;height:45px" loading="lazy" src="' + esc(v.f) + '" alt="" data-foto="' + esc(v.f) + '">' : '') + '<div class="n"><b>' + esc(v.n) + etiquetas(p, v) + '</b>' + (pr ? '<span>' + plata(pr) + (p.unidad === 'kg' ? ' el kg' : '') + '</span>' : '') + '</div>' + stepper(k, p.unidad) + '</div>';
         }).join('') + (elegidas.some(function (k) { return partes(k).o && partes(k).o !== op; }) ? '<p class="muted" style="font-size:12px;margin:6px 0 0">También tenés de esta en otra presentación: la ves en tu pedido.</p>' : '') + '</div>' : '';
       return '<div class="pgrp"><div class="prod">' + cab + tog + '</div>' + filas + '</div>';
     }).join('') : '<p class="muted">No encontramos productos con esa búsqueda.</p>';
