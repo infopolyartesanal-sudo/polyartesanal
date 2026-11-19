@@ -82,6 +82,11 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   <section id="vEntrar">
     <h1>Hacé tu pedido</h1>
     <p class="lead">Encargalo con <b id="tAnt">48 h</b> de anticipación. Lo confirmamos cuando recibimos la seña.</p>
+    <div class="card oculto" id="bxSumate" style="background:var(--v);color:var(--cr);text-align:center">
+      <div style="font:700 20px 'Playfair Display',serif;color:var(--or)">Sumate a la Comunidad Poly ⭐</div>
+      <div style="margin-top:6px">Creá tu cuenta gratis y con el mismo usuario hacés tus pedidos online.</div>
+      <div style="margin-top:8px;font-size:15px;line-height:1.6">🥐 Cada 10 compras de más de $10.000, ½ docena de facturas de regalo<br>🎂 15% de descuento en tu cumple<br>🎁 Promos exclusivas cada mes</div>
+    </div>
     <div class="tabs"><button id="tbIn" class="on">Ingresar</button><button id="tbNew">Crear cuenta</button></div>
     <div class="card" id="fIn">
       <label for="iT">Tu WhatsApp</label><input id="iT" type="tel" inputmode="tel" autocomplete="tel" placeholder="ej: 11 2345 6789">
@@ -341,6 +346,7 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   function salir(silencio) { if (TOKEN && !silencio) rpc('cliente_salir', { p_token: TOKEN }).catch(function () {}); TOKEN = null; PERFIL = null; ls.del('poly_cliente_token'); if (MAY) { CARRO = {}; guardarCarro(); cargarCat(); } ver('vEntrar'); }
   $('tbIn').onclick = function () { this.classList.add('on'); $('tbNew').classList.remove('on'); $('fIn').classList.remove('oculto'); $('fNew').classList.add('oculto'); };
   $('tbNew').onclick = function () { this.classList.add('on'); $('tbIn').classList.remove('on'); $('fNew').classList.remove('oculto'); $('fIn').classList.add('oculto'); };
+  if (/[?&#](sumate|comunidad)\b/i.test(location.search + location.hash)) { $('bxSumate').classList.remove('oculto'); $('tbNew').onclick(); }
   $('bIn').onclick = function () {
     var b = this, t = $('iT').value.trim(), c = $('iC').value; $('eIn').textContent = '';
     if (t.replace(/\D/g, '').length < 10 || !c) { $('eIn').textContent = 'Completá tu WhatsApp (con característica) y tu contraseña.'; return; }
