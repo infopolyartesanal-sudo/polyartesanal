@@ -1993,7 +1993,7 @@ async function crmVerComp(id){const w=window.open('','_blank');try{const [x]=awa
   else{const b=await (await fetch(x.datos)).blob();w.location=URL.createObjectURL(b)}}catch(e){w.close();toast('⚠️ No se pudo abrir')}}
 // Remito de un pedido de cliente (web o cargado a mano): para reimprimir y mandar
 async function pedRemito(pid){const conP=true;const w=window.open('','_blank');if(!w)return toast('Permití las ventanas emergentes para imprimir');try{
-  const [p]=await sb('pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,precio,estado,bultos)&id=eq.'+pid);if(!p){w.close();return toast('No encontré el pedido')}
+  const [p]=await sb('pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,precio,estado,bultos,bultos_det)&id=eq.'+pid);if(!p){w.close();return toast('No encontré el pedido')}
   const its=(p.pedidos_clientes_items||[]).filter(i=>i.estado!=='cancelado');const f=(p.fecha_retiro||'').split('-').reverse().join('/');const pl=n=>'$ '+Math.round(+n||0).toLocaleString('es-AR');
   const tot=its.reduce((a,i)=>a+(+i.cantidad||0)*(+i.precio||0),0),pago=+p.sena||0;
   const fila=i=>`<tr><td>${esc(i.producto)}${i.bultos?`<div style="font-size:12px;color:#333">📦 ${esc(i.bultos)}</div>`:''}</td><td class="r">${fnum(+i.cantidad,2)}</td><td>${esc(i.unidad||'u')}</td>${conP?`<td class="r">${pl(i.precio)}</td><td class="r">${pl((+i.cantidad||0)*(+i.precio||0))}</td>`:''}</tr>`;
@@ -2002,7 +2002,7 @@ async function pedRemito(pid){const conP=true;const w=window.open('','_blank');i
   <p><b>Cliente:</b> ${esc(p.cliente||'')}${p.telefono?' · Tel. '+esc(p.telefono):''}<br><b>Entrega:</b> ${p.envio?'Envío a '+esc(p.direccion||''):'Retira en el local'}${p.notas?'<br><b>Notas:</b> '+esc(p.notas):''}</p>
   <table><tr><th>Producto</th><th class="r">Cantidad</th><th>Unidad</th>${conP?'<th class="r">Precio</th><th class="r">Subtotal</th>':''}</tr>${its.map(fila).join('')}
   ${conP?`<tr><td colspan="4" class="r"><b>TOTAL</b></td><td class="r"><b>${pl(tot)}</b></td></tr>${pago>0?`<tr><td colspan="4" class="r">Pagado / seña</td><td class="r">${pl(pago)}</td></tr><tr><td colspan="4" class="r"><b>Saldo</b></td><td class="r"><b>${pl(Math.max(0,tot-pago))}</b></td></tr>`:''}`:''}</table>
-  <p style="margin-top:10px">Bultos: ${(()=>{const t=its.reduce((x,i)=>x+(i.bultos?parseInt(i.bultos,10)||0:0),0);return t&&its.every(i=>i.bultos)?'<b>'+t+'</b>':t?'<b>'+t+'</b> de galletas/crackers + ________ del resto':'________'})()}</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>
+  <p style="margin-top:10px">Bultos: ${(()=>{const t=its.reduce((x,i)=>x+(i.bultos?parseInt(i.bultos,10)||0:0),0);return t&&its.every(i=>i.bultos)?'<b>'+t+'</b>':t?'<b>'+t+'</b> de galletas/crackers + ________ del resto':'________'})()}</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>${window.polyEtiquetas?polyEtiquetas(p,its):''}
   <script>setTimeout(function(){window.print()},300)<\/script></body></html>`);w.document.close()}catch(e){w.close();toast('⚠️ No se pudo abrir el remito')}}
 async function crmRemito(vid){const w=window.open('','_blank');try{
   const [[v],[cfg]]=await Promise.all([sb('ventas?select=*,ventas_items(*)&id=eq.'+vid),sb('config?select=valor&clave=eq.caja')]);const C=(cfg&&cfg.valor)||{};
@@ -3186,5 +3186,22 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarModal()});
 })();
 </script>
 <!-- /pedidos-web -->
+<script>
+/* Etiquetas para cajas/bolsas de un pedido (se agregan al remito como hoja aparte) */
+window.polyEtiquetas = function (p, its) {
+  var E = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var L = [];
+  (its || []).forEach(function (i) { (i.bultos_det || []).forEach(function (b) { L.push({ prod: i.producto, kg: b.kg, tipo: b.tipo, aparte: b.aparte }); }); });
+  if (!L.length) return '';
+  var f = (p.fecha_retiro || '').split('-').reverse().join('/'), tot = L.length;
+  var kgTxt = function (k) { return String(Math.round(k * 100) / 100).replace('.', ','); };
+  return '<style>.etq-pag{page-break-before:always;break-before:page;display:grid;grid-template-columns:1fr 1fr;gap:0}.etq{border:1px dashed #888;height:66mm;padding:5mm 6mm;box-sizing:border-box;break-inside:avoid;display:flex;flex-direction:column;justify-content:space-between;font-family:Arial,sans-serif}.etq .m{font:700 15px Arial}.etq .c{font:700 19px Arial;margin:2mm 0}.etq .pr{font:600 15px Arial}.etq .kg{font:800 34px Arial}.etq .ap{background:#000;color:#fff;padding:1mm 3mm;border-radius:2mm;font:700 13px Arial;display:inline-block}.etq .pie{display:flex;justify-content:space-between;font-size:12px}</style>' +
+    '<div class="etq-pag">' + L.map(function (b, k) {
+      return '<div class="etq"><div><div class="m">Poly Artesanal · Panadería de Autor</div><div class="c">' + E(p.cliente) + '</div><div class="pr">' + E(b.prod) + '</div></div>' +
+        '<div><span class="kg">' + kgTxt(b.kg) + ' kg</span> ' + (b.aparte ? '<span class="ap">' + (b.tipo === 'bolsa' ? 'BOLSA APARTE' : 'CAJA APARTE') + '</span>' : '') + '</div>' +
+        '<div class="pie"><b>' + (b.tipo === 'bolsa' ? 'Bolsa' : 'Caja') + ' ' + (k + 1) + ' de ' + tot + '</b><span>Pedido N° ' + E(p.numero) + ' · ' + f + '</span></div></div>';
+    }).join('') + '</div>';
+};
+</script>
 </body>
 </html>

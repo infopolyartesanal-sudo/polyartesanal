@@ -3141,7 +3141,7 @@ adjustStock = async function(name, dep, delta) {
   window.pcRemito = function (pid) {
     var w = window.open('', '_blank'); if (!w) { alert('Permití las ventanas emergentes para imprimir.'); return; }
     w.document.write('<p style="font-family:sans-serif">Preparando remito…</p>');
-    fetch(SB + 'pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,sector,estado,bultos)&id=eq.' + pid, { headers: H })
+    fetch(SB + 'pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,sector,estado,bultos,bultos_det)&id=eq.' + pid, { headers: H })
       .then(function (r) { return r.json(); })
       .then(function (rows) { var p = rows && rows[0]; if (!p) { w.document.body.innerHTML = 'No se encontró el pedido.'; return; }
         var its = (p.pedidos_clientes_items || []).filter(function (i) { return i.estado !== 'cancelado'; });
@@ -3151,7 +3151,7 @@ adjustStock = async function(name, dep, delta) {
           '<div class="cab"><div><h1>Poly Artesanal</h1><div>Panadería de Autor · Galván 3512, Villa Urquiza</div></div><div style="text-align:right"><b style="font-size:16px">REMITO DE ENTREGA</b><div>Pedido N° ' + p.numero + '</div><div>Fecha: ' + f + (p.hora_retiro ? ' · ' + esc(p.hora_retiro) : '') + '</div></div></div>' +
           '<p><b>Cliente:</b> ' + esc(p.cliente) + (p.telefono ? ' · Tel. ' + esc(p.telefono) : '') + '<br><b>Entrega:</b> ' + (p.envio ? 'Envío a ' + esc(p.direccion || '') : 'Retira en el local') + (p.notas ? '<br><b>Notas:</b> ' + esc(p.notas) : '') + '</p>' +
           '<table><tr><th>Producto</th><th class="r">Cantidad</th><th>Unidad</th></tr>' + its.map(function (i) { return '<tr><td>' + esc(i.producto) + (i.bultos ? '<div style="font-size:12px;color:#333">📦 ' + esc(i.bultos) + '</div>' : '') + '</td><td class="r">' + (+i.cantidad) + '</td><td>' + esc(i.unidad || 'u') + '</td></tr>'; }).join('') + '</table>' +
-          '<p style="margin-top:10px">Bultos: ' + (function () { var t = its.reduce(function (x, i) { return x + (i.bultos ? parseInt(i.bultos, 10) || 0 : 0); }, 0); return t && its.every(function (i) { return i.bultos; }) ? '<b>' + t + '</b>' : (t ? '<b>' + t + '</b> de galletas/crackers + ________ del resto' : '________'); })() + '</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>' +
+          '<p style="margin-top:10px">Bultos: ' + (function () { var t = its.reduce(function (x, i) { return x + (i.bultos ? parseInt(i.bultos, 10) || 0 : 0); }, 0); return t && its.every(function (i) { return i.bultos; }) ? '<b>' + t + '</b>' : (t ? '<b>' + t + '</b> de galletas/crackers + ________ del resto' : '________'); })() + '</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>' + (window.polyEtiquetas ? polyEtiquetas(p, its) : '') +
           '<script>setTimeout(function(){window.print()},300)<\/script></body></html>');
         w.document.close(); })
       .catch(function () { w.document.body.innerHTML = 'No se pudo cargar el pedido. Revisá la conexión.'; });
@@ -3237,6 +3237,23 @@ adjustStock = async function(name, dep, delta) {
   })();
 })();
 
+</script>
+<script>
+/* Etiquetas para cajas/bolsas de un pedido (se agregan al remito como hoja aparte) */
+window.polyEtiquetas = function (p, its) {
+  var E = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var L = [];
+  (its || []).forEach(function (i) { (i.bultos_det || []).forEach(function (b) { L.push({ prod: i.producto, kg: b.kg, tipo: b.tipo, aparte: b.aparte }); }); });
+  if (!L.length) return '';
+  var f = (p.fecha_retiro || '').split('-').reverse().join('/'), tot = L.length;
+  var kgTxt = function (k) { return String(Math.round(k * 100) / 100).replace('.', ','); };
+  return '<style>.etq-pag{page-break-before:always;break-before:page;display:grid;grid-template-columns:1fr 1fr;gap:0}.etq{border:1px dashed #888;height:66mm;padding:5mm 6mm;box-sizing:border-box;break-inside:avoid;display:flex;flex-direction:column;justify-content:space-between;font-family:Arial,sans-serif}.etq .m{font:700 15px Arial}.etq .c{font:700 19px Arial;margin:2mm 0}.etq .pr{font:600 15px Arial}.etq .kg{font:800 34px Arial}.etq .ap{background:#000;color:#fff;padding:1mm 3mm;border-radius:2mm;font:700 13px Arial;display:inline-block}.etq .pie{display:flex;justify-content:space-between;font-size:12px}</style>' +
+    '<div class="etq-pag">' + L.map(function (b, k) {
+      return '<div class="etq"><div><div class="m">Poly Artesanal · Panadería de Autor</div><div class="c">' + E(p.cliente) + '</div><div class="pr">' + E(b.prod) + '</div></div>' +
+        '<div><span class="kg">' + kgTxt(b.kg) + ' kg</span> ' + (b.aparte ? '<span class="ap">' + (b.tipo === 'bolsa' ? 'BOLSA APARTE' : 'CAJA APARTE') + '</span>' : '') + '</div>' +
+        '<div class="pie"><b>' + (b.tipo === 'bolsa' ? 'Bolsa' : 'Caja') + ' ' + (k + 1) + ' de ' + tot + '</b><span>Pedido N° ' + E(p.numero) + ' · ' + f + '</span></div></div>';
+    }).join('') + '</div>';
+};
 </script>
 </body>
 </html>
