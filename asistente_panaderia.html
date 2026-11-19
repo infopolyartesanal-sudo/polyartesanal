@@ -3365,7 +3365,7 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
   window.pcRemito = function (pid) {
     var w = window.open('', '_blank'); if (!w) { alert('Permití las ventanas emergentes para imprimir.'); return; }
     w.document.write('<p style="font-family:sans-serif">Preparando remito…</p>');
-    fetch(SB + 'pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,sector,estado)&id=eq.' + pid, { headers: H })
+    fetch(SB + 'pedidos_clientes?select=*,pedidos_clientes_items(producto,cantidad,unidad,sector,estado,bultos)&id=eq.' + pid, { headers: H })
       .then(function (r) { return r.json(); })
       .then(function (rows) { var p = rows && rows[0]; if (!p) { w.document.body.innerHTML = 'No se encontró el pedido.'; return; }
         var its = (p.pedidos_clientes_items || []).filter(function (i) { return i.estado !== 'cancelado'; });
@@ -3374,8 +3374,8 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
         w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Remito pedido ' + p.numero + '</title><style>@page{size:A4;margin:12mm}body{font:13px/1.4 Arial,sans-serif;color:#000}h1{font-size:20px;margin:0}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #999;padding:6px 8px;text-align:left}th{background:#eee}.r{text-align:right}.cab{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:8px}.firma{margin-top:60px;display:flex;gap:40px}.firma div{flex:1;border-top:1px solid #000;text-align:center;padding-top:4px}</style></head><body>' +
           '<div class="cab"><div><h1>Poly Artesanal</h1><div>Panadería de Autor · Galván 3512, Villa Urquiza</div></div><div style="text-align:right"><b style="font-size:16px">REMITO DE ENTREGA</b><div>Pedido N° ' + p.numero + '</div><div>Fecha: ' + f + (p.hora_retiro ? ' · ' + esc(p.hora_retiro) : '') + '</div></div></div>' +
           '<p><b>Cliente:</b> ' + esc(p.cliente) + (p.telefono ? ' · Tel. ' + esc(p.telefono) : '') + '<br><b>Entrega:</b> ' + (p.envio ? 'Envío a ' + esc(p.direccion || '') : 'Retira en el local') + (p.notas ? '<br><b>Notas:</b> ' + esc(p.notas) : '') + '</p>' +
-          '<table><tr><th>Producto</th><th class="r">Cantidad</th><th>Unidad</th></tr>' + its.map(function (i) { return '<tr><td>' + esc(i.producto) + '</td><td class="r">' + (+i.cantidad) + '</td><td>' + esc(i.unidad || 'u') + '</td></tr>'; }).join('') + '</table>' +
-          '<p style="margin-top:10px">Bultos: ________</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>' +
+          '<table><tr><th>Producto</th><th class="r">Cantidad</th><th>Unidad</th></tr>' + its.map(function (i) { return '<tr><td>' + esc(i.producto) + (i.bultos ? '<div style="font-size:12px;color:#333">📦 ' + esc(i.bultos) + '</div>' : '') + '</td><td class="r">' + (+i.cantidad) + '</td><td>' + esc(i.unidad || 'u') + '</td></tr>'; }).join('') + '</table>' +
+          '<p style="margin-top:10px">Bultos: ' + (function () { var t = its.reduce(function (x, i) { return x + (i.bultos ? parseInt(i.bultos, 10) || 0 : 0); }, 0); return t && its.every(function (i) { return i.bultos; }) ? '<b>' + t + '</b>' : (t ? '<b>' + t + '</b> de galletas/crackers + ________ del resto' : '________'); })() + '</p><div class="firma"><div>Entregó</div><div>Recibí conforme (firma y aclaración)</div></div>' +
           '<script>setTimeout(function(){window.print()},300)<\/script></body></html>');
         w.document.close(); })
       .catch(function () { w.document.body.innerHTML = 'No se pudo cargar el pedido. Revisá la conexión.'; });
