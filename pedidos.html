@@ -228,9 +228,12 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
     { k: 'keto', vk: 'k', e: '🥑', t: 'Keto', bg: '#eef6e3', c: '#4b6b1c', b: '#c4dc9f' }];
   function tiene(p, q) { return !!p[q.k] || (p.variantes || []).some(function (v) { return v[q.vk]; }); }
   function veganoAlgo(p) { return tiene(p, ETQ[0]); }
-  var FILTRO = '';
-  function etqDe(k) { return ETQ.find(function (q) { return q.k === k; }); }
-  function pasaVar(p, v) { var q = etqDe(FILTRO); return !q || !!(v[q.vk] || p[q.k]); }
+  // Filtros combinables: el cliente puede elegir varios a la vez (ej: integral + vegano + sin azúcar)
+  var FILTROS = {};
+  function activos() { return ETQ.filter(function (q) { return FILTROS[q.k]; }); }
+  function cumple(p, v) { return activos().every(function (q) { return !!(p[q.k] || (v && v[q.vk])); }); }
+  function pasaVar(p, v) { return cumple(p, v); }
+  function pasaProd(p) { return !activos().length || cumple(p, null) || (p.variantes || []).some(function (v) { return cumple(p, v); }); }
   function chip(q, txt) { return ' <span class="etq" title="' + q.t + '" style="background:' + q.bg + ';color:' + q.c + ';border:1px solid ' + q.b + '">' + q.e + (txt ? ' ' + txt : '') + '</span>'; }
   function etiquetas(p, v) { var h = '';
     ETQ.forEach(function (q) {
@@ -245,14 +248,15 @@ footer{text-align:center;color:#888;font-size:12px;padding:6px 16px 20px}
   function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
   function pintarLista() {
     var q = norm($('q').value).trim();
-    var qf = etqDe(FILTRO);
-    var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0 || (p.variantes || []).some(function (v) { return norm(v.n).indexOf(q) >= 0; })) && (!qf || tiene(p, qf)); });
+    var ps = CAT.productos.filter(function (p) { return (SECTOR === 'todos' || p.sector === SECTOR) && (!q || norm(p.nombre).indexOf(q) >= 0 || (p.variantes || []).some(function (v) { return norm(v.n).indexOf(q) >= 0; })) && pasaProd(p); });
     var hay = ETQ.filter(function (x) { return CAT.productos.some(function (p) { return tiene(p, x); }); });
     var fv = $('filtros');
     if (hay.length && !fv) { fv = document.createElement('div'); fv.id = 'filtros'; fv.className = 'filtros'; $('lista').parentNode.insertBefore(fv, $('lista'));
-      fv.onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; FILTRO = FILTRO === b.dataset.f ? '' : b.dataset.f; pintarLista(); }; }
-    if (fv) fv.innerHTML = hay.map(function (x) { var on = FILTRO === x.k;
-      return '<button data-f="' + x.k + '" style="border:2px solid ' + x.c + ';' + (on ? 'background:' + x.c + ';color:#fff' : 'color:' + x.c) + '">' + x.e + ' ' + x.t + (on ? ' · ver todo' : '') + '</button>'; }).join('');
+      fv.onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; if (b.dataset.f === '_todo') FILTROS = {}; else FILTROS[b.dataset.f] = !FILTROS[b.dataset.f]; pintarLista(); }; }
+    if (fv) fv.innerHTML = hay.map(function (x) { var on = !!FILTROS[x.k];
+      return '<button data-f="' + x.k + '" style="border:2px solid ' + x.c + ';' + (on ? 'background:' + x.c + ';color:#fff' : 'color:' + x.c) + '">' + (on ? '✓ ' : '') + x.e + ' ' + x.t + '</button>'; }).join('')
+      + (activos().length ? '<button data-f="_todo" style="border:2px solid #999;color:#666">✕ Ver todo</button>' : '')
+      + (activos().length > 1 ? '<div style="width:100%;font-size:12px;color:#6b5d48">Mostrando lo que cumple todo lo marcado: ' + activos().map(function (x) { return x.t.toLowerCase(); }).join(' + ') + '</div>' : '');
     $('lista').innerHTML = ps.length ? ps.map(function (p) {
       var vars = (p.variantes || []).filter(function (v) { return pasaVar(p, v); }), ops = p.opciones || [], op = opcDe(p);
       var badge = etiquetas(p);
