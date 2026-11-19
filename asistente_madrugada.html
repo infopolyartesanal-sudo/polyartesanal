@@ -833,6 +833,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
     <div id="hm-foto-preview"></div>
 
     <button onclick="confirmHornear()" id="hm-confirm" style="width:100%;margin-top:18px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-send"></i> Horneado y despachar al Salón</button>
+    <button onclick="noSalio()" style="width:100%;margin-top:8px;background:#fff;color:#666;border:1px solid #ccc;border-radius:10px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;">🚫 Hoy no salió · sacar de la lista</button>
   </div>
 </div>
 
@@ -915,7 +916,10 @@ async function loadLeudando(){
   setStatus('Cargando…');
   await cargarReglasPeso();
   const rows = await sbSelect('cocina_leudado', '?estado=eq.leudando&created_at=gte.' + encodeURIComponent(new Date(Date.now() - 36*3600*1000).toISOString()) + '&order=created_at.asc');
-  leudando = rows || [];
+  // Lo que Cocina dejó en 0 (no salió a leudar) no se hornea: se saca de la lista sola
+  const ceros = (rows || []).filter(r => !(Number(r.cantidad) > 0));
+  for (const r of ceros) { try { await sbFetch('PATCH', 'cocina_leudado', { estado:'no_salio', horneado_at:new Date().toISOString() }, '?id=eq.' + encodeURIComponent(r.id)); } catch(e){ console.warn(e); } }
+  leudando = (rows || []).filter(r => Number(r.cantidad) > 0);
   renderLeudando();
   setStatus('Listo');
 }
@@ -954,6 +958,18 @@ function openHornear(id){
   if (peso) { document.getElementById('hm-latas').textContent = latasTxt(pendingItem.cantidad); document.getElementById('hm-kg').value = ''; document.getElementById('hm-kg-merma').value = ''; setTimeout(()=>document.getElementById('hm-kg').focus(), 80); }
   updateMerma();
   document.getElementById('hornear-modal').style.display = 'flex';
+}
+// Cuando algo no salió (no se horneó, se dejó en 0): se saca de la lista sin mandar nada al Salón ni cargar merma
+async function noSalio(){
+  if(!pendingItem) return;
+  const nombre = pendingItem.producto_nombre || pendingItem.producto_id;
+  if (!confirm('¿Sacar "' + nombre + '" de la lista sin hornear? No se manda nada al Salón.')) return;
+  try {
+    await sbFetch('PATCH', 'cocina_leudado', { estado:'no_salio', horneado_at:new Date().toISOString() }, '?id=eq.' + encodeURIComponent(pendingItem.id));
+    await sbLog('madrugada','horneado','No salió hoy: ' + nombre, 0, pendingItem.producto_id, null);
+    toast('Listo, se sacó de la lista');
+  } catch(e){ console.error(e); toast('⚠️ No se pudo guardar, probá de nuevo'); return; }
+  closeModal(); await loadLeudando();
 }
 function closeModal(){ document.getElementById('hornear-modal').style.display='none'; pendingItem=null; photoFile=null; }
 function updateMerma(){
@@ -1000,7 +1016,7 @@ async function confirmHornear(){
   const leud = Number(pendingItem.cantidad)||0;
   const horn = peso ? Math.round((leerKg('hm-kg'))*1000)/1000 : (Number(document.getElementById('hm-cantidad').value)||0);
   const merma = peso ? Math.round((leerKg('hm-kg-merma'))*1000)/1000 : Math.max(0, leud-horn);
-  if (peso && !(horn > 0) && !(merma > 0)) { toast('Poné los kilos que salieron'); btn.disabled = false; btn.style.opacity = '1'; return; }
+  if (!(leud > 0) || (!(horn > 0) && !(merma > 0))) { btn.disabled = false; btn.style.opacity = '1'; return noSalio(); }
   if (peso && (horn > KG_MAX_TANDA || merma > KG_MAX_TANDA) && !confirm('¿Seguro que son ' + String(Math.max(horn, merma)).replace('.', ',') + ' kg? Revisá que no sean gramos (ej: 2,5 kg y no 2500).')) { btn.disabled = false; btn.style.opacity = '1'; return; }
   setStatus('Despachando…');
   let fotoUrl = null;

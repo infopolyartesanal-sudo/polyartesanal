@@ -1507,7 +1507,7 @@ async function syncLeudadoBase() {
     const it = leudadoState[def.id];
     if (fila) {
       if (!it || !it.sacado || it.leudadoRowId !== fila.id) { leudadoState[def.id] = Object.assign({ cantidad: def.cantidad }, it || {}, { sacado: true, leudadoRowId: fila.id, cantidad: +fila.cantidad }); cambio = true; }
-    } else if (it && it.sacado) { it.sacado = false; it.leudadoRowId = null; it.cantidad = def.cantidad; cambio = true; }
+    } else if (it && it.sacado && !it.noSale) { it.sacado = false; it.leudadoRowId = null; it.cantidad = def.cantidad; cambio = true; }
   });
   _syncLeudOk = true;
   if (cambio) { saveLeudado(); if (typeof renderLeudado === 'function') renderLeudado(); }
@@ -1515,6 +1515,13 @@ async function syncLeudadoBase() {
 setInterval(syncLeudadoBase, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncLeudadoBase(); });
 
+function noSaleHoy(id) {
+  const def = (LEUDADO_SEMANAL[getDayKeyLeudado()] || []).find(x => x.id === id); if (!def) return;
+  const item = getLeudadoItem(id, def.cantidad);
+  item.sacado = true; item.noSale = true; item.cantidad = 0;
+  saveLeudado(); renderLeudado();
+  addToLog('🚫 Hoy no sale a leudar: ' + def.nombre, 'leudado');
+}
 function saveLeudado() { localStorage.setItem(LEUDADO_KEY, JSON.stringify(leudadoState)); }
 
 function getLeudadoItem(id, defaultCantidad) {
@@ -1528,6 +1535,9 @@ async function toggleSacado(id) {
   if (!def) return;
   const item = getLeudadoItem(id, def.cantidad);
   const eraSacado = item.sacado;
+  // En 0 = hoy no sale: se tilda sin mandar nada a Madrugada ni descontar del freezer
+  if (!eraSacado && !(Number(item.cantidad) > 0)) return noSaleHoy(id);
+  if (eraSacado && item.noSale) { item.sacado = false; item.noSale = false; item.cantidad = def.cantidad; saveLeudado(); renderLeudado(); addToLog('↩️ ' + def.nombre + ': vuelve a la lista', 'leudado'); return; }
   item.sacado = !item.sacado;
   saveLeudado(); renderLeudado();
 
@@ -1746,10 +1756,13 @@ function renderLeudado() {
 
   for (const def of dayItems) {
     const item = getLeudadoItem(def.id, def.cantidad);
+    if (item.noSale) { html += `<div class="leudado-item sacado">
+      <div class="leudado-check" onclick="toggleSacado('${def.id}')" title="Tocá para volver a ponerlo en la lista">🚫</div>
+      <div class="leudado-info"><div class="leudado-nombre">${def.nombre}</div><div class="leudado-sugerido">Hoy no sale · tocá 🚫 si al final sí sale</div></div></div>`; continue; }
     html += `<div class="leudado-item ${item.sacado ? 'sacado' : ''}">
       <div class="leudado-check" onclick="toggleSacado('${def.id}')">${item.sacado ? '✓' : ''}</div>
       <div class="leudado-info">
-        <div class="leudado-nombre">${def.nombre}</div>
+        <div class="leudado-nombre">${def.nombre}${item.sacado ? '' : ` <button onclick="noSaleHoy('${def.id}')" style="margin-left:6px;font-size:11px;padding:2px 8px;border:1px solid #ccc;border-radius:10px;background:#fff;color:#666;cursor:pointer">🚫 Hoy no sale</button>`}</div>
         <div class="leudado-sugerido">Sugerido: ${def.sugerido}</div>
         <div class="leudado-qty-row">
           <button class="leudado-qty-btn" onclick="adjustLeudadoCantidad('${def.id}',-1)" ${item.sacado ? 'disabled' : ''}>−</button>
