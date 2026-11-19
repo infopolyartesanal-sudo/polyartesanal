@@ -2480,10 +2480,12 @@ function renderTareas(){
   // ── Listas de precios (Gestión → Productos de venta) ──
   var LISTAS = { minorista: ['Minorista', 'precio_lpu', '#6A1B9A'], mayorista: ['Mayorista', 'precio_may', '#1565C0'], pedidosya: ['PedidosYa', 'precio_pey', '#E53935'] };
   var lista = 'minorista', pvMap = {}, mayoristas = [], cliId = null;
-  function cargarMayoristas() { return api('crm_clientes?select=id,nombre,telefono,direccion,contacto&activo=eq.true&tipo=eq.mayorista&order=nombre').then(function (r) { mayoristas = r || []; var dl = document.getElementById('pcs-may'); if (dl) dl.innerHTML = mayoristas.map(function (m) { return '<option value="' + esc(m.nombre) + '">'; }).join(''); }).catch(function () {}); }
+  function cargarMayoristas() { return api('crm_clientes?select=id,nombre,telefono,direccion,contacto,precios_especiales&activo=eq.true&tipo=eq.mayorista&order=nombre').then(function (r) { mayoristas = r || []; var dl = document.getElementById('pcs-may'); if (dl) dl.innerHTML = mayoristas.map(function (m) { return '<option value="' + esc(m.nombre) + '">'; }).join(''); }).catch(function () {}); }
   // Pedido mayorista: el cliente se elige de la lista de mayoristas (Gestión → Mayoristas) y el pedido queda en su ficha
+  function repreciar() { if (typeof carrito === 'undefined') return; var cambio = false; carrito.forEach(function (c) { if (c.manual) return; var p = productos.find(function (x) { return x.id === c.receta_id; }); if (p) { var pr = precioDe(p); if (pr[0] !== c.precio) { c.precio = pr[0]; c.origen = pr[1]; cambio = true; } } }); if (cambio && document.getElementById('pcs-car')) pcsPintarCarrito(); }
   window.pcsCliente = function () {
     var el = document.getElementById('pcs-cli'), h = document.getElementById('pcs-clih'); if (!el) return;
+    setTimeout(repreciar, 0);
     cliId = null;
     if (lista !== 'mayorista') { if (h) h.innerHTML = ''; return; }
     var m = mayoristas.find(function (x) { return norm(x.nombre).trim() === norm(el.value).trim(); });
@@ -2491,7 +2493,7 @@ function renderTareas(){
       cliId = m.id;
       var t = document.getElementById('pcs-tel'); if (t && !t.value && m.telefono) t.value = m.telefono;
       var d = document.getElementById('pcs-dir'); if (d && !d.value && m.direccion) d.value = m.direccion;
-      if (h) h.innerHTML = '<span style="color:#2E7D32;font-weight:700">✓ Mayorista de la lista' + (m.contacto ? ' · ' + esc(m.contacto) : '') + '</span>';
+      if (h) h.innerHTML = '<span style="color:#2E7D32;font-weight:700">✓ Mayorista de la lista' + (m.contacto ? ' · ' + esc(m.contacto) : '') + (m.precios_especiales && Object.keys(m.precios_especiales).length ? ' · 💲 tiene precios especiales' : '') + '</span>';
     } else if (h) h.innerHTML = el.value.trim() ? '<span style="color:#E65100">No está en la lista de mayoristas: el pedido se guarda igual, pero no queda en ninguna ficha.</span>' : '<span style="color:#888">Empezá a escribir y elegí el mayorista de la lista.</span>';
   };
   function baseNom(x) { return norm(x).replace(/\(.*?\)/g, ' ').replace(/\bmayorista\b/g, ' ').replace(/\s+/g, ' ').trim(); }
@@ -2517,6 +2519,8 @@ function renderTareas(){
   function precioDe(p) {
     var campo = LISTAS[lista][1], base = baseNom(p.nombre), esMay = /mayorista/i.test(p.nombre);
     var pv = pvDe(p.nombre);
+    var cm = cliId && lista === 'mayorista' ? mayoristas.find(function (x) { return x.id === cliId; }) : null;
+    if (pv && cm && cm.precios_especiales && +cm.precios_especiales[pv.codigo] > 0) return [+cm.precios_especiales[pv.codigo], 'especial'];
     if (pv && +pv[campo] > 0) return [+pv[campo], 'lista'];
     if (lista === 'mayorista') {
       if (esMay && +p.precio_venta) return [+p.precio_venta, 'receta'];

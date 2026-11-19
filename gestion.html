@@ -1889,6 +1889,7 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
   ${c.comunidad?(()=>{const cfg=comCfg(),n=comCompras(c),cj=CRM.canjes.filter(x=>x.cliente_id===c.id);return `<div class="alerta" style="background:#fbf6e6">⭐ <b>Miembro de la ${esc(cfg.nombre)}</b>${c.comunidad_at?' desde '+fechaCorta(diaLocal(c.comunidad_at)):''} · ${n} compra${n===1?'':'s'} · ${cj.filter(x=>x.tipo==='fidelidad').length} beneficio(s) y ${cj.filter(x=>x.tipo==='cumple').length} regalo(s) de cumple entregados</div>`})():''}
   <div class="grid g4" style="margin-bottom:10px">${dato('Teléfono',c.telefono)}${dato('Instagram',c.instagram?'@'+c.instagram:'')}${dato('Email',c.email)}${dato('Cumpleaños',c.cumpleanos?new Date(c.cumpleanos+'T12:00:00').toLocaleDateString('es-AR',{day:'numeric',month:'long'}):'')}${dato('Nos conoció por',ori)}${dato('Contacto',c.contacto)}${dato('Rubro',c.rubro)}${dato('Dirección',[c.direccion,c.zona].filter(Boolean).join(' · '))}${dato('Entrega',c.dias_entrega)}${dato('Pago',c.condicion_pago)}${dato('CUIT',[c.cuit,c.razon_social].filter(Boolean).join(' · '))}</div>
   ${c.notas?`<div class="alerta" style="white-space:pre-wrap">${esc(c.notas)}</div>`:''}
+  <div id="crmPE"></div>
   <div class="card" style="margin-bottom:10px"><h3>📌 Próxima acción</h3><div class="fila"><input id="crmPA" placeholder="ej: Ofrecer budines nuevos, pasar lista de precios…" value="${esc(c.proxima_accion||'')}"><input id="crmPF" type="date" value="${c.proxima_fecha||''}" style="max-width:170px"><button class="btn" onclick="crmProxima(${id})">Guardar</button>${c.proxima_accion?`<button class="btn sec" onclick="crmProxima(${id},true)">✔ Hecha</button>`:''}</div></div>
   <div class="grid g2">
     <div class="card"><h3>🗒️ Contactos y notas</h3>
@@ -1899,8 +1900,21 @@ function crmFicha(id){const c=CRM.clis.find(x=>x.id===id);if(!c)return;crmCalcul
   ${envs.length?`<div class="card" style="margin-top:10px"><h3>📣 Campañas</h3><table>${envs.map(({e,k})=>`<tr><td><a href="javascript:cerrarModal();CRM.camp=${k.id};location.hash='#campanias'">${esc(k.nombre)}</a> ${crmChip(k.canal,CRM_CANAL)}</td><td>${e.enviado_at?fechaCorta(diaLocal(e.enviado_at)):''}</td><td>${crmChip(e.estado,CRM_ENV)}</td></tr>`).join('')}</table></div>`:''}
   <div class="card" style="margin-top:10px"><h3>🧾 Pedidos y compras</h3>${c._peds.length?`<div class="scroll" style="max-height:280px"><table><tr><th>#</th><th>Fecha</th><th>Productos</th><th class="num">Total</th><th>Estado</th></tr>
     ${c._peds.map(p=>`<tr><td>${p.numero||''}</td><td>${fechaCorta(p.fecha_retiro||diaLocal(p.created_at))}</td><td style="font-size:12px">${esc((p.pedidos_clientes_items||[]).map(i=>fnum(i.cantidad,2)+' '+i.producto).join(', '))}</td><td class="num">${$$(p.total)}</td><td>${esc(p.estado||'')}${p.remito_nro?` <button class="btn peq sec" onclick="crmRemito(${p.venta_id})" title="Remito N° ${p.remito_nro}">📦</button>`:''}${!p.venta_id&&typeof p.id==='number'?` <button class="btn peq sec" onclick="pedRemito(${p.id})" title="Imprimir / reimprimir remito del pedido">🖨</button>`:''}</td></tr>`).join('')}</table></div>`:'<p class="muted">Los pedidos aparecen acá cuando el Salón carga un pedido con este teléfono (o elige este mayorista).</p>'}</div>`);
-  crmCargarCC(id);
+  crmCargarCC(id);crmPEPintar(id);
 }
+// ---------- Precios especiales por cliente (excepciones: ej. colegio) ----------
+let PE_PV=null;
+async function crmPEPintar(id){const el=$('#crmPE');if(!el)return;const c=CRM.clis.find(x=>x.id===id);if(!c)return;
+  if(!PE_PV){try{PE_PV=await sb('productos_venta?select=codigo,nombre,precio_may,precio_lpu&activo=eq.true&order=nombre')}catch(e){PE_PV=[]}}
+  const pe=c.precios_especiales||{};const ks=Object.keys(pe);const nom=k=>{const p=PE_PV.find(x=>x.codigo===k);return p?p.nombre:'Código '+k};
+  const ref=k=>{const p=PE_PV.find(x=>x.codigo===k);return p?(c.tipo==='mayorista'?'mayorista '+$$(p.precio_may):'local '+$$(p.precio_lpu)):''};
+  el.innerHTML=`<div class="card" style="margin-bottom:10px"><h3>💲 Precios especiales</h3><p class="muted" style="font-size:13px;margin:0 0 8px">Precio que se le cobra a este cliente en vez del de la lista (en la web de pedidos y al cargarle pedidos).</p>
+    ${ks.length?`<table>${ks.map(k=>`<tr><td>${esc(nom(k))}</td><td class="num"><b>${$$(pe[k])}</b></td><td class="muted" style="font-size:12px">lista: ${ref(k)}</td><td><button class="btn peq sec" onclick="crmPEQuitar(${id},'${esc(k)}')">✕</button></td></tr>`).join('')}</table>`:'<p class="muted" style="font-size:13px">Sin excepciones: paga la lista '+(c.tipo==='mayorista'?'mayorista':'del local')+'.</p>'}
+    <div class="fila" style="margin-top:8px"><input id="pePr" list="peDl" placeholder="Producto"><datalist id="peDl">${PE_PV.map(p=>`<option value="${esc(p.nombre)}">`).join('')}</datalist><input id="peVal" type="number" min="0" placeholder="$ precio" style="max-width:130px"><button class="btn" onclick="crmPEAgregar(${id})">Agregar</button></div></div>`}
+async function crmPEGuardar(id,pe){const c=CRM.clis.find(x=>x.id===id);try{const [x]=await sbUpd('crm_clientes','id=eq.'+id,{precios_especiales:pe});Object.assign(c,x);toast('Precio especial guardado ✅');crmPEPintar(id)}catch(e){toast('⚠️ '+(e.message||'No se pudo guardar'),5000)}}
+function crmPEAgregar(id){const c=CRM.clis.find(x=>x.id===id);const n=norm($('#pePr').value.trim());const p=(PE_PV||[]).find(x=>norm(x.nombre)===n);if(!p)return toast('Elegí el producto de la lista');
+  const v=+$('#peVal').value;if(!(v>0))return toast('Poné el precio');crmPEGuardar(id,Object.assign({},c.precios_especiales||{},{[p.codigo]:v}))}
+function crmPEQuitar(id,k){const c=CRM.clis.find(x=>x.id===id);const pe=Object.assign({},c.precios_especiales||{});delete pe[k];crmPEGuardar(id,pe)}
 // ---------- Cuenta corriente (ventas a cuenta desde la Caja, remitos y pagos con comprobante) ----------
 async function crmCargarCC(id){const el=$('#crmCC');if(!el)return;
   let mov=[],comp=[],vts=[];try{[mov,comp]=await Promise.all([sbGet('cc_movimientos','cliente_id=eq.'+id+'&order=fecha.asc,id.asc'),sb('cc_comprobantes?select=id,mov_id,nombre,tipo&cliente_id=eq.'+id)]);
