@@ -2464,7 +2464,7 @@ async function vVenta(){
     const q=norm(fPV);const lista=PV.prods.filter(p=>!q||norm(p.nombre).includes(q)||p.codigo===fPV.trim());
     html+=`<div class="acciones" style="margin-bottom:10px"><input placeholder="Buscar por nombre o código…" value="${esc(fPV)}" oninput="fPV=this.value;clearTimeout(window._tpv);window._tpv=setTimeout(()=>{vVenta();const i=document.querySelector('#app input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" style="max-width:320px"><button class="btn" onclick="pvEditar(null)">➕ Nuevo producto</button></div>
     <div class="card scroll"><table><tr><th>Código</th><th>Producto</th><th>Tipo</th><th class="num">Mayorista</th><th class="num">Local (LPU)</th><th class="num">PedidosYa</th><th>IVA</th><th class="num">Recetas / nombres vinculados</th><th>Estado</th></tr>
-    ${lista.map(p=>{const n=PV.alias.filter(a=>a.codigo===p.codigo).length;return `<tr class="click" onclick="pvEditar('${esc(p.codigo)}')" style="${p.activo?'':'opacity:.5'}"><td>${esc(p.codigo)}</td><td><b>${esc(p.nombre)}</b>${(p.variantes||[]).length?` <span class="muted" style="font-size:12px">· ${(p.variantes||[]).length} variedades${(p.variantes||[]).some(v=>v.v)?' ('+(p.variantes||[]).filter(v=>v.v).length+' 🌱)':''}${(p.variantes||[]).some(v=>v.st)?' ('+(p.variantes||[]).filter(v=>v.st).length+' 🌰)':''}</span>`:''} <span title="${p.vegano?'Vegano: tocá para quitar':'Tocá para marcarlo vegano'}" onclick="event.stopPropagation();pvVegano('${esc(p.codigo)}')" style="cursor:pointer;${p.vegano?'':'opacity:.25;filter:grayscale(1)'}">🌱</span> <span title="${p.sin_trigo?'Sin trigo: tocá para quitar':'Tocá para marcarlo sin trigo (harina de almendras)'}" onclick="event.stopPropagation();pvSinTrigo('${esc(p.codigo)}')" style="cursor:pointer;${p.sin_trigo?'':'opacity:.25;filter:grayscale(1)'}">🌰</span>${[['integral','🌾','Integral'],['sin_azucar','🍃','Sin azúcar'],['keto','🥑','Keto']].map(([c,e,t])=>` <span title="${p[c]?t+': tocá para quitar':'Tocá para marcarlo '+t.toLowerCase()}" onclick="event.stopPropagation();pvFlag('${esc(p.codigo)}','${c}','${t}')" style="cursor:pointer;${p[c]?'':'opacity:.25;filter:grayscale(1)'}">${e}</span>`).join('')}</td><td>${esc(p.tipo||'')}</td>
+    ${lista.map(p=>{const n=PV.alias.filter(a=>a.codigo===p.codigo).length;return `<tr class="click" onclick="pvEditar('${esc(p.codigo)}')" style="${p.activo?'':'opacity:.5'}"><td>${esc(p.codigo)}</td><td>${p.foto_url?`<img src="${esc(p.foto_url)}" loading="lazy" style="width:36px;height:27px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:6px">`:''}<b>${esc(p.nombre)}</b>${(p.variantes||[]).length?` <span class="muted" style="font-size:12px">· ${(p.variantes||[]).length} variedades${(p.variantes||[]).some(v=>v.v)?' ('+(p.variantes||[]).filter(v=>v.v).length+' 🌱)':''}${(p.variantes||[]).some(v=>v.st)?' ('+(p.variantes||[]).filter(v=>v.st).length+' 🌰)':''}</span>`:''} <span title="${p.vegano?'Vegano: tocá para quitar':'Tocá para marcarlo vegano'}" onclick="event.stopPropagation();pvVegano('${esc(p.codigo)}')" style="cursor:pointer;${p.vegano?'':'opacity:.25;filter:grayscale(1)'}">🌱</span> <span title="${p.sin_trigo?'Sin trigo: tocá para quitar':'Tocá para marcarlo sin trigo (harina de almendras)'}" onclick="event.stopPropagation();pvSinTrigo('${esc(p.codigo)}')" style="cursor:pointer;${p.sin_trigo?'':'opacity:.25;filter:grayscale(1)'}">🌰</span>${[['integral','🌾','Integral'],['sin_azucar','🍃','Sin azúcar'],['keto','🥑','Keto']].map(([c,e,t])=>` <span title="${p[c]?t+': tocá para quitar':'Tocá para marcarlo '+t.toLowerCase()}" onclick="event.stopPropagation();pvFlag('${esc(p.codigo)}','${c}','${t}')" style="cursor:pointer;${p[c]?'':'opacity:.25;filter:grayscale(1)'}">${e}</span>`).join('')}</td><td>${esc(p.tipo||'')}</td>
       <td class="num">${p.precio_may!=null?$$(p.precio_may):'—'}</td><td class="num">${p.precio_lpu!=null?$$(p.precio_lpu):'—'}${p.por_kg?' <span class="muted" style="font-size:11px">/kg</span>':''}</td><td class="num">${p.precio_pey!=null?$$(p.precio_pey):'—'}</td><td>${p.iva==null?'<span class="chip mal">falta</span>':ivaTxt(p.iva)}</td><td class="num">${n||'—'}</td><td>${p.activo?'<span class="chip ok">activo</span>':'<span class="chip neu">de baja</span>'}</td></tr>`}).join('')}
     </table></div>`;
   }
@@ -2475,6 +2475,42 @@ async function pvGuardarVinc(k){IS.cargado=false;const l=PV._filas[k];const v=$(
   if(!p){const a=pvAliasDe(l.k);if(a)return pvQuitarVinc(a.alias);return toast('Elegí un producto de venta');}
   const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:l.k,codigo:p.codigo}],true);
   PV.alias=PV.alias.filter(a=>a.alias!==l.k).concat([x]);toast('Vinculado ✅ '+l.nombre+' → '+p.nombre);vVenta()}
+// ---------- Fotos de productos (formato PedidosYa: JPG/PNG, 4:3, 1440×1080 a 4000×3000, < 1 MB) ----------
+const FOTO={ancho:1600,alto:1200,minAncho:1440,minAlto:1080,maxBytes:990000};
+function pvFotoPintar(){const b=$('#pvFotoBox');if(!b)return;const f=window._pvFoto||{};
+  b.innerHTML=`<div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+    <div style="width:220px;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:#f2efe8;display:flex;align-items:center;justify-content:center;border:1px solid #ddd">${f.url?`<img src="${esc(f.prev||f.url)}" style="width:100%;height:100%;object-fit:cover">`:'<span class="muted" style="font-size:13px">Sin foto</span>'}</div>
+    <div style="flex:1;min-width:200px">
+      <label class="btn peq" style="display:inline-block;cursor:pointer;margin:0 6px 6px 0">📷 ${f.url?'Cambiar foto':'Subir o sacar foto'}<input type="file" accept="image/jpeg,image/png,image/*" style="display:none" onchange="pvFotoArchivo(this)"></label>
+      ${f.url?`<button class="btn peq sec" type="button" style="margin:0 6px 6px 0" onclick="pvFotoDescargar()">⬇ Descargar para PedidosYa</button><button class="btn peq sec" type="button" style="margin:0 0 6px" onclick="window._pvFoto={url:null,cambio:true};pvFotoPintar()">🗑 Quitar</button>`:''}
+      <div style="margin-top:4px;font-size:12px">
+        <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pvFb" ${f.blanco?'checked':''} style="width:auto" onchange="pvFotoRehacer()"> No recortar: completar con fondo blanco</label>
+        ${f.img&&!f.blanco?`<label style="margin:6px 0 0">Encuadre (qué parte de la foto queda)</label><input type="range" min="0" max="100" value="${f.pos??50}" oninput="window._pvFoto.pos=+this.value" onchange="pvFotoRehacer()" style="width:100%">`:''}
+      </div>
+      <div id="pvFotoInfo" class="muted" style="font-size:12px;margin-top:6px">${esc(f.info||'')}</div>
+    </div></div>`}
+function pvFotoArchivo(inp){const file=inp.files&&inp.files[0];if(!file)return;const rd=new FileReader();
+  rd.onload=()=>{const img=new Image();img.onload=()=>{Object.assign(window._pvFoto,{img,pos:50,nombreOrig:file.name});pvFotoRehacer()};img.onerror=()=>toast('⚠️ No se pudo leer esa imagen',4000);img.src=rd.result};rd.readAsDataURL(file)}
+// Recorta (o completa con blanco) a 4:3, lleva a 1600×1200 y baja la calidad JPG hasta que pese menos de 1 MB
+async function pvFotoProcesar(img,blanco,pos){const W=FOTO.ancho,H=FOTO.alto,c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,W,H);x.imageSmoothingQuality='high';const iw=img.naturalWidth,ih=img.naturalHeight,ar=W/H;
+  if(blanco){const k=Math.min(W/iw,H/ih),dw=iw*k,dh=ih*k;x.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh)}
+  else{let sw=iw,sh=iw/ar;if(sh>ih){sh=ih;sw=ih*ar}const p=(pos??50)/100,sx=(iw-sw)*p,sy=(ih-sh)*p;x.drawImage(img,sx,sy,sw,sh,0,0,W,H)}
+  let q=.9,blob;for(;q>=.4;q-=.08){blob=await new Promise(r=>c.toBlob(r,'image/jpeg',q));if(blob.size<FOTO.maxBytes)break}
+  return {blob,q,chica:Math.min(iw,ih*ar)<FOTO.minAncho}}
+async function pvFotoRehacer(){const f=window._pvFoto;if(!f||!f.img)return;f.blanco=!!($('#pvFb')||{}).checked;
+  const r=await pvFotoProcesar(f.img,f.blanco,f.pos);const info=$('#pvFotoInfo');if(info)info.textContent='Subiendo…';
+  const cod=($('#pvC')||{}).value||'nuevo';const path='pv/'+String(cod).replace(/[^a-z0-9_-]/gi,'')+'_'+Date.now()+'.jpg';
+  try{const res=await fetch(SB_URL+'/storage/v1/object/productos/'+path,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'image/jpeg','x-upsert':'true'},body:r.blob});
+    if(!res.ok)throw new Error('No se pudo subir ('+res.status+')');
+    if(f.prev)URL.revokeObjectURL(f.prev);
+    Object.assign(f,{url:SB_URL+'/storage/v1/object/public/productos/'+path,prev:URL.createObjectURL(r.blob),blob:r.blob,cambio:true,
+      info:'✅ Lista para PedidosYa: 1600×1200 (4:3) · JPG · '+Math.round(r.blob.size/1024)+' KB'+(r.chica?' · ⚠️ la foto original era chica, puede verse un poco borrosa':'')+'. Tocá Guardar para dejarla en el producto.'});
+  }catch(e){f.info='⚠️ '+e.message}
+  pvFotoPintar()}
+async function pvFotoDescargar(){const f=window._pvFoto||{};let blob=f.blob;
+  try{if(!blob){const r=await fetch(f.url);blob=await r.blob()}}catch(e){return toast('⚠️ No se pudo bajar la foto',4000)}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(($('#pvN')||{}).value||'producto').replace(/[^a-z0-9áéíóúñ ]/gi,'').trim().replace(/\s+/g,'_')+'_pedidosya.jpg';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}
 function pvVarsLeer(){const nn=v=>{const x=String(v||'').replace(',','.').trim();return x===''?null:+x};
   return [...document.querySelectorAll('#pvVars .pvvar')].map(r=>({n:r.querySelector('.vn').value.trim(),v:r.querySelector('.vv').checked,st:r.querySelector('.vs').checked,i:r.querySelector('.vi').checked,sa:r.querySelector('.vsa').checked,k:r.querySelector('.vk').checked,may:nn(r.querySelector('.vm').value),lpu:nn(r.querySelector('.vl').value)}))
     .filter(x=>x.n).map(x=>{const o={n:x.n,v:x.v};if(x.st)o.st=true;if(x.i)o.i=true;if(x.sa)o.sa=true;if(x.k)o.k=true;if(x.may>0)o.may=x.may;if(x.lpu>0)o.lpu=x.lpu;return o})}
@@ -2510,16 +2546,19 @@ function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Art�
   const otros=cod?PV.alias.filter(a=>a.codigo===cod&&!recK.has(a.alias)):[];
   const nv=v=>v==null?'':v;const ivaAct=p.iva==null?'':String(+p.iva);
   window._pvVars=JSON.parse(JSON.stringify(p.variantes||[]));
+  window._pvFoto={url:p.foto_url||null,cambio:false};
   modal(`<h3>${cod?'Editar producto de venta':'Nuevo producto de venta'}</h3>
   <div class="fila"><div><label>Código (el de la caja)</label><input id="pvC" value="${esc(p.codigo)}" ${cod?'disabled':''}></div><div><label>Tipo</label><select id="pvT">${['Artículo','Combo'].map(x=>`<option ${x===p.tipo?'selected':''}>${x}</option>`).join('')}</select></div></div>
   <label>Nombre (como se cobra en la caja)</label><input id="pvN" value="${esc(p.nombre)}">
+  <h4 style="margin-top:14px">📷 Foto <span class="muted" style="font-weight:400;font-size:12px">(se ajusta sola al formato de PedidosYa: JPG 4:3, mínimo 1440×1080, menos de 1 MB)</span></h4>
+  <div id="pvFotoBox"></div>
   <div class="fila"><div><label>Precio mayorista</label><input id="pvM" type="number" step="any" value="${nv(p.precio_may)}"></div><div><label>Precio local (LPU)</label><input id="pvL" type="number" step="any" value="${nv(p.precio_lpu)}"></div><div><label>Precio PedidosYa</label><input id="pvP" type="number" step="any" value="${nv(p.precio_pey)}"></div></div>
   <div class="fila"><div><label>IVA</label><select id="pvI">${IVA_OPC.map(([v,t])=>`<option value="${v}" ${v===ivaAct?'selected':''}>${t}</option>`).join('')}</select></div><div></div></div>
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvK" ${p.por_kg?'checked':''} style="width:auto"> Se vende por kilo (los precios son por kg)</label>
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvV" ${p.vegano?'checked':''} style="width:auto"> 🌱 Vegano (todo el producto; si solo algunas variedades lo son, marcalas abajo)</label>
   <label style="display:flex;gap:6px;align-items:center;margin-top:8px"><input type="checkbox" id="pvS" ${p.sin_trigo?'checked':''} style="width:auto"> 🌰 Sin trigo, a base de harina de almendras (todo el producto; si son solo algunas variedades, marcalas abajo)</label>
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px">
-    <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pvI" ${p.integral?'checked':''} style="width:auto"> 🌾 Integral</label>
+    <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pvIn" ${p.integral?'checked':''} style="width:auto"> 🌾 Integral</label>
     <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pvSA" ${p.sin_azucar?'checked':''} style="width:auto"> 🍃 Sin azúcar</label>
     <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="pvKt" ${p.keto?'checked':''} style="width:auto"> 🥑 Keto</label>
   </div>
@@ -2535,9 +2574,9 @@ function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Art�
     ${otros.length?`<h4 style="margin-top:14px">Otros nombres vinculados <span class="muted" style="font-weight:400;font-size:12px">(como lo mandan los sectores o el churrero)</span></h4>${otros.map(a=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #eee"><span>${esc(a.alias)}</span><button class="btn peq sec" onclick="pvQuitarVinc('${esc(a.alias)}').then(()=>pvEditar('${esc(cod)}'))">Quitar</button></div>`).join('')}`:''}`
   :'<p class="muted" style="margin-top:12px">Guardá el producto y después vas a poder vincularle las recetas.</p>'}
   <div class="acciones" style="margin-top:14px"><button class="btn" id="bPV">💾 Guardar</button><button class="btn sec" onclick="cerrarModal()">${cod?'Cerrar':'Cancelar'}</button></div>`);
-  pvVarsPintar();
+  pvVarsPintar();pvFotoPintar();
   $('#bPV').onclick=async()=>{const num=id=>$(id).value===''?null:+$(id).value;
-    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),iva:num('#pvI'),por_kg:$('#pvK').checked,vegano:$('#pvV').checked,sin_trigo:$('#pvS').checked,integral:$('#pvI').checked,sin_azucar:$('#pvSA').checked,keto:$('#pvKt').checked,variantes:pvVarsLeer(),opciones:$('#pvO').value.split(',').map(x=>x.trim()).filter(Boolean),activo:$('#pvA').checked,updated_at:new Date().toISOString()};
+    const row={codigo:cod||$('#pvC').value.trim(),nombre:$('#pvN').value.trim(),tipo:$('#pvT').value,precio_may:num('#pvM'),precio_lpu:num('#pvL'),precio_pey:num('#pvP'),iva:num('#pvI'),por_kg:$('#pvK').checked,vegano:$('#pvV').checked,sin_trigo:$('#pvS').checked,integral:$('#pvIn').checked,sin_azucar:$('#pvSA').checked,keto:$('#pvKt').checked,variantes:pvVarsLeer(),foto_url:(window._pvFoto||{}).url||null,opciones:$('#pvO').value.split(',').map(x=>x.trim()).filter(Boolean),activo:$('#pvA').checked,updated_at:new Date().toISOString()};
     if(!row.codigo||!row.nombre)return toast('Completá código y nombre');
     if(!cod&&pvPorCod(row.codigo))return toast('Ya existe un producto con el código '+row.codigo);
     try{const [x]=cod?await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),row):await sbIns('productos_venta',[row]);
