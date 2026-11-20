@@ -827,7 +827,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
     <div style="display:flex;gap:8px;margin-top:6px;">
       <label style="flex:1;background:#E8F5E9;color:#1B5E20;border-radius:8px;padding:11px;text-align:center;font-size:14px;font-weight:600;cursor:pointer;">
         <i class="ti ti-camera"></i> Sacar / elegir foto
-        <input type="file" accept="image/*" capture="environment" onchange="onPhotoChange(this)" style="display:none;" />
+        <input type="file" accept="image/*" onchange="onPhotoChange(this)" style="display:none;" />
       </label>
     </div>
     <div id="hm-foto-preview"></div>
@@ -846,6 +846,8 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
     </div>
     <p style="margin:2px 0 4px;font-size:16px;font-weight:700;" id="pm-nombre"></p>
     <p style="margin:0 0 12px;font-size:12px;color:#888;" id="pm-info"></p>
+    <div id="pm-libre-box" style="display:none;margin-bottom:12px;"><label style="font-size:13px;font-weight:600;">¿Qué producto es?</label>
+      <input id="pm-libre" placeholder="ej: Tortitas negras" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:16px;border:1.5px solid #C8E6C9;border-radius:8px;"></div>
     <div style="display:flex;gap:10px;">
       <div style="flex:1"><label style="font-size:13px;font-weight:600;">Unidades que salieron</label>
         <input type="number" id="pm-u" min="0" step="1" inputmode="numeric" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
@@ -853,10 +855,10 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
         <input type="text" id="pm-kg" inputmode="decimal" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
     </div>
     <div id="pm-esperado" style="font-size:12px;color:#666;margin-top:6px;"></div>
-    <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:12px;color:#333;"><input type="checkbox" id="pm-desc" style="width:20px;height:20px;margin-top:1px"> <span>La masa la hicimos en Madrugada: <b>descontar los ingredientes</b> del depósito. (Si la masa vino de Panadería, Cocina o Pastelería, dejalo sin marcar: ya se descontó allá.)</span></label>
+    <label id="pm-desc-box" style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:12px;color:#333;"><input type="checkbox" id="pm-desc" style="width:20px;height:20px;margin-top:1px"> <span>La masa la hicimos en Madrugada: <b>descontar los ingredientes</b> del depósito. (Si la masa vino de Panadería, Cocina o Pastelería, dejalo sin marcar: ya se descontó allá.)</span></label>
     <label style="font-size:13px;color:#333;font-weight:600;display:block;margin-top:12px;">Foto (opcional)</label>
     <label style="display:block;background:#E8F5E9;color:#1B5E20;border-radius:8px;padding:11px;text-align:center;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px;">
-      <i class="ti ti-camera"></i> Sacar / elegir foto<input type="file" accept="image/*" capture="environment" onchange="prodFoto=this.files[0]||null;document.getElementById('pm-foto').textContent=prodFoto?'📷 '+prodFoto.name:''" style="display:none;"></label>
+      <i class="ti ti-camera"></i> Sacar / elegir foto<input type="file" accept="image/*" onchange="prodFoto=this.files[0]||null;this.value='';document.getElementById('pm-foto').textContent=prodFoto?'📷 '+prodFoto.name:''" style="display:none;"></label>
     <div id="pm-foto" style="font-size:12px;color:#666;margin-top:4px;"></div>
     <button onclick="confirmarProd()" id="pm-ok" style="width:100%;margin-top:16px;background:#1B5E20;color:#fff;border:none;border-radius:10px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;"><i class="ti ti-send"></i> Despachar al Salón</button>
   </div>
@@ -983,11 +985,28 @@ function updateMerma(){
 function onPhotoChange(input){
   const f = input.files && input.files[0]; if(!f) return;
   photoFile = f;
-  const reader = new FileReader();
-  reader.onload = e => { document.getElementById('hm-foto-preview').innerHTML = '<img src="'+e.target.result+'" style="max-width:100%;border-radius:8px;margin-top:10px;" />'; };
-  reader.readAsDataURL(f);
+  input.value = '';
+  const url = URL.createObjectURL(f);
+  document.getElementById('hm-foto-preview').innerHTML = '<img src="'+url+'" onload="URL.revokeObjectURL(this.src)" style="max-width:100%;max-height:220px;border-radius:8px;margin-top:10px;" />';
+}
+// Achica la foto (máx 1600 px, JPEG) antes de subirla: las fotos del celu pesan varios MB y en celulares con poca memoria se colgaba.
+function achicarFoto(file, lado){
+  lado = lado || 1600;
+  return new Promise(ok => {
+    if (!file || !/^image\//.test(file.type || 'image/')) return ok(file);
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { try {
+        const k = Math.min(1, lado / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        c.toBlob(b => { c.width = c.height = 0; ok(b ? new File([b], 'foto.jpg', { type: 'image/jpeg' }) : file); }, 'image/jpeg', 0.82);
+      } catch (e) { URL.revokeObjectURL(url); ok(file); } };
+    img.onerror = () => { URL.revokeObjectURL(url); ok(file); };
+    img.src = url;
+  });
 }
 async function uploadFoto(file, item){
+  file = await achicarFoto(file);
   const ext = ((file.name||'foto.jpg').split('.').pop()||'jpg').toLowerCase();
   const obj = Date.now() + '_' + ((item.producto_id||'item').replace(/[^a-z0-9_-]/gi,'')) + '.' + ext;
   const res = await fetch(SUPABASE_URL + '/storage/v1/object/madrugada/' + obj, {
@@ -1138,57 +1157,85 @@ async function descontarRelleno(producto, unidades){
 
 // ── PRODUCCIÓN: todas las recetas, cargando lo que salió de verdad ─────────
 let recetasMad = [], prodSel = null, prodFoto = null, prodSect = '';
-const SECT_MAD = { panaderia:'🍞 Panadería', pasteleria:'🍰 Pastelería', cocina:'🍳 Cocina' };
+const SECT_MAD = { panaderia:'🍞 Panadería', pasteleria:'🍰 Pastelería', cocina:'🍳 Cocina', venta:'🛒 Local' };
 function nrmMad(s){ return (s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
 function escMad(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 async function loadRecetasMad(){
   await cargarReglasPeso();
   if (recetasMad.length) { renderRecetasMad(); return; }
   setStatus('Cargando recetas…');
-  const rows = await sbSelect('recetas', '?select=id,nombre,sector,tipo,unidad_venta,unidades_tanda,peso_unidad_g&tipo=in.(PRODUCCION,BASE)&order=nombre.asc') || [];
+  const [rows, ss] = await Promise.all([
+    sbSelect('recetas', '?select=id,nombre,sector,tipo,unidad_venta,unidades_tanda,peso_unidad_g&tipo=in.(PRODUCCION,BASE)&order=nombre.asc').catch(() => []),
+    sbSelect('salon_stock', '?select=id,nombre,sector,unidad&sector=neq.insumos&order=nombre.asc').catch(() => [])
+  ]);
   const vistos = {};
-  recetasMad = rows.filter(r => { const n = nrmMad(r.nombre); if (!n || n.includes('mayorista') || n.includes('(nativo)') || vistos[n]) return false; vistos[n] = 1; return true; });
+  recetasMad = (rows||[]).filter(r => { const n = nrmMad(r.nombre); if (!n || n.includes('mayorista') || n.includes('(nativo)') || vistos[n]) return false; vistos[n] = 1; return true; });
+  // Productos del Salón que no tienen receta cargada (ej. tortitas negras): se pueden sacar igual, sin descontar ingredientes.
+  (ss||[]).forEach(p => { const n = nrmMad(p.nombre); if (!n || vistos[n]) return; vistos[n] = 1;
+    recetasMad.push({ id: 'ss_' + p.id, ssId: p.id, nombre: p.nombre, sector: p.sector === 'madrugada' ? 'panaderia' : p.sector, unidad_venta: p.unidad === 'kg' || /\(kg\)/i.test(p.nombre) ? 'kg' : 'u', _sinReceta: true, _local: p.sector === 'venta' }); });
+  recetasMad.sort((a, b) => nrmMad(a.nombre).localeCompare(nrmMad(b.nombre)));
   renderRecetasMad(); setStatus('Listo');
 }
 function renderRecetasMad(){
   const q = nrmMad((document.getElementById('pr-bus')||{}).value);
   const sects = [['', 'Todas']].concat(Object.entries(SECT_MAD));
   document.getElementById('pr-sect').innerHTML = sects.map(([k,t]) => '<button onclick="prodSect=\''+k+'\';renderRecetasMad()" style="flex-shrink:0;border:1.5px solid #C8E6C9;border-radius:16px;padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;background:'+(prodSect===k?'#1B5E20;color:#fff':'#fff;color:#1B5E20')+'">'+t+'</button>').join('');
-  const L = recetasMad.filter(r => (!prodSect || r.sector === prodSect) && (!q || nrmMad(r.nombre).includes(q)));
+  // los productos de la lista general del local aparecen solo al buscar o en su botón, para no llenar la lista
+  const L = recetasMad.filter(r => (!prodSect || r.sector === prodSect) && (!q || nrmMad(r.nombre).includes(q)) && (!r._local || q || prodSect === 'venta'));
   const el = document.getElementById('pr-list');
-  if (!L.length) { el.innerHTML = emptyState(recetasMad.length ? 'No hay recetas con ese nombre.' : 'No se pudieron cargar las recetas.', ''); return; }
-  el.innerHTML = '<div style="font-size:12px;color:#888;margin-bottom:6px;">Tocá la receta que horneaste y cargá cuánto salió.</div>' + L.map(r =>
+  const otro = '<div onclick="abrirProdLibre()" style="background:#FFF8E1;border:1.5px dashed #FFB300;border-radius:10px;padding:12px;margin:4px 0 8px;display:flex;align-items:center;gap:10px;cursor:pointer;"><i class="ti ti-plus" style="color:#E65100;font-size:20px;"></i><div style="flex:1;"><div style="font-weight:700;font-size:15px;color:#E65100;">Otro producto (no está en la lista)</div><div style="font-size:12px;color:#888;">Algo que sacaste de apuro: escribí el nombre y cuánto salió.</div></div></div>';
+  if (!L.length) { el.innerHTML = emptyState(recetasMad.length ? 'No hay nada con ese nombre.' : 'No se pudieron cargar las recetas.', '') + otro; return; }
+  el.innerHTML = '<div style="font-size:12px;color:#888;margin-bottom:6px;">Tocá lo que horneaste (con o sin leudado) y cargá cuánto salió.</div>' + L.map(r =>
     '<div onclick="abrirProd(\''+r.id+'\')" style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;cursor:pointer;">'
-    + '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:15px;">'+escMad(r.nombre)+(esPorPeso(r.nombre)||r.unidad_venta==='kg'?' <span style="font-size:11px;background:#FFF8E1;color:#8D6E00;border-radius:8px;padding:1px 6px;">⚖️ por kilo</span>':'')+'</div><div style="font-size:12px;color:#888;">'+(SECT_MAD[r.sector]||r.sector||'')+(r.unidades_tanda?' · rinde '+r.unidades_tanda+' '+(r.unidad_venta||'u')+' por tanda':'')+'</div></div>'
-    + '<i class="ti ti-chevron-right" style="color:#bbb;font-size:20px;"></i></div>').join('');
+    + '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:15px;">'+escMad(r.nombre)+(esPorPeso(r.nombre)||r.unidad_venta==='kg'?' <span style="font-size:11px;background:#FFF8E1;color:#8D6E00;border-radius:8px;padding:1px 6px;">⚖️ por kilo</span>':'')+'</div><div style="font-size:12px;color:#888;">'+(SECT_MAD[r.sector]||r.sector||'')+(r._sinReceta?' · sin receta':'')+(r.unidades_tanda?' · rinde '+r.unidades_tanda+' '+(r.unidad_venta||'u')+' por tanda':'')+'</div></div>'
+    + '<i class="ti ti-chevron-right" style="color:#bbb;font-size:20px;"></i></div>').join('') + otro;
+}
+function abrirProdLibre(){
+  const q = (document.getElementById('pr-bus')||{}).value || '';
+  recetasMad = recetasMad.filter(r => r.id !== 'libre');
+  recetasMad.push({ id: 'libre', nombre: '', sector: '', _sinReceta: true, _libre: true });
+  abrirProd('libre');
+  recetasMad = recetasMad.filter(r => r.id !== 'libre');
+  document.getElementById('pm-libre').value = q.trim();
+  setTimeout(() => document.getElementById('pm-libre').focus(), 90);
 }
 function abrirProd(id){
   prodSel = recetasMad.find(r => String(r.id) === String(id)); if (!prodSel) return; prodFoto = null;
-  document.getElementById('pm-nombre').textContent = prodSel.nombre;
+  document.getElementById('pm-nombre').textContent = prodSel._libre ? 'Otro producto' : prodSel.nombre;
+  document.getElementById('pm-libre-box').style.display = prodSel._libre ? 'block' : 'none';
+  document.getElementById('pm-desc-box').style.display = prodSel._sinReceta ? 'none' : 'flex';
   prodSel._peso = prodSel.unidad_venta === 'kg' || esPorPeso(prodSel.nombre);
-  document.getElementById('pm-info').textContent = (SECT_MAD[prodSel.sector]||'') + ' · se vende por ' + (prodSel._peso ? 'kilo: pesalo y poné los kilos' : 'unidad');
+  document.getElementById('pm-info').textContent = prodSel._libre ? 'Si se vende por kilo, poné los kilos; si no, las unidades.'
+    : (SECT_MAD[prodSel.sector]||'') + ' · se vende por ' + (prodSel._peso ? 'kilo: pesalo y poné los kilos' : 'unidad') + (prodSel._sinReceta ? ' · no tiene receta cargada, así que no descuenta ingredientes' : '');
   document.getElementById('pm-u').value = ''; document.getElementById('pm-kg').value = ''; document.getElementById('pm-desc').checked = false; document.getElementById('pm-foto').textContent = '';
   document.getElementById('pm-esperado').textContent = prodSel.unidades_tanda ? 'Una tanda suele rendir ' + prodSel.unidades_tanda + ' ' + (prodSel.unidad_venta||'u') + '. Cargá lo que salió de verdad, aunque sea más o menos.' : '';
   document.getElementById('prod-modal').style.display = 'flex';
-  setTimeout(() => document.getElementById(prodSel._peso ? 'pm-kg' : 'pm-u').focus(), 80);
+  if (!prodSel._libre) setTimeout(() => document.getElementById(prodSel._peso ? 'pm-kg' : 'pm-u').focus(), 80);
 }
 function cerrarProd(){ document.getElementById('prod-modal').style.display = 'none'; prodSel = null; prodFoto = null; }
 async function confirmarProd(){
   if (!prodSel) return;
   const u = Number(document.getElementById('pm-u').value) || 0, kg = leerKg('pm-kg');
+  if (prodSel._libre) {
+    const nom = document.getElementById('pm-libre').value.trim();
+    if (!nom) { toast('Escribí qué producto es'); return; }
+    prodSel.nombre = nom.charAt(0).toUpperCase() + nom.slice(1);
+    prodSel._peso = !u && kg > 0;   // si solo pusieron kilos, va por kilo
+  }
   const porKg = !!prodSel._peso;
   const cant = porKg ? kg : (u || 0);
   if (!(cant > 0)) { toast(porKg ? 'Poné los kilos que salieron' : 'Poné cuántas unidades salieron'); return; }
   if (porKg && cant > KG_MAX_TANDA && !confirm('¿Seguro que son ' + String(cant).replace('.', ',') + ' kg? Revisá que no sean gramos (ej: 1,5 kg y no 1500).')) return;
   const btn = document.getElementById('pm-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Despachando…');
-  let foto = null; if (prodFoto) { try { foto = await uploadFoto(prodFoto, { producto_id: 'rec_' + prodSel.id }); } catch (e) { console.warn('foto', e); } }
+  const pid = prodSel._libre ? 'mad_' + nrmMad(prodSel.nombre).replace(/[^a-z0-9]+/g, '_') : prodSel._sinReceta ? prodSel.ssId : 'rec_' + prodSel.id;
+  let foto = null; if (prodFoto) { try { foto = await uploadFoto(prodFoto, { producto_id: pid }); } catch (e) { console.warn('foto', e); } }
   try {
-    await sbUpsert('salon_recepciones', [{ producto_id: 'rec_' + prodSel.id, producto_nombre: prodSel.nombre, cantidad: Math.round(cant * 1000) / 1000, unidad: porKg ? 'kg' : 'u',
+    await sbUpsert('salon_recepciones', [{ producto_id: pid, producto_nombre: prodSel.nombre, cantidad: Math.round(cant * 1000) / 1000, unidad: porKg ? 'kg' : 'u',
       sector_origen: 'madrugada', destino: 'salon', estado: 'despachado', foto_url: foto }]);
-    if (document.getElementById('pm-desc').checked) {
+    if (!prodSel._sinReceta && document.getElementById('pm-desc').checked) {
       try { await polyRPC('registrar_produccion', { p_sector: 'madrugada', p_producto: prodSel.nombre, p_tandas: 1, p_unidades: cant, p_unidades_por_tanda: null }); } catch (e) { console.warn('insumos', e); }
     }
-    await sbLog('madrugada', 'produccion', 'Horneado y despachado al Salón: ' + (porKg ? cant + ' kg' : cant + ' u') + ' ' + prodSel.nombre + (kg && !porKg ? ' (' + kg + ' kg)' : '') + (u && porKg ? ' (' + u + ' u)' : ''), cant, 'rec_' + prodSel.id, porKg ? 'kg' : 'u');
+    await sbLog('madrugada', 'produccion', 'Horneado y despachado al Salón: ' + (porKg ? cant + ' kg' : cant + ' u') + ' ' + prodSel.nombre + (kg && !porKg ? ' (' + kg + ' kg)' : '') + (u && porKg ? ' (' + u + ' u)' : ''), cant, pid, porKg ? 'kg' : 'u');
     const rell = porKg ? await descontarComprado(prodSel.nombre, cant) : await descontarRelleno(prodSel.nombre, cant);
     toast('✅ Despachado al Salón: ' + String(cant).replace('.', ',') + (porKg ? ' kg' : ' u') + rell);
     cerrarProd();
@@ -1209,7 +1256,14 @@ async function loadChurrero(){
 function chMult(it){ return it.remito === 'docena' ? 12 : 1; }
 function chSub(it, u){ return (it.unidad === 'docena' ? u / 12 : u) * (Number(it.precio)||0); }
 let chFoto = null, chLeido = null;
+const CH_BORRADOR = 'mad_churrero_borrador';
+function chGuardarBorrador(){ try { const q = {}; chItems.forEach((it, i) => { const v = (document.getElementById('ch-q' + i)||{}).value; if (v) q[it.codigo || it.id || i] = v; });
+  localStorage.setItem(CH_BORRADOR, JSON.stringify({ dia: hoyMad(), q, ped: (document.getElementById('ch-ped')||{}).value || '' })); } catch (e) {} }
+function chRestaurarBorrador(){ try { const b = JSON.parse(localStorage.getItem(CH_BORRADOR) || 'null'); if (!b || b.dia !== hoyMad()) return;
+  chItems.forEach((it, i) => { const v = b.q[it.codigo || it.id || i]; const el = document.getElementById('ch-q' + i); if (v && el && !el.value) el.value = v; });
+  const p = document.getElementById('ch-ped'); if (p && b.ped && !p.value) p.value = b.ped; } catch (e) {} }
 function chCalcular(){
+  chGuardarBorrador();
   let t = 0; chItems.forEach((it, i) => { const q = Number((document.getElementById('ch-q' + i)||{}).value) || 0, u = q * chMult(it), sub = chSub(it, u); t += sub;
     const s = document.getElementById('ch-s' + i); if (s) s.textContent = q ? (chMult(it) > 1 ? u + ' u · ' : '') + pesos(sub) : ''; });
   document.getElementById('ch-total').textContent = pesos(t);
@@ -1220,11 +1274,11 @@ function renderChurrero(){
   const tieneKey = !!localStorage.getItem('anthropic_api_key');
   el.innerHTML = '<div style="font-size:15px;font-weight:800;color:#1B5E20;margin-bottom:4px;">🍩 Remito del churrero</div>'
     + '<div style="font-size:12px;color:#888;margin-bottom:10px;">Copiá los números del remito en el mismo casillero (son <b>docenas</b>). Entra al Salón: churros y donas como Facturas, pastelitos como Pastelitos.</div>'
-    + '<div style="display:flex;gap:8px;margin-bottom:10px;"><label style="flex:1;background:#E8F5E9;color:#1B5E20;border-radius:10px;padding:12px;text-align:center;font-size:14px;font-weight:700;cursor:pointer;"><i class="ti ti-camera"></i> Foto del remito<input type="file" accept="image/*" capture="environment" onchange="chFotoElegida(this.files[0])" style="display:none;"></label></div>'
+    + '<div style="display:flex;gap:8px;margin-bottom:10px;"><label style="flex:1;background:#E8F5E9;color:#1B5E20;border-radius:10px;padding:12px;text-align:center;font-size:14px;font-weight:700;cursor:pointer;"><i class="ti ti-camera"></i> Foto del remito (cámara o galería)<input type="file" accept="image/*" onchange="chFotoElegida(this.files[0]);this.value=\'\';" style="display:none;"></label></div>'
     + '<div id="ch-foto-info" style="font-size:12px;color:#666;margin:-4px 0 8px;">' + (chFoto ? '📷 Foto lista' + (chLeido ? ' · ' + chLeido : '') : (tieneKey ? 'Con la foto, el sistema completa los casilleros solo. Después revisalos.' : '')) + '</div>'
     + (!tieneKey ? '<details style="font-size:12px;color:#666;margin-bottom:10px;"><summary>Activar lectura automática de la foto</summary><div style="margin-top:6px;">Pegá la clave de IA (la misma de Gestión):<input id="ch-key" placeholder="sk-ant-…" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;"><button onclick="localStorage.setItem(\'anthropic_api_key\',document.getElementById(\'ch-key\').value.trim());renderChurrero();" style="margin-top:6px;background:#1B5E20;color:#fff;border:none;border-radius:6px;padding:8px 12px;">Guardar clave</button></div></details>' : '')
     + '<div style="display:flex;gap:8px;"><div style="flex:1"><label style="font-size:13px;font-weight:600;">Fecha</label><input type="date" id="ch-fecha" value="' + hoyMad() + '" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;"></div>'
-    + '<div style="width:110px"><label style="font-size:13px;font-weight:600;">N° pedido</label><input id="ch-ped" inputmode="numeric" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;"></div></div>'
+    + '<div style="width:110px"><label style="font-size:13px;font-weight:600;">N° pedido</label><input id="ch-ped" inputmode="numeric" oninput="chGuardarBorrador()" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #ddd;border-radius:8px;margin:4px 0 10px;font-size:15px;"></div></div>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' + chItems.map((it, i) => '<div style="background:#fff;border:1.5px solid #F8BBD0;border-radius:10px;padding:8px;">'
       + '<div style="font-size:12px;color:#C2185B;font-weight:800;letter-spacing:1px;">' + escMad(it.codigo || '—') + '</div><div style="font-size:12px;font-weight:700;line-height:1.2;min-height:28px;">' + escMad(it.nombre) + '</div>'
       + '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;"><input type="number" id="ch-q' + i + '" min="0" step="1" inputmode="numeric" placeholder="0" oninput="chCalcular()" style="width:70px;padding:8px;font-size:18px;text-align:center;border:1.5px solid #C8E6C9;border-radius:8px;font-weight:700;"><span style="font-size:11px;color:#888;">' + (chMult(it) > 1 ? 'doc.' : 'u') + '</span></div>'
@@ -1240,6 +1294,7 @@ function renderChurrero(){
     + '<button onclick="mandarChurrosRecuperados()" id="ch-rec-ok" style="background:#E65100;color:#fff;border:none;border-radius:8px;padding:0 14px;font-weight:700;cursor:pointer;">Mandar al Salón</button></div></div>'
     + '<div style="font-size:14px;font-weight:700;color:#1B5E20;margin:18px 0 6px;">Últimas boletas</div>'
     + (chBoletas.length ? chBoletas.map(b => '<div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:9px 11px;margin-bottom:6px;font-size:13px;"><div style="display:flex;justify-content:space-between;font-weight:700;"><span>' + new Date(b.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday:'short', day:'2-digit', month:'2-digit' }) + (b.pedido ? ' · pedido ' + escMad(b.pedido) : '') + '</span><span>' + pesos(b.total) + (b.pago_id ? ' · ✅ pagada' : '') + '</span></div><div style="color:#666;">' + (b.items||[]).map(x => (x.docenas != null ? x.docenas + ' doc. ' : x.cantidad + ' ') + escMad(x.codigo || x.nombre)).join(' · ') + (b.revisado_por ? ' · ✔ ' + escMad(b.revisado_por) : '') + (b.foto_url ? ' · <a href="' + b.foto_url + '" target="_blank">📷</a>' : '') + '</div></div>').join('') : '<div style="font-size:13px;color:#999;">Todavía no hay boletas.</div>');
+  chRestaurarBorrador();
   chCalcular();
 }
 // Churros que sobraron, se dieron de baja a la noche y al otro día vuelven al local pasados por azúcar: entran como Facturas, sin boleta.
@@ -1258,17 +1313,18 @@ async function mandarChurrosRecuperados(){
   btn.disabled = false; btn.style.opacity = '1'; setStatus('Listo');
 }
 function chImagenBase64(file){
-  return new Promise((ok, mal) => { const img = new Image(); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.85).split(',')[1]); }; img.onerror = mal; img.src = URL.createObjectURL(file); });
+  return new Promise((ok, mal) => { const url = URL.createObjectURL(file), img = new Image(); img.onload = () => { const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); const d = c.toDataURL('image/jpeg', 0.85).split(',')[1]; c.width = c.height = 0; ok(d); }; img.onerror = e => { URL.revokeObjectURL(url); mal(new Error('no se pudo abrir la foto')); }; img.src = url; });
 }
 async function chFotoElegida(file){
-  if (!file) return; chFoto = file; chLeido = null;
+  if (!file) return; chLeido = null;
+  try { chFoto = await achicarFoto(file); } catch (e) { chFoto = file; }
   const info = document.getElementById('ch-foto-info');
   const key = localStorage.getItem('anthropic_api_key');
   if (!key) { info.textContent = '📷 Foto lista (se guarda con la boleta). Completá los casilleros a mano.'; return; }
   info.textContent = '📷 Leyendo el remito…'; setStatus('Leyendo remito…');
   try {
-    const b64 = await chImagenBase64(file);
+    const b64 = await chImagenBase64(chFoto);
     const codigos = chItems.filter(it => it.codigo).map(it => it.codigo + ' = ' + it.nombre);
     const prompt = 'Es un remito de una churrería. Tiene una grilla con casilleros, cada uno con un código impreso arriba (CH, D, B, CHR, DG, CHBR, DBN, MINI, DREN, BREN, BOMB, DGL, DRRG, DRNG, PBAT, PDDL, AZUCAR, BOLSAS, CAJAS, etc.) y, a veces, un número escrito a mano debajo. '
       + 'Leé solo los casilleros que tienen un número escrito a mano. Los códigos que nos interesan: ' + codigos.join('; ') + '. Atención: CHR y CHBR son distintos, DRRG y DRNG son distintos. '
@@ -1311,7 +1367,7 @@ async function guardarBoleta(){
     const rec = await sbUpsert('salon_recepciones', items.map(x => ({ producto_id: 'churrero_' + x.id, producto_nombre: x.nombre, cantidad: x.cantidad, unidad: 'u', sector_origen: 'churrero', destino: 'salon', estado: 'despachado' })));
     if (!rec) toast('⚠️ La boleta se guardó pero no llegó al Salón: avisá para que lo carguen a mano');
     await sbLog('madrugada', 'churrero', 'Remito del churrero ' + fecha + (ped ? ' (pedido ' + ped + ')' : '') + ': ' + items.map(x => (x.docenas != null ? x.docenas + ' doc. ' : x.cantidad + ' ') + x.nombre).join(', ') + ' · ' + pesos(total) + (usr ? ' · revisó ' + usr : ''), total, null, '$');
-    toast('✅ Remito guardado y enviado al Salón'); chFoto = null; chLeido = null;
+    toast('✅ Remito guardado y enviado al Salón'); chFoto = null; chLeido = null; try { localStorage.removeItem(CH_BORRADOR); } catch (e) {}
     await loadChurrero();
   } catch (e) { console.error(e); toast('⚠️ ' + (e.message || 'Hubo un error, probá de nuevo')); btn.disabled = false; btn.style.opacity = '1'; }
   setStatus('Listo');
