@@ -2560,9 +2560,32 @@ function renderTareas(){
     if (document.getElementById('pcs-car')) pcsPintarCarrito();
     if ((document.getElementById('pcs-bus') || {}).value) pcsBuscar();
   };
+  /* Aviso 3 por WhatsApp: "tu pedido ya está en el local" (cuando todos los sectores lo despacharon) */
+  function waNum(tel) { var d = String(tel || '').replace(/\D/g, ''); if (d.startsWith('54')) d = d.slice(2); if (d.startsWith('9') && d.length === 11) d = d.slice(1); if (d.startsWith('0')) d = d.slice(1); if (d.length === 12 && d.slice(2, 4) === '15') d = d.slice(0, 2) + d.slice(4); return d.length === 10 ? '549' + d : null; }
+  function sinAvisoListo(p) { return p.estado === 'listo' && !p.aviso_listo_at && !!waNum(p.telefono); }
+  function msgListo(p) {
+    var n = String(p.cliente || '').split(' ')[0], saldo = (+p.total || 0) - (+p.sena || 0), may = p.lista_precios === 'mayorista';
+    return '¡Hola ' + n + '! 🥐 Tu pedido *#' + p.numero + '* de Poly Artesanal ya está *listo* ✅\n' +
+      (p.envio ? 'Sale para ' + (p.direccion || 'tu dirección') + '.' : 'Ya podés pasar a buscarlo por Galván 3512, Villa Urquiza.') + '\n' +
+      (may ? 'Va a tu cuenta corriente.' : saldo > 0 ? 'Saldo a pagar ' + (p.envio ? 'al recibirlo' : 'al retirar') + ': *' + plata(saldo) + '*.' : 'Ya está todo pago.') + '\n¡Gracias!';
+  }
+  var listosVistos = null;
+  window.pcsAvisarListo = function (id) {
+    var p = pedidos.find(function (x) { return x.id === id; }); if (!p || !waNum(p.telefono)) return;
+    window.open('https://wa.me/' + waNum(p.telefono) + '?text=' + encodeURIComponent(msgListo(p)), '_blank');
+    p.aviso_listo_at = new Date().toISOString();
+    fetch(SB + 'pedidos_clientes?id=eq.' + id, { method: 'PATCH', headers: Object.assign({ Prefer: 'return=minimal' }, H), body: JSON.stringify({ aviso_listo_at: p.aviso_listo_at }) }).catch(function () {});
+    pintarLista(); pintarPill();
+  };
   function cargarPedidos() {
     return api('pedidos_clientes?select=*,pedidos_clientes_items(*)&estado=in.(pendiente,en_produccion,listo)&order=fecha_retiro,hora_retiro')
-      .then(function (r) { pedidos = r || []; pintarLista(); pintarPill(); }).catch(function () {});
+      .then(function (r) {
+        pedidos = r || [];
+        var ids = pedidos.filter(sinAvisoListo).map(function (p) { return p.id; });
+        if (listosVistos && ids.some(function (i) { return listosVistos.indexOf(i) < 0; })) try { var c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain(); o.connect(g); g.connect(c.destination); o.frequency.value = 660; g.gain.value = .08; o.start(); setTimeout(function () { o.frequency.value = 990; }, 160); setTimeout(function () { o.stop(); c.close(); }, 380); } catch (e) {}
+        listosVistos = ids;
+        pintarLista(); pintarPill();
+      }).catch(function () {});
   }
   function pintarPill() {
     var pill = document.getElementById('pcs-pill'); if (!pill) return;
@@ -2570,7 +2593,8 @@ function renderTareas(){
     var listos = pedidos.filter(function (p) { return p.estado === 'listo'; });
     if (!pedidos.length) { pill.style.display = 'none'; return; }
     pill.style.display = 'block'; pill.className = hoy.length ? 'r' : '';
-    pill.textContent = hoy.length ? '🔔 ' + hoy.length + ' pedido' + (hoy.length > 1 ? 's' : '') + ' para hoy' : '🧾 ' + pedidos.length + ' pedido' + (pedidos.length > 1 ? 's' : '') + (listos.length ? ' · ' + listos.length + ' listo' + (listos.length > 1 ? 's' : '') : '');
+    var sinAv = pedidos.filter(sinAvisoListo).length;
+    pill.textContent = (hoy.length ? '🔔 ' + hoy.length + ' pedido' + (hoy.length > 1 ? 's' : '') + ' para hoy' : '🧾 ' + pedidos.length + ' pedido' + (pedidos.length > 1 ? 's' : '') + (listos.length ? ' · ' + listos.length + ' listo' + (listos.length > 1 ? 's' : '') : '')) + (sinAv ? ' · 📲 ' + sinAv + ' sin avisar' : '');
     var tab = document.getElementById('tab-comanda');
     if (tab) { var b = tab.querySelector('.pcs-badge'); if (!b) { b = document.createElement('span'); b.className = 'pcs-badge'; b.style.cssText = 'position:absolute;top:2px;right:4px;background:#E24B4A;color:#fff;font-size:10px;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 3px;'; tab.appendChild(b); } b.textContent = pedidos.length; }
   }
@@ -2586,6 +2610,8 @@ function renderTareas(){
         '<div style="font-size:12px;color:#555;margin:4px 0">' + (p.telefono ? '📞 ' + esc(p.telefono) + (tel ? ' · <a href="https://wa.me/' + (tel.length <= 10 ? '549' + tel : tel) + '" target="_blank">WhatsApp</a>' : '') + ' · ' : '') + (p.envio ? '🛵 Envío: ' + esc(p.direccion) : '🏪 Retira en el local') + '</div>' +
         '<div style="font-size:12px;color:#555;margin-bottom:6px">' + (function () { var L = LISTAS[p.lista_precios || 'minorista'] || LISTAS.minorista; return '<span class="pcs-chip" style="background:' + L[2] + ';color:#fff">' + L[0] + '</span> '; })() + 'Total ' + plata(p.total) + ' · Seña ' + plata(p.sena) + (p.sena_medio ? ' (' + esc(p.sena_medio) + ')' : '') + ' · <b>Saldo ' + plata(saldo) + '</b>' + (p.notas ? '<br>📝 ' + esc(p.notas) : '') + '</div>' +
         its.map(function (i) { var e = estadoItem(i); return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px dashed #eee;font-size:14px"><span>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + ' <span style="color:#999;font-size:11px">' + (SECT[i.sector] || i.sector) + '</span></span><span class="pcs-chip" style="background:' + e[1] + ';color:' + e[2] + '">' + e[0] + '</span></div>'; }).join('') +
+        (listo ? (waNum(p.telefono) ? (p.aviso_listo_at ? '<div style="font-size:12px;color:#2E7D32;margin-top:8px">✓ Le avisamos que ya está en el local (' + new Date(p.aviso_listo_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ') · <a href="javascript:pcsAvisarListo(' + p.id + ')" style="color:inherit">reenviar</a></div>' :
+          '<button class="pcs-b" style="width:100%;margin-top:10px;background:#1f9e55" onclick="pcsAvisarListo(' + p.id + ')">📲 Avisarle que ya está ' + (p.envio ? 'listo para el envío' : 'para retirar') + '</button>') : '<div style="font-size:12px;color:#C62828;margin-top:8px">Sin WhatsApp válido: avisale por otro medio.</div>') : '') +
         '<div style="display:flex;gap:8px;margin-top:10px"><button class="pcs-b" style="flex:1;background:' + (listo ? '#2E7D32' : '#9E9E9E') + '" onclick="pcsEntregar(' + p.id + ')">📦 Entregado al cliente</button><button class="pcs-b" style="background:#fff;color:#555;border:1px solid #ccc" onclick="pcsRemito(' + p.id + ')" title="Imprimir remito">🖨</button><button class="pcs-b" style="background:#fff;color:#C62828;border:1px solid #ef9a9a" onclick="pcsCancelar(' + p.id + ')">Cancelar</button></div></div>';
     }).join('');
   }
