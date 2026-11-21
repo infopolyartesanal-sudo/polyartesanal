@@ -1491,7 +1491,7 @@ const RECIPE_TO_PROD = {
 
 function completeRecipe() {
   if (!currentRecipe) return;
-  if (window.Ferm) { Ferm.elegir(currentRecipe.name, currentRecipe.rendimiento || '', completeRecipeStock); return; }
+  if (window.Ferm) { const nom = currentRecipe.name; Ferm.elegir(nom, currentRecipe.rendimiento || '', completeRecipeStock, () => { registrarProduccion('panaderia', nom, 1); addToLog('🫧 Tanda a fermentar: ' + nom, 'receta'); }); return; }
   completeRecipeStock();
 }
 
@@ -1513,7 +1513,8 @@ function completeRecipeStock() {
   if (prodId) {
     addTanda(prodId);
   } else {
-    // Unknown recipe — just log it
+    // Receta sin stock propio en Panadería: igual descuenta la materia prima (si está vinculada en Gestión)
+    registrarProduccion('panaderia', currentRecipe.name, 1);
     saveFreezerPan();
   }
 
@@ -3559,6 +3560,6 @@ window.polyEtiquetas = function (p, its) {
 };
 </script>
 <script src="calc_receta.js?v=1"></script>
-<script src="fermentando.js?v=4"></script>
+<script src="fermentando.js?v=5"></script>
 </body>
 </html>

@@ -80,12 +80,12 @@
   function cerrar() { var o = document.getElementById('fermOv'); if (o) o.remove(); }
 
   // ── Al completar una tanda: ¿stock o fermentar?
-  function elegir(receta, rendimiento, alStock) {
+  function elegir(receta, rendimiento, alStock, alFermentar) {
     modal('<h3>✅ ' + esc(receta) + '</h3><p class="muted" style="margin:0 0 6px;font-size:14px">¿Qué hacés con esta tanda?</p>' +
       '<button type="button" class="fermOk" id="fermA">🫧 Poner a fermentar</button>' +
       '<button type="button" class="fermSec" id="fermB">📦 Ya está lista (va a stock, como siempre)</button>' +
       '<button type="button" class="fermSec" id="fermC">Cancelar</button>');
-    document.getElementById('fermA').onclick = function () { ingresar(receta, rendimiento); };
+    document.getElementById('fermA').onclick = function () { ingresar(receta, rendimiento, { onOk: alFermentar }); };
     document.getElementById('fermB').onclick = function () { cerrar(); if (alStock) alStock(); };
     document.getElementById('fermC').onclick = cerrar;
   }
@@ -136,6 +136,7 @@
         var rows = await rpc('masa_ingresar', { receta: receta, ubicacion: ub, horas: hs, cantidad: +document.getElementById('fCant').value || 1,
           contenido: document.getElementById('fCont').value, notas: document.getElementById('fNota').value, sector: 'panaderia' });
         guardarTiempo(receta, hs);
+        if (opc.onOk) try { opc.onOk(rows); } catch (e) {}
         if (window.addToLog) try { addToLog('🫧 A fermentar ' + horasTxt(hs) + ' (' + (UB[ub] || ub) + '): ' + receta + ' · ' + rows.map(function (r) { return r.codigo; }).join(', '), 'receta'); } catch (e) {}
         listo(rows);
         contar();
