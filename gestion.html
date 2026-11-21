@@ -1233,8 +1233,11 @@ async function guardarFactura(){
     if(!ins)continue;it.insumo_id=ins.id;
     if(it.descripcion&&norm(it.descripcion)!==norm(ins.nombre)){await sbIns('equivalencias',[{texto:norm(it.descripcion),insumo_id:ins.id,updated_at:new Date().toISOString()}],true);D.equiv=D.equiv.filter(e=>e.texto!==norm(it.descripcion));D.equiv.push({texto:norm(it.descripcion),insumo_id:ins.id})}
     if(actualizar&&it.cantidad_base>0){const pu=it.total/it.cantidad_base;if(+ins.costo_unitario>0&&pu>ins.costo_unitario*1.15)suba.push(ins.nombre+' '+pct((pu-ins.costo_unitario)/ins.costo_unitario*100));
-      const patch={stock:Math.round(((+ins.stock||0)+it.cantidad_base)*1000)/1000,proveedor:prov,updated_at:new Date().toISOString()};if(pu>0)patch.costo_unitario=Math.round(pu*100)/100;
-      const [x]=await sbUpd('insumos','id=eq.'+ins.id,patch);Object.assign(ins,x)}}
+      // reventa (bombones, chocolates, garrapiñada, manteca…): lo comprado entra directo al stock del Salón, no al depósito
+      const aSalon=ins.reventa_codigo&&ins.reventa_destino==='salon';
+      const patch={stock:aSalon?(+ins.stock||0):Math.round(((+ins.stock||0)+it.cantidad_base)*1000)/1000,proveedor:prov,updated_at:new Date().toISOString()};if(pu>0)patch.costo_unitario=Math.round(pu*100)/100;
+      const [x]=await sbUpd('insumos','id=eq.'+ins.id,patch);Object.assign(ins,x);
+      if(aSalon){try{await sb('rpc/reventa_ingresar',{method:'POST',body:{p_codigo:ins.reventa_codigo,p_cantidad:it.cantidad_base,p_ref:prov+' '+num}})}catch(e){console.error('reventa',e);toast('⚠️ No se pudo sumar '+ins.nombre+' al Salón: cargalo a mano',6000)}}}}
   const row={proveedor:prov,numero:num,tipo:$('#fT').value.trim(),fecha:$('#fF').value||null,subtotal:+$('#fSub').value||null,impuestos:+$('#fImp').value||0,total:+$('#fTot').value||items.reduce((a,i)=>a+i.total,0),
     condicion_pago:$('#fC').value,categoria:$('#fCat').value,estado:$('#fC').value==='Contado'?'pagada':'pendiente',impacta_stock:actualizar,
     items:items.map(i=>({nombre:i.descripcion,insumo_id:i.insumo_id||null,bultos:i.bultos,contenido_por_empaque:i.contenido,cantidad_base:i.cantidad_base,unidad:i.unidad,total:i.total}))};

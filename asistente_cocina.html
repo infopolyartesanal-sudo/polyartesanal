@@ -1096,6 +1096,7 @@ window.addEventListener('DOMContentLoaded', () => {
   loadConectorPanaderia();
   loadLeudado();
   renderRecipes();
+  (function(){ const go = () => window.cargarRecetasGestionSector && cargarRecetasGestionSector('cocina'); if (window.cargarRecetasGestionSector) go(); else window.addEventListener('load', go); })();
   renderStock();
   showLimpiezaIndicator();
   checkStockAlerts();
@@ -1111,7 +1112,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function today() { return new Date().toISOString().split('T')[0]; }
-function saveRecipes() { try { localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes)); } catch(e){} }
+function saveRecipes() { try { localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes.filter(r => !r.gestion))); } catch(e){} }
 function saveLog() { try { localStorage.setItem(LOG_KEY + today(), JSON.stringify(log)); } catch(e){} }
 function saveStock() { try { localStorage.setItem(STOCK_KEY, JSON.stringify(stockState)); } catch(e){} encolarDifSector(); }
 function saveApiKey() {
@@ -2010,7 +2011,7 @@ function saveRecipe() {
   const editingId = document.getElementById('rec-editing-id').value;
   if (editingId) {
     const idx = recipes.findIndex(x => x.id === parseInt(editingId));
-    if (idx !== -1) { recipes[idx] = { ...recipes[idx], name, ingredients, steps, rendimiento, deposito, cookTime }; addToLog('✏️ Receta editada: ' + name, 'receta'); }
+    if (idx !== -1) { recipes[idx] = { ...recipes[idx], gestion: false, id: (recipes[idx].gestion ? Date.now() : recipes[idx].id), name, ingredients, steps, rendimiento, deposito, cookTime }; addToLog('✏️ Receta editada: ' + name, 'receta'); }
   } else {
     recipes.push({ id: Date.now(), name, ingredients, steps, rendimiento, deposito, cookTime });
     addToLog('➕ Receta agregada: ' + name, 'receta');
@@ -3257,5 +3258,6 @@ window.polyEtiquetas = function (p, its) {
 };
 </script>
 <script src="calc_receta.js?v=1"></script>
+<script src="recetas_gestion.js?v=1"></script>
 </body>
 </html>

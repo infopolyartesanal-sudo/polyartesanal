@@ -855,6 +855,11 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
         <input type="text" id="pm-kg" inputmode="decimal" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:6px;padding:11px;font-size:18px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;font-weight:700;"></div>
     </div>
     <div id="pm-esperado" style="font-size:12px;color:#666;margin-top:6px;"></div>
+    <div id="pm-origen-box" style="margin-top:12px;">
+      <label style="font-size:13px;font-weight:600;">¿De dónde lo sacaste?</label>
+      <div id="pm-origen" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;"></div>
+      <div id="pm-origen-det" style="margin-top:8px;"></div>
+    </div>
     <label id="pm-desc-box" style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-top:12px;color:#333;"><input type="checkbox" id="pm-desc" style="width:20px;height:20px;margin-top:1px"> <span>La masa la hicimos en Madrugada: <b>descontar los ingredientes</b> del depósito. (Si la masa vino de Panadería, Cocina o Pastelería, dejalo sin marcar: ya se descontó allá.)</span></label>
     <label style="font-size:13px;color:#333;font-weight:600;display:block;margin-top:12px;">Foto (opcional)</label>
     <label style="display:block;background:#E8F5E9;color:#1B5E20;border-radius:8px;padding:11px;text-align:center;font-size:14px;font-weight:600;cursor:pointer;margin-top:6px;">
@@ -1209,8 +1214,58 @@ function abrirProd(id){
     : (SECT_MAD[prodSel.sector]||'') + ' · se vende por ' + (prodSel._peso ? 'kilo: pesalo y poné los kilos' : 'unidad') + (prodSel._sinReceta ? ' · no tiene receta cargada, así que no descuenta ingredientes' : '');
   document.getElementById('pm-u').value = ''; document.getElementById('pm-kg').value = ''; document.getElementById('pm-desc').checked = false; document.getElementById('pm-foto').textContent = '';
   document.getElementById('pm-esperado').textContent = prodSel.unidades_tanda ? 'Una tanda suele rendir ' + prodSel.unidades_tanda + ' ' + (prodSel.unidad_venta||'u') + '. Cargá lo que salió de verdad, aunque sea más o menos.' : '';
+  prodOrigen = null; pintarOrigen();
   document.getElementById('prod-modal').style.display = 'flex';
   if (!prodSel._libre) setTimeout(() => document.getElementById(prodSel._peso ? 'pm-kg' : 'pm-u').focus(), 80);
+}
+// ── ORIGEN: de dónde sale lo que se hornea (freezer, cámara o una masa que estaba fermentando)
+let prodOrigen = null, origFreezer = [], origCamara = [], origMasas = [];
+const ORIG_BTN = [['freezer','🧊 Freezer'],['camara','❄️ Cámara'],['fermentacion','🫧 Fermentación'],['nuevo','🆕 Masa del día']];
+function _bOrig(on){ return 'flex:1;min-width:80px;padding:10px 6px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;border:2px solid '+(on?'#1B5E20':'#C8E6C9')+';background:'+(on?'#1B5E20':'#fff')+';color:'+(on?'#fff':'#1B5E20'); }
+function esCompradoMad(n){ const x = nrmMad(n); return (reglasPeso||[]).some(r => r.comprado && r.patron && x.includes(nrmMad(r.patron))); }
+async function pintarOrigen(){
+  const box = document.getElementById('pm-origen-box'); if (!box || !prodSel) return;
+  if (esCompradoMad(prodSel.nombre)) {   // chipa y otros comprados congelados: se descuentan solos del insumo
+    box.style.display = 'block'; document.getElementById('pm-origen').innerHTML = '';
+    document.getElementById('pm-origen-det').innerHTML = '<div style="font-size:12px;color:#1B5E20;background:#E8F5E9;border-radius:8px;padding:8px 10px;">🧊 Sale del freezer: se descuenta sola la cantidad congelada (lo cocido pesa menos, el sistema lo calcula).</div>';
+    prodOrigen = 'comprado'; return;
+  }
+  box.style.display = 'block';
+  document.getElementById('pm-origen').innerHTML = ORIG_BTN.map(([k,t]) => '<button type="button" onclick="elegirOrigen(\''+k+'\')" style="'+_bOrig(prodOrigen===k)+'">'+t+'</button>').join('');
+  const det = document.getElementById('pm-origen-det');
+  if (!prodOrigen) { det.innerHTML = '<div style="font-size:12px;color:#888;">Elegí de dónde lo sacaste, así se descuenta de ahí.</div>'; return; }
+  if (prodOrigen === 'nuevo') { det.innerHTML = '<div style="font-size:12px;color:#666;">No se descuenta de ningún depósito.</div>'; return; }
+  det.innerHTML = '<div style="font-size:12px;color:#888;">Cargando…</div>';
+  const n = nrmMad(prodSel.nombre), parecido = r => { const m = nrmMad(r.nombre || r.receta || r.id); return m && (m.includes(n) || n.includes(m) || m.split(' ')[0] === n.split(' ')[0]); };
+  let L = [];
+  try {
+    if (prodOrigen === 'freezer') { origFreezer = await sbSelect('freezer_panaderia', '') || []; L = origFreezer.filter(r => (+r.total||0) > 0).map(r => ({ id: r.id, nom: r.nombre || r.id, disp: +r.total })); }
+    if (prodOrigen === 'camara') { origCamara = await sbSelect('camara_panaderia', '?order=nombre.asc') || []; L = origCamara.filter(r => (+r.cantidad||0) > 0).map(r => ({ id: r.id, nom: r.nombre || r.id, disp: +r.cantidad })); }
+    if (prodOrigen === 'fermentacion') { origMasas = await sbSelect('masas_fermentando', '?estado=eq.fermentando&order=ingreso_at.asc') || []; L = origMasas.map(r => ({ id: r.id, nom: r.codigo + ' · ' + r.receta + (r.contenido ? ' (' + r.contenido + ')' : ''), receta: r.receta })); }
+  } catch (e) { L = []; }
+  if (!L.length) { det.innerHTML = '<div style="font-size:12px;color:#B71C1C;">No hay nada cargado en ' + (prodOrigen==='freezer'?'el freezer':prodOrigen==='camara'?'la cámara':'fermentación') + '. Si igual lo sacaste de ahí, avisale a Poly.</div>'; return; }
+  L.sort((a, b) => (parecido(b) ? 1 : 0) - (parecido(a) ? 1 : 0));
+  det.innerHTML = '<select id="pm-orig-item" style="width:100%;box-sizing:border-box;padding:10px;font-size:15px;border:1.5px solid #C8E6C9;border-radius:8px;">'
+    + L.map(x => '<option value="'+escMad(x.id)+'">'+escMad(x.nom)+(x.disp!=null?' — hay '+String(x.disp).replace('.', ','):'')+'</option>').join('') + '</select>'
+    + (prodOrigen === 'fermentacion' ? '<div style="font-size:12px;color:#666;margin-top:6px;">La masa sale de la lista de fermentación.</div>'
+       : '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;"><span style="font-size:13px;">¿Cuánto sacaste?</span><input id="pm-orig-q" inputmode="decimal" autocomplete="off" placeholder="ej: 10" style="flex:1;padding:10px;font-size:16px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;"></div>');
+}
+function elegirOrigen(k){ prodOrigen = k; pintarOrigen(); }
+async function descontarOrigen(){
+  if (!prodOrigen || prodOrigen === 'nuevo' || prodOrigen === 'comprado') return '';
+  const sel = document.getElementById('pm-orig-item'); if (!sel) return '';
+  const id = sel.value, usr = (window.POLY_USUARIO && window.POLY_USUARIO.usuario) || null;
+  try {
+    if (prodOrigen === 'fermentacion') {
+      const m = origMasas.find(x => String(x.id) === String(id)); if (!m) return '';
+      await polyRPC('masa_actualizar', { p: { id: m.id, accion: 'usada', nota: 'Horneada en Madrugada' } });
+      return ' · masa ' + m.codigo + ' fuera de fermentación';
+    }
+    const q = parseFloat(String((document.getElementById('pm-orig-q')||{}).value || '').replace(',', '.')) || 0; if (!(q > 0)) return '';
+    if (prodOrigen === 'freezer') { const r = origFreezer.find(x => String(x.id) === String(id)); await polyRPC('stock_freezer_pan_ajustar', { p_id: id, p_nombre: (r && r.nombre) || id, p_delta_total: -q, p_delta_sub: {}, p_motivo: 'madrugada', p_usuario: usr }); return ' · sacaste ' + String(q).replace('.', ',') + ' del freezer'; }
+    if (prodOrigen === 'camara') { const r = origCamara.find(x => String(x.id) === String(id)); await polyRPC('stock_camara_ajustar', { p_id: id, p_nombre: (r && r.nombre) || id, p_delta: -q, p_motivo: 'madrugada', p_usuario: usr }); return ' · sacaste ' + String(q).replace('.', ',') + ' de la cámara'; }
+  } catch (e) { console.warn('origen', e); return ' ⚠️ no se pudo descontar de ' + prodOrigen; }
+  return '';
 }
 function cerrarProd(){ document.getElementById('prod-modal').style.display = 'none'; prodSel = null; prodFoto = null; }
 async function confirmarProd(){
@@ -1223,9 +1278,14 @@ async function confirmarProd(){
     prodSel._peso = !u && kg > 0;   // si solo pusieron kilos, va por kilo
   }
   const porKg = !!prodSel._peso;
-  const cant = porKg ? kg : (u || 0);
+  let cant = porKg ? kg : (u || 0);
   if (!(cant > 0)) { toast(porKg ? 'Poné los kilos que salieron' : 'Poné cuántas unidades salieron'); return; }
+  if (porKg && cant >= 100) {   // casi seguro pusieron gramos (ej: 1810 en vez de 1,81)
+    if (confirm('Pusiste ' + cant + ' kg. ¿Eran ' + cant + ' gramos? Tocá Aceptar y lo cargo como ' + String(Math.round(cant) / 1000).replace('.', ',') + ' kg.')) { cant = Math.round(cant) / 1000; } else return;
+  }
   if (porKg && cant > KG_MAX_TANDA && !confirm('¿Seguro que son ' + String(cant).replace('.', ',') + ' kg? Revisá que no sean gramos (ej: 1,5 kg y no 1500).')) return;
+  if (!prodOrigen) { toast('Elegí de dónde lo sacaste (freezer, cámara, fermentación o masa del día)'); return; }
+  if ((prodOrigen === 'freezer' || prodOrigen === 'camara') && document.getElementById('pm-orig-item') && !(parseFloat(String((document.getElementById('pm-orig-q')||{}).value||'').replace(',', '.')) > 0)) { toast('Poné cuánto sacaste del ' + (prodOrigen === 'freezer' ? 'freezer' : 'la cámara')); return; }
   const btn = document.getElementById('pm-ok'); btn.disabled = true; btn.style.opacity = '.6'; setStatus('Despachando…');
   const pid = prodSel._libre ? 'mad_' + nrmMad(prodSel.nombre).replace(/[^a-z0-9]+/g, '_') : prodSel._sinReceta ? prodSel.ssId : 'rec_' + prodSel.id;
   let foto = null; if (prodFoto) { try { foto = await uploadFoto(prodFoto, { producto_id: pid }); } catch (e) { console.warn('foto', e); } }
@@ -1237,7 +1297,8 @@ async function confirmarProd(){
     }
     await sbLog('madrugada', 'produccion', 'Horneado y despachado al Salón: ' + (porKg ? cant + ' kg' : cant + ' u') + ' ' + prodSel.nombre + (kg && !porKg ? ' (' + kg + ' kg)' : '') + (u && porKg ? ' (' + u + ' u)' : ''), cant, pid, porKg ? 'kg' : 'u');
     const rell = porKg ? await descontarComprado(prodSel.nombre, cant) : await descontarRelleno(prodSel.nombre, cant);
-    toast('✅ Despachado al Salón: ' + String(cant).replace('.', ',') + (porKg ? ' kg' : ' u') + rell);
+    const orig = await descontarOrigen();
+    toast('✅ Despachado al Salón: ' + String(cant).replace('.', ',') + (porKg ? ' kg' : ' u') + rell + orig, 5000);
     cerrarProd();
   } catch (e) { console.error(e); toast('⚠️ Hubo un error, probá de nuevo'); }
   btn.disabled = false; btn.style.opacity = '1'; setStatus('Listo');
@@ -1380,6 +1441,6 @@ setInterval(()=>{ const p=document.getElementById('panel-hornear'); if(p && p.cl
 document.addEventListener('DOMContentLoaded', loadLeudando);
 loadLeudando();
 </script>
-<script src="fermentando.js?v=3"></script>
+<script src="fermentando.js?v=4"></script>
 </body>
 </html>
