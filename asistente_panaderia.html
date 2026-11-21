@@ -1427,6 +1427,12 @@ const RECIPE_TO_PROD = {
 
 function completeRecipe() {
   if (!currentRecipe) return;
+  if (window.Ferm) { Ferm.elegir(currentRecipe.name, currentRecipe.rendimiento || '', completeRecipeStock); return; }
+  completeRecipeStock();
+}
+
+function completeRecipeStock() {
+  if (!currentRecipe) return;
   const btn = document.getElementById('complete-recipe-btn');
 
   // Increment tanda count on button
@@ -3482,5 +3488,6 @@ window.polyEtiquetas = function (p, its) {
 };
 </script>
 <script src="calc_receta.js?v=1"></script>
+<script src="fermentando.js?v=1"></script>
 </body>
 </html>
