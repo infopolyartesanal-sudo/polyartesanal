@@ -145,30 +145,40 @@
   function listo(rows) {
     modal('<h3>🫧 Fermentando</h3><p class="muted" style="margin:0 0 8px;font-size:14px">Pegale a cada bolsa su etiqueta:</p>' +
       rows.map(function (r) { return '<div class="fermCard"><span class="fermCod">' + esc(r.codigo) + '</span><span class="fermChip">' + (UB[r.ubicacion] || '') + '</span><div class="muted" style="font-size:13px">' + esc(r.receta) + (r.de_bolsas > 1 ? ' · bolsa ' + r.bolsa + ' de ' + r.de_bolsas : '') + (r.fermentar_horas ? ' · fermenta ' + horasTxt(r.fermentar_horas) : '') + '</div></div>'; }).join('') +
-      '<button type="button" class="fermOk" id="fPr">🖨 Imprimir etiquetas</button><button type="button" class="fermSec" id="fPrA4">🖨 Imprimir en hoja A4 (para recortar)</button><button type="button" class="fermSec" id="fFin">Listo</button>');
-    document.getElementById('fPr').onclick = function () { imprimir(rows, false); };
-    document.getElementById('fPrA4').onclick = function () { imprimir(rows, true); };
+      botonesImprimir() + '<button type="button" class="fermSec" id="fFin">Listo</button>');
+    document.querySelectorAll('#fermOv [data-imp]').forEach(function (x) { x.onclick = function () { imprimir(rows, x.dataset.imp); }; });
     document.getElementById('fFin').onclick = cerrar;
   }
 
-  // ── Etiquetas: una por página (etiquetadora 60×40 mm) o grilla en A4
-  function imprimir(rows, a4) {
+  // ── Etiquetas. modo: 'ticket' = impresora térmica del local (rollo 80 mm, como la caja) · 'etiqueta' = etiquetadora 60×40 mm · 'a4' = hoja para recortar
+  function modoGuardado() { try { return localStorage.getItem('ferm_impresora') || 'ticket'; } catch (e) { return 'ticket'; } }
+  function imprimir(rows, modo) {
+    modo = modo === true ? 'a4' : (modo || modoGuardado());
+    try { localStorage.setItem('ferm_impresora', modo); } catch (e) {}
     var w = window.open('', '_blank'); if (!w) { alert('Habilitá las ventanas emergentes para imprimir'); return; }
     var et = rows.map(function (r) {
       var e = estado(r);
       return '<div class="et"><div class="t">POLY · MASA EN FERMENTACIÓN</div><div class="c">' + esc(r.codigo) + '</div>' +
         '<div class="r">' + esc(r.receta) + '</div>' + (r.contenido ? '<div class="s">' + esc(r.contenido) + '</div>' : '') +
         '<div class="s">Entró: <b>' + fecha(r.ingreso_at) + '</b> · ' + (r.ubicacion === 'camara' ? 'Cámara' : 'Panadería') + '</div>' +
-        (e.vence ? '<div class="s">Lista: <b>' + fecha(e.vence) + '</b> (' + horasTxt(r.fermentar_horas) + ')</div>' : '') +
+        (e.vence ? '<div class="s' + (modo === 'ticket' ? ' g' : '') + '">Lista: <b>' + fecha(e.vence) + '</b> (' + horasTxt(r.fermentar_horas) + ')</div>' : '') +
         '<div class="s">' + (r.de_bolsas > 1 ? 'Bolsa ' + r.bolsa + ' de ' + r.de_bolsas + ' · ' : '') + (r.ingreso_por ? esc(r.ingreso_por) : '') + '</div></div>';
     }).join('');
-    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas masas</title><style>' +
-      (a4 ? '@page{size:A4;margin:8mm}body{display:flex;flex-wrap:wrap;gap:3mm}.et{width:60mm;height:40mm;border:1px dashed #999}'
-          : '@page{size:60mm 40mm;margin:0}.et{width:60mm;height:40mm;page-break-after:always}') +
-      'body{margin:0;font-family:Arial,sans-serif;color:#000;background:#fff}.et{box-sizing:border-box;padding:2.5mm 3mm;overflow:hidden}.t{font-size:7pt;letter-spacing:.5px}' +
-      '.c{font:900 19pt Arial,sans-serif;letter-spacing:1px;margin:.5mm 0}.r{font-size:9.5pt;font-weight:700;line-height:1.1}.s{font-size:7.5pt;margin-top:.5mm}</style></head><body>' + et +
-      '<script>setTimeout(function(){window.print()},300)<\/script></body></html>');
+    var estilo = modo === 'ticket'
+      ? '@page{size:80mm auto;margin:0}body{width:72mm;margin:0 auto}.et{width:72mm;padding:3mm 1mm 6mm;border-bottom:1px dashed #000;page-break-after:always;break-after:page}' +
+        '.t{font-size:9pt;font-weight:700;text-align:center;letter-spacing:1px}.c{font:900 30pt Arial,sans-serif;text-align:center;letter-spacing:1px;margin:2mm 0;border:2px solid #000;padding:1mm 0}' +
+        '.r{font-size:14pt;font-weight:700;text-align:center;line-height:1.15}.s{font-size:11pt;margin-top:1.2mm;text-align:center}.g{font-size:13pt;font-weight:700}'
+      : (modo === 'a4' ? '@page{size:A4;margin:8mm}body{display:flex;flex-wrap:wrap;gap:3mm}.et{width:60mm;height:40mm;border:1px dashed #999}'
+                       : '@page{size:60mm 40mm;margin:0}.et{width:60mm;height:40mm;page-break-after:always}') +
+        '.et{box-sizing:border-box;padding:2.5mm 3mm;overflow:hidden}.t{font-size:7pt;letter-spacing:.5px}.c{font:900 19pt Arial,sans-serif;letter-spacing:1px;margin:.5mm 0}' +
+        '.r{font-size:9.5pt;font-weight:700;line-height:1.1}.s{font-size:7.5pt;margin-top:.5mm}';
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas masas</title><style>body{margin:0;font-family:Arial,sans-serif;color:#000;background:#fff}.et{box-sizing:border-box}' + estilo +
+      '</style></head><body>' + et + '<script>setTimeout(function(){window.print()},300)<\/script></body></html>');
     w.document.close();
+  }
+  function botonesImprimir() {
+    return '<button type="button" class="fermOk" data-imp="ticket">🧾 Imprimir en la impresora del local</button>' +
+      '<button type="button" class="fermSec" data-imp="etiqueta">🏷 Etiquetadora (60×40 mm)</button><button type="button" class="fermSec" data-imp="a4">📄 Hoja A4 (para recortar)</button>';
   }
 
   // ── Panel con todas las masas
