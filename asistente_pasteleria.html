@@ -1488,6 +1488,7 @@ function openRecipeDetail(id) {
     </div>
     ${currentRecipe.rendimiento ? `<span class="recipe-meta-tag">📦 Rinde: ${currentRecipe.rendimiento}</span>` : ''}
     ${currentRecipe.deposito ? `<span class="recipe-meta-tag">${depIcon(currentRecipe.deposito)} ${depLabel(currentRecipe.deposito)}</span>` : ''}
+    ${window.calcRecetaHTML ? calcRecetaHTML(currentRecipe, '#C2185B') : ''}
     <div style="font-size:13px;color:#666;font-family:system-ui,sans-serif;margin:12px 0 8px;">Pasos:</div>
     ${currentRecipe.steps.map((s,i) => `
       <div class="step-item">
@@ -2589,5 +2590,6 @@ window.polyEtiquetas = function (p, its) {
     }).join('') + '</div>';
 };
 </script>
+<script src="calc_receta.js?v=1"></script>
 </body>
 </html>

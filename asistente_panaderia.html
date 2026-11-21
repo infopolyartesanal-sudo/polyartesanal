@@ -1354,6 +1354,7 @@ function openRecipeDetail(id) {
       </h4>
       <div id="ingredient-checklist-${currentRecipe.id}"></div>
     </div>
+    ${window.calcRecetaHTML ? calcRecetaHTML(currentRecipe, '#534AB7') : ''}
     <div style="font-size:13px;color:#666;font-family:system-ui,sans-serif;margin-bottom:12px;margin-top:16px;">Pasos:</div>
     ${currentRecipe.steps.map((s,i) => `
       <div class="step-item">
@@ -3480,5 +3481,6 @@ window.polyEtiquetas = function (p, its) {
     }).join('') + '</div>';
 };
 </script>
+<script src="calc_receta.js?v=1"></script>
 </body>
 </html>
