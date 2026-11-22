@@ -279,7 +279,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   var SB_URL = 'https://sinoeoaktirnscdpbvdc.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
   var ARCHIVO = { cocina: 'asistente_cocina.html', panaderia: 'asistente_panaderia.html', pasteleria: 'asistente_pasteleria.html',
-                  madrugada: 'asistente_madrugada.html', salon: 'asistente_salon.html', deposito: 'asistente_deposito.html' };
+                  madrugada: 'asistente_madrugada.html', salon: 'asistente_salon.html', deposito: 'asistente_deposito.html', asistencia: 'asistencia.html' };
   var pagina = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
   var requerido = null; // módulo que exige esta página; 'admin' = solo Poly
   Object.keys(ARCHIVO).forEach(function (m) { if (ARCHIVO[m] === pagina) requerido = m; });
@@ -406,7 +406,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   </div>
 <script>
 (function(){
-  var ARCH={cocina:'asistente_cocina.html',panaderia:'asistente_panaderia.html',pasteleria:'asistente_pasteleria.html',madrugada:'asistente_madrugada.html',salon:'asistente_salon.html',deposito:'asistente_deposito.html'};
+  var ARCH={cocina:'asistente_cocina.html',panaderia:'asistente_panaderia.html',pasteleria:'asistente_pasteleria.html',madrugada:'asistente_madrugada.html',salon:'asistente_salon.html',deposito:'asistente_deposito.html',asistencia:'asistencia.html'};
   function entrar(u){
     if(u.rol==='admin'){document.getElementById('login').style.display='none';var m=document.getElementById('menu');m.style.display='flex';
       m.querySelector('p').textContent='Hola '+(u.nombre||u.usuario)+' — elegí a dónde entrar';}

@@ -2928,13 +2928,14 @@ function estaAdentro(id){const f=D.fichajes.filter(x=>x.empleado_id===id).sort((
 function lunes(ymd){const d=new Date(ymd+'T12:00:00');const w=(d.getDay()+6)%7;return sumaDias(ymd,-w)}
 function vRRHH(){
   const act=D.empleados.filter(e=>e.activo!==false),t=tabRH;
-  let html=`<h2>👥 Personal</h2><div class="tabs2">${[['fichar','Fichar'],['horas','Horas'],['turnos','Turnos de la semana'],['leg','Empleados']].map(([k,n])=>`<button class="${t===k?'on':''}" onclick="tabRH='${k}';vRRHH()">${n}</button>`).join('')}</div>`;
+  let html=`<h2>👥 Personal</h2><div class="tabs2">${[['fichar','Fichar'],['jornales','💸 Jornales'],['horas','Horas'],['turnos','Turnos de la semana'],['leg','Empleados']].map(([k,n])=>`<button class="${t===k?'on':''}" onclick="tabRH='${k}';vRRHH()">${n}</button>`).join('')}</div>`;
   if(t==='fichar'){const adentro=act.filter(e=>estaAdentro(e.id));
     html+=`<div class="grid g2"><div class="card"><h3>⏱️ Registrar entrada / salida</h3><label>¿Quién sos?</label><select id="fe"><option value=""></option>${act.map(e=>`<option value="${e.id}">${esc(e.nombre)} ${esc(e.apellido||'')}</option>`).join('')}</select>
     <label>PIN (si tenés)</label><input id="fpin" type="password" inputmode="numeric" maxlength="6">
     <div class="acciones" style="margin-top:12px"><button class="btn" style="flex:1;padding:16px" onclick="fichar('entrada')">🟢 ENTRADA</button><button class="btn rojo" style="flex:1;padding:16px" onclick="fichar('salida')">🔴 SALIDA</button></div></div>
     <div class="card"><h3>🟢 Trabajando ahora (${adentro.length})</h3>${adentro.length?adentro.map(e=>`<div style="padding:6px 0;border-bottom:1px solid #eee"><b>${esc(e.nombre)}</b> <span class="muted">desde ${new Date(estaAdentro(e.id).momento).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span></div>`).join(''):'<p class="muted">Nadie fichado.</p>'}
     <h3 style="margin-top:14px">Hoy</h3><table>${act.map(e=>{const fs=fichajesDe(e.id,hoy());return fs.length?`<tr><td>${esc(e.nombre)}</td><td class="muted">${fs.map(f=>(f.tipo==='entrada'?'↘ ':'↗ ')+new Date(f.momento).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})).join(' · ')}</td><td class="num">${fnum(horasDia(e.id,hoy()),1)} h</td></tr>`:''}).join('')}</table></div></div>`}
+  if(t==='jornales'){$('#app').innerHTML=html+'<div class="cargando">Cargando jornales…</div>';vJornales(html);return}
   if(t==='horas'){const l=lunes(hoy());const sem=[0,-7,-14,-21].map(o=>sumaDias(l,o));
     html+=`<div class="card scroll"><table><tr><th>Empleado</th>${sem.map(s=>`<th class="num">Semana ${fechaCorta(s)}</th>`).join('')}</tr>${act.map(e=>`<tr><td>${esc(e.nombre)} ${esc(e.apellido||'')}</td>${sem.map(s=>{let h=0;for(let i=0;i<7;i++)h+=horasDia(e.id,sumaDias(s,i));return `<td class="num">${h?fnum(h,1)+' h':'—'}</td>`}).join('')}</tr>`).join('')}</table>
     <p class="muted">Si alguien se olvidó de fichar la salida, esas horas no se cuentan (salvo hoy, que se cuentan hasta ahora).</p></div>`}
@@ -2954,14 +2955,36 @@ async function guardarTurno(eid,fecha,v){const prev=D.turnos.find(x=>x.empleado_
   if(v.trim()){const [t]=await sbIns('turnos_plan',[{empleado_id:eid,fecha,hora_inicio:v.trim()}]);D.turnos.push(t)}toast('Guardado ✅',1000)}
 function editarEmpleado(id){const e=id?D.empleados.find(x=>x.id===id):{activo:true};
   modal(`<h3>${id?'Editar':'Nuevo'} empleado</h3><div class="fila"><div><label>Nombre</label><input id="eN" value="${esc(e.nombre||'')}"></div><div><label>Apellido</label><input id="eA" value="${esc(e.apellido||'')}"></div></div>
-  <div class="fila"><div><label>Rol</label><input id="eR" value="${esc(e.rol||'')}" placeholder="Panadero, vendedora…"></div><div><label>Sector</label><select id="eS">${['','Panadería','Pastelería','Cocina','Salón','Depósito'].map(s=>`<option ${s===e.sector?'selected':''}>${s}</option>`).join('')}</select></div></div>
+  <div class="fila"><div><label>Rol</label><input id="eR" value="${esc(e.rol||'')}" placeholder="Panadero, vendedora…"></div><div><label>Sector</label><select id="eS">${['','Panadería','Pastelería','Cocina','Madrugada','Salón','Depósito'].map(s=>`<option ${s===e.sector?'selected':''}>${s}</option>`).join('')}</select></div></div>
   <div class="fila"><div><label>Fecha de ingreso</label><input id="eF" type="date" value="${esc(e.fecha_ingreso||'')}"></div><div><label>PIN para fichar (4 a 6 números)</label><input id="eP" inputmode="numeric" maxlength="6" value="${esc(e.pin||'')}"></div><div><label>Estado</label><select id="eE"><option value="1">Activo</option><option value="0" ${e.activo===false?'selected':''}>De baja</option></select></div></div>
   <div class="acciones" style="margin-top:10px"><button class="btn" id="bGE">💾 Guardar</button></div>`);
-  $('#bGE').onclick=async()=>{const row={nombre:$('#eN').value.trim(),apellido:$('#eA').value.trim(),rol:$('#eR').value.trim(),sector:$('#eS').value||null,fecha_ingreso:$('#eF').value||null,pin:$('#eP').value.trim()||null,activo:$('#eE').value==='1'};if(!row.nombre)return;
+  $('#bGE').insertAdjacentHTML('beforebegin',`<div class="fila" style="width:100%"><div><label>Cómo cobra</label><select id="eMo"><option value="mensual" ${e.modalidad!=='jornal'?'selected':''}>Sueldo mensual</option><option value="jornal" ${e.modalidad==='jornal'?'selected':''}>Por día trabajado</option></select></div><div><label>Sueldo mensual</label><input id="eSu" type="number" value="${e.sueldo_mes||''}"></div><div><label>Pago por día</label><input id="ePd" type="number" value="${e.pago_dia||''}"></div></div><label>Franco</label><input id="eFr" value="${esc(e.franco||'')}" placeholder="ej: domingo a la tarde">`);
+  $('#bGE').onclick=async()=>{const row={nombre:$('#eN').value.trim(),apellido:$('#eA').value.trim(),rol:$('#eR').value.trim(),sector:$('#eS').value||null,fecha_ingreso:$('#eF').value||null,pin:$('#eP').value.trim()||null,activo:$('#eE').value==='1',modalidad:$('#eMo').value,sueldo_mes:+$('#eSu').value||null,pago_dia:+$('#ePd').value||null,franco:$('#eFr').value.trim()||null};if(!row.nombre)return;
     if(id){const [x]=await sbUpd('empleados','id=eq.'+id,row);Object.assign(e,x)}else{const [x]=await sbIns('empleados',[row]);D.empleados.push(x)}cerrarModal();vRRHH()}}
 
+// ================= JORNALES (personas que cobran por día) =================
+async function vJornales(cab){
+  let js=[];try{js=await sbGet('jornales','order=fecha.desc&limit=400')}catch(e){$('#app').innerHTML=cab+'<div class="card">'+esc(e.message)+'</div>';return}
+  const jor=D.empleados.filter(e=>e.activo!==false&&e.modalidad==='jornal');
+  const hm=x=>x?new Date(x).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'';
+  let h=cab+`<p class="muted">Las personas que cobran por día marcan entrada y salida con el usuario <b>asistencia</b>, solo desde la panadería (WiFi del local o GPS). Cada día marcado suma su jornal.</p>`;
+  if(!jor.length)h+='<div class="card">No hay nadie cargado como "Por día trabajado". Cambialo en la pestaña Empleados.</div>';
+  jor.forEach(e=>{const mis=js.filter(j=>j.empleado_id===e.id),pend=mis.filter(j=>!j.pagado),tot=pend.reduce((s,j)=>s+(+j.monto||0),0);
+    h+=`<div class="card" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0">${esc(e.nombre)} <span class="muted">· ${esc(e.sector||'')} · ${$$(e.pago_dia||0)} por día</span></h3>
+    <div class="acciones" style="margin:0">${pend.length?`<button class="btn" onclick="pagarJornales('${e.id}',${tot},${pend.length})">💸 Pagar ${$$(tot)} (${pend.length} día${pend.length>1?'s':''})</button>`:'<span class="chip ok">Todo pago</span>'}<button class="btn sec" onclick="agregarJornal('${e.id}')">➕ Día a mano</button></div></div>
+    <div class="scroll"><table><tr><th>Día</th><th>Entrada</th><th>Salida</th><th>Cómo marcó</th><th class="num">Monto</th><th>Estado</th></tr>${mis.slice(0,40).map(j=>`<tr><td>${fechaCorta(j.fecha)} <span class="muted">${new Date(j.fecha+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short'})}</span></td><td>${hm(j.entrada)}</td><td>${hm(j.salida)||(j.entrada?'<span class="muted">sin salida</span>':'')}</td><td class="muted">${j.via==='wifi'?'📶 WiFi':j.via==='gps'?'📍 GPS'+(j.dist_m!=null?' ('+j.dist_m+' m)':''):esc(j.nota||'a mano')}</td><td class="num">${$$(j.monto)}</td><td>${j.pagado?'<span class="chip ok">pagado '+(j.pagado_at?fechaCorta(diaLocal(j.pagado_at)):'')+'</span>':`<span class="chip neu">a pagar</span> <button class="btn sec peq" onclick="borrarJornal(${j.id})">🗑️</button>`}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Todavía no marcó ningún día.</td></tr>'}</table></div></div>`});
+  $('#app').innerHTML=h;
+}
+function pagarJornales(id,tot,n){const e=D.empleados.find(x=>x.id===id);
+  confirmar('¿Registrar el pago de '+$$(tot)+' a '+e.nombre+' ('+n+' día'+(n>1?'s':'')+')? Queda como gasto en Finanzas.',async()=>{
+    try{await polyRPC('jornales_pagar',{p_token:polyToken(),p_empleado:id});toast('Pago registrado ✅');try{D.gastos=await sbGet('gastos','order=fecha.desc')}catch(x){}vRRHH()}catch(x){toast('⚠️ '+x.message,6000)}})}
+function agregarJornal(id){const e=D.empleados.find(x=>x.id===id);
+  modal(`<h3>Agregar día de ${esc(e.nombre)}</h3><label>Fecha</label><input id="jF" type="date" value="${hoy()}"><label>Monto</label><input id="jM" type="number" value="${e.pago_dia||0}"><div class="acciones" style="margin-top:12px"><button class="btn" id="bJ">💾 Guardar</button></div>`);
+  $('#bJ').onclick=async()=>{try{await sbIns('jornales',[{empleado_id:id,fecha:$('#jF').value,monto:+$('#jM').value||0,via:'manual',nota:'cargado por Poly'}]);cerrarModal();toast('Día agregado ✅');vRRHH()}catch(x){toast('⚠️ Ese día ya está cargado',5000)}}}
+function borrarJornal(jid){confirmar('¿Borrar este día?',async()=>{await sbDel('jornales','id=eq.'+jid);toast('Borrado');vRRHH()})}
+
 // ================= USUARIOS =================
-const MODULOS={cocina:'🍳 Cocina',panaderia:'🍞 Panadería',pasteleria:'🍰 Pastelería',madrugada:'🌅 Madrugada',salon:'🏪 Salón',deposito:'📦 Depósito'};
+const MODULOS={cocina:'🍳 Cocina',panaderia:'🍞 Panadería',pasteleria:'🍰 Pastelería',madrugada:'🌅 Madrugada',salon:'🏪 Salón',deposito:'📦 Depósito',asistencia:'🕒 Asistencia (jornales)'};
 async function resetStock(){try{const r=await polyRPC('admin_reset_stock',{p_token:polyToken()});D.insumos.forEach(i=>i.stock=0);toast('Stock en 0 ✅ (respaldo #'+r.respaldo+')',5000);vInventario()}catch(e){toast('⚠️ '+e.message,6000)}}
 async function vUsuarios(){
   $('#app').innerHTML='<div class="cargando">Cargando usuarios…</div>';

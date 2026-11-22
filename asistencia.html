@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Asistencia · Poly Artesanal</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#FFF8EE;color:#2b2118;min-height:100vh}
+  header{background:#5D4037;color:#fff;padding:16px;text-align:center}
+  header h1{margin:0;font-size:22px}
+  header p{margin:4px 0 0;font-size:14px;opacity:.85}
+  main{max-width:480px;margin:0 auto;padding:16px}
+  .estado{border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:14px;font-weight:600}
+  .ok{background:#E8F5E9;color:#1B5E20}.warn{background:#FFF3E0;color:#BF360C}
+  .persona{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+  .persona h2{margin:0 0 4px;font-size:22px}
+  .persona .det{font-size:15px;color:#555;margin-bottom:12px}
+  button.marcar{width:100%;padding:18px;border:none;border-radius:14px;font-size:20px;font-weight:800;color:#fff;cursor:pointer}
+  .entrar{background:#1B5E20}.salir{background:#B71C1C}.listo{background:#9E9E9E;cursor:default}
+  button:disabled{opacity:.6}
+  #msg{position:fixed;left:12px;right:12px;bottom:16px;max-width:460px;margin:0 auto;padding:16px;border-radius:14px;font-size:17px;font-weight:700;text-align:center;display:none;z-index:9;box-shadow:0 6px 24px rgba(0,0,0,.3)}
+  .salirbtn{background:none;border:1px solid #ccc;border-radius:10px;padding:8px 16px;color:#666;margin:20px auto 0;display:block}
+</style>
+</head>
+<body>
+<header><h1>🕒 Asistencia</h1><p id="fecha"></p></header>
+<main>
+  <div id="red" class="estado warn">Buscando conexión…</div>
+  <div id="lista"><p style="text-align:center;color:#888">Cargando…</p></div>
+  <button class="salirbtn" onclick="salir()">Cerrar sesión</button>
+</main>
+<div id="msg"></div>
+<script>
+const SB_URL='https://sinoeoaktirnscdpbvdc.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbm9lb2FrdGlybnNjZHBidmRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxOTUyNDQsImV4cCI6MjA5NTc3MTI0NH0.4EekjV0KUzr2I_YfikOGZwuvsP_fxlxcg9z2_pU0dvg';
+let token=null;try{token=localStorage.getItem('poly_sesion')}catch(e){}
+if(!token)location.replace('index.html');
+document.getElementById('fecha').textContent=new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+function rpc(fn,body){return fetch(SB_URL+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:SB_KEY,Authorization:'Bearer '+SB_KEY,'Content-Type':'application/json'},body:JSON.stringify(body)})
+  .then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j&&j.message||'Error');return j}))}
+function msg(t,ok){const m=document.getElementById('msg');m.textContent=t;m.style.background=ok?'#1B5E20':'#B71C1C';m.style.color='#fff';m.style.display='block';clearTimeout(msg._t);msg._t=setTimeout(()=>m.style.display='none',ok?4000:7000)}
+const hm=x=>x?new Date(x).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'';
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function cargar(){
+  let r;try{r=await rpc('asistencia_estado',{p_token:token})}catch(e){document.getElementById('lista').innerHTML='<p>'+esc(e.message)+'</p>';return}
+  if(!r.ok){try{localStorage.removeItem('poly_sesion')}catch(e){}location.replace('index.html');return}
+  const red=document.getElementById('red');
+  if(r.wifi){red.className='estado ok';red.textContent='📶 Conectada al WiFi de la panadería'}
+  else{red.className='estado warn';red.textContent=r.gps_configurado?'📍 No estás en el WiFi del local: al marcar se va a usar la ubicación del celular':'📶 Conectate al WiFi de la panadería para marcar'}
+  const l=document.getElementById('lista');
+  if(!r.personas.length){l.innerHTML='<p style="text-align:center">No hay personas cargadas.</p>';return}
+  l.innerHTML=r.personas.map(p=>{
+    let b,det;
+    if(!p.entrada){b='<button class="marcar entrar" onclick="marcar(\''+p.id+'\',this)">🟢 Marcar ENTRADA</button>';det='Todavía no marcó hoy'}
+    else if(!p.salida){b='<button class="marcar salir" onclick="marcar(\''+p.id+'\',this)">🔴 Marcar SALIDA</button>';det='Entró a las '+hm(p.entrada)}
+    else{b='<button class="marcar listo" disabled>✅ Día completo</button>';det='Entró '+hm(p.entrada)+' · Salió '+hm(p.salida)}
+    return '<div class="persona"><h2>'+esc(p.nombre)+'</h2><div class="det">'+esc(p.sector||'')+' · '+det+'</div>'+b+'</div>'}).join('');
+}
+function ubicacion(){return new Promise(res=>{if(!navigator.geolocation)return res(null);
+  navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:Math.round(p.coords.accuracy)}),()=>res(null),{enableHighAccuracy:true,timeout:12000,maximumAge:0})})}
+async function marcar(id,btn){
+  btn.disabled=true;const txt=btn.textContent;btn.textContent='📍 Verificando ubicación…';
+  const g=await ubicacion();
+  try{const r=await rpc('asistencia_marcar',{p_token:token,p_empleado:id,p_lat:g&&g.lat,p_lng:g&&g.lng,p_acc:g&&g.acc});
+    msg((r.tipo==='entrada'?'🟢 Entrada ':'🔴 Salida ')+r.nombre+' · '+hm(r.hora),true)}
+  catch(e){msg(e.message,false);btn.disabled=false;btn.textContent=txt;return}
+  cargar();
+}
+function salir(){const t=token;try{localStorage.removeItem('poly_sesion');localStorage.removeItem('poly_usuario')}catch(e){}
+  rpc('cerrar_sesion',{p_token:t}).finally(()=>location.replace('index.html'))}
+cargar();setInterval(cargar,60000);
+</script>
+</body>
+</html>
