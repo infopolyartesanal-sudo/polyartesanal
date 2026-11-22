@@ -2815,14 +2815,14 @@ function vFinanzas(){
    <tr><td><b>= Resultado</b></td><td class="num"><b>${$$(util)}</b></td><td class="num"><b>${ing?fnum(util/ing*100,1)+'%':''}</b></td></tr></table>
    <p class="muted">Ojo: las facturas cuentan el mes en que se compró, aunque la mercadería se use después. Si no cargás sueldos y gastos fijos, el resultado va a aparecer más alto de lo real.</p></div>
   ${(()=>{const F=fijosMensuales();const conRec=Object.entries(sec).filter(([k])=>k!=='Sin receta').reduce((a,[k,v])=>({v:a.v+v.v,c:a.c+v.c}),{v:0,c:0});
-    const mpReal=conRec.v>0&&conRec.v>=conItems*0.3?conRec.c/conRec.v*100:null;const mp=mpReal!=null?mpReal:+IC.mp;
+    const mpReal=conRec.v>0?conRec.c/conRec.v*100:null;const cobert=conItems?conRec.v/conItems*100:0;const mp=mpReal!=null?mpReal:+IC.mp;
     const com=ing?totCom/ing*100:0;const ivaPct=IC.iva/(100+IC.iva)*100;const ivaNeto=ivaPct*(1-mp/100);const iibbPct=(100-ivaPct)*IC.iibb/100;
     const mc=100-mp-ivaNeto-iibbPct-com;const pe=mc>0?F/(mc/100):0;const peDia=pe/30;
     const ritmo=dias?ing/dias*30:0;const ok=ritmo>=pe;
     return `<div class="card" style="margin-top:12px"><h3>⚖️ Punto de equilibrio</h3>
     <table><tr><td>Gastos fijos por mes (sueldos + servicios, ver 📌)</td><td class="num"><b>${$$(F)}</b></td></tr>
     <tr><td>De cada $100 que vendés se van:</td><td></td></tr>
-    <tr><td style="padding-left:18px">Materia prima ${mpReal!=null?'<span class="muted">(según recetas de lo vendido)</span>':'<span class="muted">(estimado, cambialo en ⚙️)</span>'}</td><td class="num">${fnum(mp,1)}</td></tr>
+    <tr><td style="padding-left:18px">Materia prima ${mpReal!=null?'<span class="muted">(costo de receta de cada producto vendido · '+fnum(cobert,0)+'% de la venta tiene receta)</span>':'<span class="muted">(estimado, cambialo en ⚙️)</span>'}</td><td class="num">${fnum(mp,1)}</td></tr>
     <tr><td style="padding-left:18px">IVA neto (21% menos el IVA de las compras)</td><td class="num">${fnum(ivaNeto,1)}</td></tr>
     <tr><td style="padding-left:18px">Ingresos Brutos</td><td class="num">${fnum(iibbPct,1)}</td></tr>
     <tr><td style="padding-left:18px">Comisiones de cobro ${ing?'':'<span class="muted">(sin ventas este mes)</span>'}</td><td class="num">${fnum(com,1)}</td></tr>
