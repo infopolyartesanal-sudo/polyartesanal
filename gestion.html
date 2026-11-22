@@ -850,6 +850,8 @@ function porCanal(cierres){const o={};cierres.forEach(c=>{const fp=c.formas_pago
   Object.entries(fp).forEach(([k,v])=>{const n=+v||0;if(!n)return;const cn=canalDe(k);o[cn]=(o[cn]||0)+n;s+=n});
   const resto=(+c.total||0)-s;if(resto>1)o['Sin detallar']=(o['Sin detallar']||0)+resto});return o}
 function comisiones(){return D.config.comisiones||{}}
+function impCfg(){return Object.assign({iva:21,iibb:3,mp:30},(D.config&&D.config.impuestos)||{})}
+function fijosMensuales(){return D.gastosFijos.filter(g=>g.activo!==false).reduce((s,g)=>{const n=Math.max(1,+g.intervalo||1);const m=+g.monto||0;return s+(g.frecuencia==='semana'?m*52/12/n:g.frecuencia==='dia'?m*30/n:g.frecuencia==='año'?m/12/n:m/n)},0)}
 function comisionDe(canal,monto){return monto*((+comisiones()[canal]||0)/100)}
 
 // ================= SOLICITUDES DE CUENTA MAYORISTA (web) =================
@@ -2777,7 +2779,8 @@ function vFinanzas(){
   const fac=D.facturas.filter(f=>f.fecha&&f.fecha>=a&&f.fecha<=b);const gas=D.gastos.filter(g=>g.fecha>=a&&g.fecha<=b);
   const ing=cier.reduce((s,c)=>s+(+c.total||0),0),gF=fac.reduce((s,f)=>s+(+f.total||0),0),gM=gas.reduce((s,g)=>s+(+g.monto||0),0);
   const pc=porCanal(cier);const totCom=Object.entries(pc).reduce((s,[k,v])=>s+comisionDe(k,v),0);
-  const egr=gF+gM+totCom,util=ing-egr;const ef=pc['Efectivo']||0,on=ing-ef;
+  const IC=impCfg();const ivaD=ing*IC.iva/(100+IC.iva),ivaC=fac.reduce((s,f)=>s+(+f.impuestos||0),0),ivaN=Math.max(0,ivaD-ivaC),iibbM=(ing-ivaD)*IC.iibb/100;
+  const egr=gF+gM+totCom+ivaN+iibbM,util=ing-egr;const ef=pc['Efectivo']||0,on=ing-ef;
   const dias=new Set(cier.map(c=>diaLocal(c.fecha))).size;
   // contribución por sección (según productos cargados)
   const sec={};let conItems=0,sinRec=0;cier.forEach(c=>(c.items||[]).forEach(i=>{conItems+=+i.total||0;const x=costoVentaItem(i);const k=x?x.seccion:'Sin receta';sec[k]=sec[k]||{v:0,c:0,n:0};sec[k].v+=+i.total||0;if(x)sec[k].c+=x.costo;else sinRec+=+i.total||0}));
@@ -2789,7 +2792,7 @@ function vFinanzas(){
   const ultimos=[];for(let i=0;i<14;i++){const d=sumaDias(hoy(),-i);const cs=D.cierres.filter(c=>diaLocal(c.fecha)===d);if(!cs.length&&i>0)continue;const p=porCanal(cs);ultimos.push({d,p,t:cs.reduce((s,c)=>s+(+c.total||0),0)})}
   const canalesUsados=CANALES.concat(['Sin detallar']).filter(c=>pc[c]);
   $('#app').innerHTML=`<h2>💰 Finanzas</h2>
-  <div class="acciones"><button class="btn" onclick="nuevoCierre()">💵 Cargar venta del día</button><button class="btn sec" onclick="nuevoGasto()">➖ Registrar gasto</button><button class="btn sec" onclick="editarComisiones()">⚙️ Comisiones</button><button class="btn sec" onclick="exportarCSV()">⬇️ Exportar (CSV)</button>
+  <div class="acciones"><button class="btn" onclick="nuevoCierre()">💵 Cargar venta del día</button><button class="btn sec" onclick="nuevoGasto()">➖ Registrar gasto</button><button class="btn sec" onclick="editarComisiones()">⚙️ Comisiones e impuestos</button><button class="btn sec" onclick="exportarCSV()">⬇️ Exportar (CSV)</button>
   <select style="max-width:200px" onchange="perFin=+this.value;vFinanzas()">${[0,-1,-2,-3,-4,-5].map(o=>{const [x]=mesRango(o);return `<option value="${o}" ${o===perFin?'selected':''}>${new Date(x+'T12:00:00').toLocaleDateString('es-AR',{month:'long',year:'numeric'})}</option>`}).join('')}</select></div>
   <div class="grid g4"><div class="card kpi"><div class="lbl">Ventas · ${nombreMes}</div><div class="val">${$$(ing)}</div><div class="sub muted">${dias} días cargados · promedio ${$$(dias?ing/dias:0)}/día</div></div>
   <div class="card kpi"><div class="lbl">💵 Efectivo</div><div class="val">${$$(ef)}</div><div class="sub muted">${ing?fnum(ef/ing*100,1)+'% de la venta':''}</div></div>
@@ -2805,10 +2808,28 @@ function vFinanzas(){
   <div class="card" style="margin-top:12px"><h3>🧮 Cómo se arma el resultado</h3><table>
    <tr><td>Ventas</td><td class="num">${$$(ing)}</td><td class="num muted">100%</td></tr>
    <tr><td>− Comisiones de cobro (estimadas)</td><td class="num down">${$$(-totCom)}</td><td class="num muted">${ing?fnum(totCom/ing*100,1)+'%':''}</td></tr>
+   <tr><td>− IVA a pagar (débito ${IC.iva}% de las ventas − crédito de facturas ${$$(ivaC)})</td><td class="num down">${$$(-ivaN)}</td><td class="num muted">${ing?fnum(ivaN/ing*100,1)+'%':''}</td></tr>
+   <tr><td>− Ingresos Brutos (${IC.iibb}% sobre la venta sin IVA)</td><td class="num down">${$$(-iibbM)}</td><td class="num muted">${ing?fnum(iibbM/ing*100,1)+'%':''}</td></tr>
    <tr><td>− Compras a proveedores (facturas del mes)</td><td class="num down">${$$(-gF)}</td><td class="num muted">${ing?fnum(gF/ing*100,1)+'%':''}</td></tr>
    <tr><td>− Otros gastos (sueldos, servicios, fijos pagados)</td><td class="num down">${$$(-gM)}</td><td class="num muted">${ing?fnum(gM/ing*100,1)+'%':''}</td></tr>
    <tr><td><b>= Resultado</b></td><td class="num"><b>${$$(util)}</b></td><td class="num"><b>${ing?fnum(util/ing*100,1)+'%':''}</b></td></tr></table>
    <p class="muted">Ojo: las facturas cuentan el mes en que se compró, aunque la mercadería se use después. Si no cargás sueldos y gastos fijos, el resultado va a aparecer más alto de lo real.</p></div>
+  ${(()=>{const F=fijosMensuales();const conRec=Object.entries(sec).filter(([k])=>k!=='Sin receta').reduce((a,[k,v])=>({v:a.v+v.v,c:a.c+v.c}),{v:0,c:0});
+    const mpReal=conRec.v>0&&conRec.v>=conItems*0.3?conRec.c/conRec.v*100:null;const mp=mpReal!=null?mpReal:+IC.mp;
+    const com=ing?totCom/ing*100:0;const ivaPct=IC.iva/(100+IC.iva)*100;const ivaNeto=ivaPct*(1-mp/100);const iibbPct=(100-ivaPct)*IC.iibb/100;
+    const mc=100-mp-ivaNeto-iibbPct-com;const pe=mc>0?F/(mc/100):0;const peDia=pe/30;
+    const ritmo=dias?ing/dias*30:0;const ok=ritmo>=pe;
+    return `<div class="card" style="margin-top:12px"><h3>⚖️ Punto de equilibrio</h3>
+    <table><tr><td>Gastos fijos por mes (sueldos + servicios, ver 📌)</td><td class="num"><b>${$$(F)}</b></td></tr>
+    <tr><td>De cada $100 que vendés se van:</td><td></td></tr>
+    <tr><td style="padding-left:18px">Materia prima ${mpReal!=null?'<span class="muted">(según recetas de lo vendido)</span>':'<span class="muted">(estimado, cambialo en ⚙️)</span>'}</td><td class="num">${fnum(mp,1)}</td></tr>
+    <tr><td style="padding-left:18px">IVA neto (21% menos el IVA de las compras)</td><td class="num">${fnum(ivaNeto,1)}</td></tr>
+    <tr><td style="padding-left:18px">Ingresos Brutos</td><td class="num">${fnum(iibbPct,1)}</td></tr>
+    <tr><td style="padding-left:18px">Comisiones de cobro ${ing?'':'<span class="muted">(sin ventas este mes)</span>'}</td><td class="num">${fnum(com,1)}</td></tr>
+    <tr><td><b>Te quedan para pagar los fijos</b></td><td class="num"><b>$${fnum(mc,1)}</b></td></tr>
+    <tr style="background:#FFF8E1"><td><b>Tenés que vender por mes</b></td><td class="num"><b>${$$(pe)}</b></td></tr>
+    <tr style="background:#FFF8E1"><td><b>…o por día (30 días)</b></td><td class="num"><b>${$$(peDia)}</b></td></tr>
+    ${dias?`<tr><td>A este ritmo (${$$(ing/dias)}/día) el mes cierra en</td><td class="num" style="color:${ok?'var(--verde)':'var(--rojo)'}"><b>${$$(ritmo)}</b> ${ok?'✅':'⚠️ faltan '+$$(pe-ritmo)}</td></tr>`:''}</table></div>`})()}
   <div class="grid g2" style="margin-top:12px">
   <div class="card"><h3>📊 Venta por canal de cobro</h3>${canalesUsados.length?`<table><tr><th>Canal</th><th class="num">Bruto</th><th class="num">%</th><th class="num">Comisión</th><th class="num">Te queda</th></tr>
     ${canalesUsados.sort((x,y)=>pc[y]-pc[x]).map(k=>{const cm=comisionDe(k,pc[k]);return `<tr><td>${k==='Efectivo'?'💵':'📱'} ${esc(k)}</td><td class="num">${$$(pc[k])}</td><td class="num"><div style="display:flex;gap:6px;align-items:center;justify-content:flex-end"><div style="background:${k==='Efectivo'?'var(--oro)':'var(--verde2)'};height:10px;border-radius:3px;width:${pc[k]/ing*80}px"></div>${fnum(pc[k]/ing*100,1)}%</div></td><td class="num ${cm?'down':'muted'}">${cm?'−'+$$(cm):(+comisiones()[k]?'':'—')}</td><td class="num">${$$(pc[k]-cm)}</td></tr>`}).join('')}</table>
@@ -2829,10 +2850,14 @@ function vFinanzas(){
   <div class="card scroll"><h3>📋 Movimientos</h3><table>${mov.slice(0,80).map(m=>`<tr><td>${fechaCorta(m.f)}</td><td>${esc(m.d)}</td><td class="num ${m.m>=0?'up':'down'}">${$$(m.m)}</td><td>${m.t==='g'?`<button class="btn sec peq" onclick="confirmar('¿Borrar este gasto?',async()=>{await sbDel('gastos','id=eq.${m.id}');D.gastos=D.gastos.filter(x=>x.id!=='${m.id}');vFinanzas()})">×</button>`:''}</td></tr>`).join('')}</table></div></div>`;
 }
 function editarComisiones(){const c=comisiones();
-  modal(`<h3>⚙️ Comisiones por medio de cobro</h3><p class="muted">Poné el % que te descuenta cada uno (con IVA y retenciones si querés verlo completo). Sirve para ver cuánto te queda de verdad de cada venta online.</p>
+  modal(`<h3>⚙️ Comisiones e impuestos</h3><p class="muted">Poné el % que te descuenta cada uno (con IVA y retenciones si querés verlo completo). Sirve para ver cuánto te queda de verdad de cada venta online.</p>
   <table>${CANALES.filter(k=>k!=='Efectivo').map(k=>`<tr><td>${k}</td><td><input class="mini com" data-k="${k}" type="number" step="any" value="${c[k]??''}" placeholder="0"> %</td></tr>`).join('')}</table>
+  <h3 style="margin-top:14px">🧾 Impuestos sobre las ventas</h3><table>
+  <tr><td>IVA</td><td><input class="mini" id="iIva" type="number" step="any" value="${impCfg().iva}"> %</td></tr>
+  <tr><td>Ingresos Brutos (sobre la venta sin IVA)</td><td><input class="mini" id="iIibb" type="number" step="any" value="${impCfg().iibb}"> %</td></tr>
+  <tr><td>Materia prima estimada (si no hay recetas)</td><td><input class="mini" id="iMp" type="number" step="any" value="${impCfg().mp}"> %</td></tr></table>
   <div class="acciones" style="margin-top:10px"><button class="btn" id="bCom">💾 Guardar</button></div>`);
-  $('#bCom').onclick=async()=>{const v={};document.querySelectorAll('.com').forEach(e=>{if(e.value!=='')v[e.dataset.k]=+e.value});await sbIns('config',[{clave:'comisiones',valor:v}],true);D.config.comisiones=v;cerrarModal();toast('Guardado ✅');vFinanzas()}}
+  $('#bCom').onclick=async()=>{const v={};document.querySelectorAll('.com').forEach(e=>{if(e.value!=='')v[e.dataset.k]=+e.value});await sbIns('config',[{clave:'comisiones',valor:v}],true);D.config.comisiones=v;const im={iva:+$('#iIva').value||0,iibb:+$('#iIibb').value||0,mp:+$('#iMp').value||0};await sbIns('config',[{clave:'impuestos',valor:im}],true);D.config.impuestos=im;cerrarModal();toast('Guardado ✅');vFinanzas()}}
 let VD_ART=null;
 function filaVenta(i={}){return `<tr${i.codigo?` data-cod="${esc(i.codigo)}"`:''}><td><input class="vP" list="dlRec" value="${esc(i.producto||'')}"></td><td><select class="vU" style="width:70px"><option>un</option><option ${i.unidad==='kg'?'selected':''}>kg</option></select></td><td><input class="vC mini" type="number" step="any" value="${i.cantidad??''}"></td><td><input class="vT mini" type="number" step="any" value="${i.total??''}"></td><td><button class="btn sec peq" onclick="this.closest('tr').remove()">×</button></td></tr>`}
 function nuevoCierre(){
