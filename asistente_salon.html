@@ -639,14 +639,18 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
         <div id="egr-foto-preview" style="flex:1;"></div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <select id="egr-tipo" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;">
+        <select id="egr-tipo" onchange="egrTipoCambio()" style="flex:1;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;">
           <option value="degustacion">🍽 Degustación</option>
           <option value="desperdicio">🗑 Remanente vencido (se tira)</option>
-          <option value="consumo_empleado">👤 Consumo empleado</option>
+          <option value="consumo_empleado">👤 Consumo interno (empleado)</option>
           <option value="devolucion">↩ Devolución al sector</option>
         </select>
         <input type="number" id="egr-cantidad" placeholder="Cant." min="1" style="width:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;text-align:center;outline:none;" />
         <button onclick="registrarEgreso()" style="padding:9px 14px;background:var(--danger);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;">Registrar</button>
+      </div>
+      <div id="egr-quien-box" style="display:none;margin:-4px 0 12px;">
+        <input id="egr-quien" placeholder="¿Quién lo llevó? (nombre y apellido)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:2px solid var(--danger);border-radius:8px;font-size:14px;outline:none;" />
+        <div style="font-size:11px;color:#888;margin-top:4px;">Al registrar sale un ticket para que lo firme quien lo llevó.</div>
       </div>
       <div class="section-title">Egresos de hoy</div>
       <div id="egresos-history"></div>
@@ -991,6 +995,7 @@ let preciosCustom = JSON.parse(localStorage.getItem('salon_precios') || '{}');
 function getPrecio(id){ return (preciosCustom[id] != null) ? preciosCustom[id] : (PRECIOS_DEFAULT[id] || 0); }
 function fmtPrecio(p){ return p ? ('$' + Number(p).toLocaleString('es-AR')) : '—'; }
 function editarPrecio(id){
+  if (!puedeEditarStock()) { sinPermisoStock(); return; }
   const cur = getPrecio(id);
   const v = prompt('Precio de venta de: ' + getItemName(id) + '\n($ por ' + (([].concat(PRODUCTOS_LOCAL,PRODUCTOS_EXTRA,INSUMOS_LOCAL).find(function(p){return p.id===id;})||{}).unidad || 'u') + ')', cur || '');
   if (v === null) return;
@@ -1069,7 +1074,7 @@ function renderStock(filterQ) {
           <span class="stock-badge ${status}">${status==='critical'?'🚨 Vacío':status==='warn'?'⚠️ Bajo':'✓ OK'}</span>
         </div>
         <div class="stock-body">
-          <div class="stock-adj">
+          <div class="stock-adj" ${puedeEditarStock() ? '' : 'hidden'}>
             <span class="stock-adj-label">Ajustar stock</span>
             <button class="adj-btn minus" onclick="adjustStock('${item.id}',-(${item.paso||1}))">−</button>
             <span style="font-size:15px;font-weight:700;color:var(--primary-dark);min-width:36px;text-align:center;">${v}</span>
@@ -1078,7 +1083,7 @@ function renderStock(filterQ) {
           <div class="stock-min">Mínimo recomendado: ${item.minLocal} ${item.unidad}</div>
           <div class="stock-min" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
             💲 Precio: <strong>${fmtPrecio(item.precio != null ? item.precio : getPrecio(item.id))}</strong>
-            <button onclick="editarPrecio('${item.id}')" ${item.sector === 'venta' ? 'hidden' : ''} style="background:#EDE7F6;color:#4A148C;border:none;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;">✏️ Editar</button>
+            <button onclick="editarPrecio('${item.id}')" ${(item.sector === 'venta' || !puedeEditarStock()) ? 'hidden' : ''} style="background:#EDE7F6;color:#4A148C;border:none;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;">✏️ Editar</button>
           </div>
         </div>
       </div>`;
@@ -1090,7 +1095,11 @@ function renderStock(filterQ) {
 
 function filterStock(q) { renderStock(q); }
 
+// Solo Micaela Ramos (usuario 'salon') y Poly (admin) pueden tocar el stock a mano, los precios y el Inicial del control
+function puedeEditarStock(){ const u = window.POLY_USUARIO || {}; return u.rol === 'admin' || u.usuario === 'salon'; }
+function sinPermisoStock(){ alert('Solo Micaela puede corregir el stock a mano. Si algo no coincide, avisale a ella o a Poly. Vos podés cargar egresos.'); }
 function adjustStock(id, delta) {
+  if (!puedeEditarStock()) { sinPermisoStock(); return; }
   stockState[id] = Math.max(0, (stockState[id] || 0) + delta);
   saveStock();
   renderStock();
@@ -1378,11 +1387,36 @@ async function uploadFotoEgreso(file, prodId){
   return SUPABASE_URL + '/storage/v1/object/public/madrugada/' + obj;
 }
 
+function egrTipoCambio(){
+  const b = document.getElementById('egr-quien-box'); if (!b) return;
+  const on = document.getElementById('egr-tipo').value === 'consumo_empleado';
+  b.style.display = on ? 'block' : 'none'; if (on) setTimeout(() => document.getElementById('egr-quien').focus(), 50);
+}
+// Ticket de consumo interno para que lo firme quien se lo llevó (impresora del local, 80 mm)
+function imprimirTicketConsumo(d){
+  const w = window.open('', '_blank', 'width=380,height=640'); if (!w) { alert('Habilitá las ventanas emergentes para imprimir el ticket.'); return; }
+  const esc = x => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const f = new Date(); const fecha = f.toLocaleDateString('es-AR') + ' ' + f.toLocaleTimeString('es-AR', {hour:'2-digit', minute:'2-digit'});
+  const copia = t => '<div class="tk"><div class="c b g">POLY ARTESANAL</div><div class="c">Galván 3512 · Villa Urquiza</div><hr>'
+    + '<div class="c b">CONSUMO INTERNO</div><div class="c">' + t + '</div><hr>'
+    + '<div>Fecha: ' + fecha + '</div>'
+    + '<div class="it"><span>' + esc(String(d.cantidad).replace('.', ',')) + ' × ' + esc(d.nombre) + '</span>' + (d.precio ? '<span>$ ' + Math.round(d.precio * d.cantidad).toLocaleString('es-AR') + '</span>' : '') + '</div>'
+    + (d.precio ? '<div class="s">Valor de referencia ($ ' + Math.round(d.precio).toLocaleString('es-AR') + ' c/u) · no se cobra</div>' : '')
+    + '<hr><div>Lo llevó: <b>' + esc(d.quien) + '</b></div><div>Registró: ' + esc(d.registro) + '</div>'
+    + '<div class="f">Firma: ______________________</div><div class="f">Aclaración: ' + esc(d.quien) + '</div></div>';
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consumo interno</title><style>@page{size:80mm auto;margin:0}body{width:72mm;margin:0 auto;font:12px/1.35 Arial,sans-serif;color:#000}'
+    + '.tk{padding:3mm 1mm 8mm;page-break-after:always}.c{text-align:center}.b{font-weight:700}.g{font-size:15px}.it{display:flex;justify-content:space-between;gap:6px;font-weight:700;margin-top:4px}.s{font-size:10px}.f{margin-top:10mm}hr{border:0;border-top:1px dashed #000;margin:5px 0}</style></head><body>'
+    + copia('Copia para el local') + '<script>setTimeout(function(){window.print()},300)<\/script></body></html>');
+  w.document.close();
+}
 async function registrarEgreso() {
   const prodId = document.getElementById('egr-producto').value;
   const tipo = document.getElementById('egr-tipo').value;
   const cantidad = parseFloat(document.getElementById('egr-cantidad').value);
   if (!prodId || !cantidad || cantidad <= 0) { alert('Seleccioná un producto e ingresá la cantidad.'); return; }
+  const quien = tipo === 'consumo_empleado' ? ((document.getElementById('egr-quien') || {}).value || '').trim() : '';
+  if (tipo === 'consumo_empleado' && quien.length < 3) { alert('Escribí el nombre de quién se lo llevó.'); const q = document.getElementById('egr-quien'); if (q) q.focus(); return; }
+  const registro = (window.POLY_USUARIO && (window.POLY_USUARIO.nombre || window.POLY_USUARIO.usuario)) || 'Salón';
   const nombre = getItemName(prodId);
   let fotoUrl = null;
   if (egrPhotoFile) { try { fotoUrl = await uploadFotoEgreso(egrPhotoFile, prodId); } catch(e){ console.warn('foto egreso:', e); } }
@@ -1390,12 +1424,17 @@ async function registrarEgreso() {
   saveStock();
   const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
   const tipoLabels = { degustacion:'🍽 Degustación', desperdicio:'🗑 Remanente vencido', consumo_empleado:'👤 Consumo empleado', devolucion:'↩ Devolución', otro:'📋 Otro' };
-  egresos.unshift({ prodId, nombre, cantidad, tipo, tipoLabel: tipoLabels[tipo], time: now, foto_url: fotoUrl });
+  egresos.unshift({ prodId, nombre, cantidad, tipo, tipoLabel: tipoLabels[tipo] + (quien ? ' · ' + quien : ''), time: now, foto_url: fotoUrl });
   localStorage.setItem(EGRESOS_KEY, JSON.stringify(egresos));
-  sbUpsert('salon_egresos', { producto_id: prodId, producto_nombre: nombre, cantidad, tipo, foto_url: fotoUrl }).catch(()=>{});
+  sbUpsert('salon_egresos', { producto_id: prodId, producto_nombre: nombre, cantidad, tipo, foto_url: fotoUrl, quien: quien || null, registrado_por: registro }).catch(()=>{});
+  if (tipo === 'consumo_empleado') {
+    let precio = 0; try { const c = String(prodId).startsWith('pv:') ? String(prodId).slice(3) : null; const p = c && (CONTROL_CATALOGO || []).find(x => x.c === c); precio = p ? p.p : (getPrecio(prodId) || 0); } catch(e) {}
+    imprimirTicketConsumo({ nombre, cantidad, quien, registro, precio });
+    const q = document.getElementById('egr-quien'); if (q) q.value = '';
+  }
   renderEgresosHistory();
   renderStock();
-  addToLog(tipoLabels[tipo] + ': ' + cantidad + ' ' + nombre);
+  addToLog(tipoLabels[tipo] + ': ' + cantidad + ' ' + nombre + (quien ? ' (lo llevó ' + quien + ')' : ''));
   document.getElementById('egr-cantidad').value = '';
   document.getElementById('egr-producto').value = '';
   egrPhotoFile = null;
@@ -2056,6 +2095,7 @@ async function loadControl(){
       hora_cierre:existing.hora_cierre||'', estado:existing.estado||'abierto',
       remanentes:existing.remanentes||'', devoluciones:existing.devoluciones||'', consumo_interno:existing.consumo_interno||'',
       items:itemsMap, ref:existing.referencia||null };
+    if(controlState.estado!=='cerrado'){ await traerIngresos(true); await traerEgresos(true); }
   } else {
     // NUEVO: inicial = final del turno anterior (arrastre)
     const inicialMap=await calcularInicialArrastre(fecha,turno);
@@ -2134,9 +2174,9 @@ async function traerIngresos(silent){
   // ventana del turno: mañana hasta las 14hs, tarde de 14hs en adelante (evita duplicar entre turnos)
   let params;
   if(controlState.turno==='manana'){
-    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T00:00:00-03:00&created_at=lt.'+fecha+'T14:00:00-03:00';
+    params='?estado=eq.confirmado&confirmado_at=gte.'+fecha+'T00:00:00-03:00&confirmado_at=lt.'+fecha+'T14:00:00-03:00';
   } else {
-    params='?estado=eq.confirmado&created_at=gte.'+fecha+'T14:00:00-03:00&created_at=lte.'+fecha+'T23:59:59-03:00';
+    params='?estado=eq.confirmado&confirmado_at=gte.'+fecha+'T14:00:00-03:00&confirmado_at=lte.'+fecha+'T23:59:59-03:00';
   }
   let recs=[];
   try{ recs=await sbSelect('salon_recepciones',params) || []; }
@@ -2146,7 +2186,8 @@ async function traerIngresos(silent){
   const acum={}; let sinMatch=0;
   recs.forEach(r=>{
     const key=normCtrl(r.producto_nombre);
-    const cod = ALIAS_INGRESO[key] || idx[key]; // puente primero, luego nombre directo
+    let pid=''; try { pid=String(resolverProductoSalon(r.producto_id, r.producto_nombre)||''); } catch(e){}
+    const cod = (pid.startsWith('pv:') ? pid.slice(3) : null) || ALIAS_INGRESO[key] || idx[key]; // igual que en Recepción, después puente y nombre
     if(cod){ acum[cod]=(acum[cod]||0)+(Number(r.cantidad)||0); }
     else { sinMatch++; }
   });
@@ -2231,7 +2272,7 @@ function renderControlTabla(){
     const inp='width:52px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;font-size:12px;';
     h+='<tr style="border-bottom:1px solid #f0f0f0;">'
       +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
-      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
+      +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?'':' readonly tabindex="-1" title="Solo Micaela puede corregir el Inicial"')+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
       +'<td style="text-align:center;"><input readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores" type="number" id="cg-'+p.c+'" value="'+(it.g||0)+'" style="'+inp+'background:#EEEEEE;color:#555;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ce-'+p.c+'" value="'+(it.e||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
