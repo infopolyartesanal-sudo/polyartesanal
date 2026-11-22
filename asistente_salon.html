@@ -2137,6 +2137,8 @@ async function calcularInicialArrastre(fecha,turno){
       if(!(r&&r.length)) r=await sbSelect('control_stock_turno','?fecha=eq.'+ayer+'&turno=eq.manana');
       if(r && r.length) prev=r[0];
     }
+    // si el turno anterior se cerró sin contar el Final (todo en 0), no sirve de arrastre: se usa el stock del local
+    if(prev && !(prev.items||[]).some(it=>(Number(it.f)||0)>0)) prev=null;
     if(prev) (prev.items||[]).forEach(it=>{ map[it.c]=Number(it.f)||0; });
     else {
       // No hay turno anterior cerrado: el inicial sale del stock actual del Salón (el mismo que se ve en la pestaña Stock)
@@ -2358,6 +2360,8 @@ async function guardarControl(silent){
 
 async function cerrarTurnoControl(){
   if(!controlState) return;
+  const conFinal=Object.values(controlState.items||{}).some(it=>(Number(it.f)||0)>0);
+  if(!conFinal){ alert('⚠️ No cargaste el Final: contá lo que queda en el local y ponelo en la columna Final antes de cerrar. Si no, el próximo turno arranca en 0.'); return; }
   if(!confirm('¿Cerrar el turno '+turnoLabel(controlState.turno)+' del '+controlState.fecha+'?\nEl Final pasará como Inicial del próximo turno.')) return;
   ctrlMeta();
   controlState.estado='cerrado';
