@@ -2828,8 +2828,12 @@ function setFreezerExacto(productId, subtipId) {
   }
   const v = prompt('Cantidad exacta de ' + nombre + ':', Math.round(actual * 10) / 10);
   if (v === null) return;
-  const num = parseFloat(String(v).replace(',', '.').replace(/[^0-9.]/g, ''));
+  let num = parseFloat(String(v).replace(',', '.').replace(/[^0-9.]/g, ''));
   if (isNaN(num) || num < 0) { alert('Poné un número válido (0 o más).'); return; }
+  const _uKg = cat && /kg/i.test(String(cat.unidad || cat.unit || ''));
+  if (_uKg && num >= 100) {
+    if (confirm('¿Pusiste ' + num + ' gramos? Este producto se cuenta en KILOS.\n\nAceptar = lo paso a ' + (num/1000) + ' kg\nCancelar = dejo ' + num + ' kg')) num = Math.round(num) / 1000;
+  }
   if (subtipId) {
     if (!fp.subtipos) fp.subtipos = {};
     fp.subtipos[subtipId] = num;
