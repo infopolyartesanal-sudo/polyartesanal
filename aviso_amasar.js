@@ -41,7 +41,7 @@
     try { if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 700]); } catch (e) {}
   }
 
-  var ultimoSonido = 0;
+  var ultimoSonido = 0; try { ultimoSonido = +localStorage.getItem("aviso_amasar_sono") || 0; } catch (e) {}
   async function revisar() {
     var rows;
     try {
@@ -72,7 +72,7 @@
       revisar();
     }; });
     var v = document.getElementById('avAmVer'); if (v) v.onclick = function () { try { switchTab('pedidos-panaderia'); } catch (e) {} };
-    if (ahora - ultimoSonido > 55000) { ultimoSonido = ahora; sonar(); }   // suena cada minuto hasta que confirmen
+    if (ahora - ultimoSonido > 3590000) { ultimoSonido = ahora; try { localStorage.setItem("aviso_amasar_sono", String(ahora)); } catch (e) {} sonar(); }   // suena cada 1 h hasta que confirmen
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(revisar, 2000); }); else setTimeout(revisar, 2000);
   setInterval(revisar, 60000);
