@@ -942,7 +942,9 @@ function renderLeudando(){
     return '<div style="background:#fff;border:1px solid #E0E0E0;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
       + '<div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:700;">'+nombre+'</div>'
-      + '<div style="font-size:13px;color:#666;margin-top:3px;">'+cantTxt+' · '+origen+' · '+fmtHora(l.created_at)+'</div></div></div>'
+      + '<div style="font-size:13px;color:#666;margin-top:3px;">'+cantTxt+' · '+origen+' · '+fmtHora(l.created_at)+'</div>'
+      + (l.pedido_item_id ? '<div style="font-size:12px;font-weight:700;color:#BF360C;background:#FFF3E0;border-radius:6px;padding:4px 8px;margin-top:5px;">📦 '+(l.nota||'Pedido de cliente').replace(/</g,'&lt;')+'</div>' : '')
+      + '</div></div>'
       + '<button onclick="openHornear(\''+l.id+'\')" style="width:100%;margin-top:12px;background:#1B5E20;color:#fff;border:none;border-radius:9px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;"><i class="ti ti-flame"></i> Marcar horneado</button>'
       + '</div>';
   }).join('');
@@ -1046,7 +1048,10 @@ async function confirmHornear(){
   let fotoUrl = null;
   if(photoFile){ try { fotoUrl = await uploadFoto(photoFile, pendingItem); } catch(e){ console.warn('foto:', e); } }
   try {
-    if(horn > 0){
+    if(horn > 0 && pendingItem.pedido_item_id){
+      // es de un pedido de cliente: se despacha a nombre del pedido (el Salón lo ve como pedido, no como stock suelto)
+      await sbFetch('POST', 'rpc/pedido_item_avanzar', { p_item: pendingItem.pedido_item_id, p_estado: 'despachado' });
+    } else if(horn > 0){
       await sbUpsert('salon_recepciones', [{
         producto_id: pendingItem.producto_id,
         producto_nombre: pendingItem.producto_nombre || pendingItem.producto_id,

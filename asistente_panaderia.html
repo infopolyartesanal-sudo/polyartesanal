@@ -3399,11 +3399,43 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
           g.it.map(function (i) {
             return '<div class="pc-it"><b>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + '</b>' +
               (i.estado === 'pendiente' ? '<button class="pc-btn" style="background:#1565C0" onclick="pcAvanzar(' + i.id + ',\'recibido\')">👍 Recibido</button>' : '<span style="font-size:12px;color:#1565C0">✓ recibido</span>') +
-              '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button></div>';
+              '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button>' +
+              (SECTOR === 'panaderia' ? '<button class="pc-btn" style="background:#6D4C41" onclick="pcALeudado(' + i.id + ')">🧊 Ya hay → a leudado</button>' : '') + '</div>';
           }).join('') + '</div>';
       }).join('') : '<p style="color:#888;text-align:center;padding:20px">No hay pedidos pendientes 👌</p>');
     ov.style.display = 'flex';
   }
+  // Ya hay en el freezer o la cámara: el pedido pasa a Leudado (Cocina lo saca, Madrugada lo hornea y lo despacha al Salón)
+  window.pcALeudado = function (id) {
+    var it = items.find(function (x) { return x.id === id; }); if (!it) return;
+    var box = document.getElementById('pc-box');
+    box.innerHTML = '<b style="font-size:17px">🧊 ' + esc(it.producto) + ' × ' + (+it.cantidad) + '</b><p style="font-size:13px;color:#555;margin:6px 0 10px">¿De dónde se saca? Se manda a <b>Leudado</b>: Cocina lo saca, Madrugada lo hornea y lo despacha al Salón para el pedido.</p><div id="pcl-lista" style="font-size:13px;color:#888">Buscando en freezer y cámara…</div>' +
+      '<button class="pc-btn" style="background:#9e9e9e;width:100%;margin-top:10px" onclick="pcVolver()">Volver</button>';
+    var nk = function (t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); };
+    var pal = nk(it.producto).split(' ').filter(function (w) { return w.length > 3; });
+    Promise.all([
+      fetch(SB + 'freezer_panaderia?select=id,nombre,total', { headers: H }).then(function (r) { return r.json(); }).catch(function () { return []; }),
+      fetch(SB + 'camara_panaderia?select=id,nombre,cantidad', { headers: H }).then(function (r) { return r.json(); }).catch(function () { return []; })
+    ]).then(function (res) {
+      var L = [].concat((res[0] || []).filter(function (r) { return +r.total > 0; }).map(function (r) { return { o: 'freezer', id: r.id, n: r.nombre || r.id, q: +r.total }; }),
+                        (res[1] || []).filter(function (r) { return +r.cantidad > 0; }).map(function (r) { return { o: 'camara', id: r.id, n: r.nombre || r.id, q: +r.cantidad }; }));
+      L.forEach(function (x) { var n = nk(x.n); x.s = pal.filter(function (w) { return n.indexOf(w.slice(0, 5)) >= 0; }).length; });
+      L.sort(function (a, b) { return b.s - a.s || a.n.localeCompare(b.n); });
+      document.getElementById('pcl-lista').innerHTML = (L.length ? L.map(function (x) {
+        return '<button onclick="pcLeudadoOk(' + id + ',\'' + x.o + '\',\'' + String(x.id).replace(/'/g, '') + '\',\'' + esc(x.n).replace(/'/g, '') + '\')" style="display:block;width:100%;text-align:left;margin:5px 0;padding:10px;border-radius:9px;border:' + (x.s ? '2px solid #2E7D32;background:#E8F5E9' : '1px solid #ddd;background:#fff') + ';color:#222;font-size:14px;cursor:pointer">' +
+          (x.o === 'freezer' ? '🧊 Freezer' : '❄️ Cámara') + ' · <b>' + esc(x.n) + '</b> <span style="color:#666">(hay ' + String(x.q).replace('.', ',') + ')</span></button>';
+      }).join('') : '<p>No hay nada cargado en el freezer ni en la cámara.</p>') +
+        '<button onclick="pcLeudadoOk(' + id + ',\'freezer\',\'\',\'\')" style="display:block;width:100%;margin:8px 0 0;padding:10px;border-radius:9px;border:1px dashed #6D4C41;background:#fff;color:#6D4C41;font-weight:700;cursor:pointer">Está en el freezer pero no figura en la lista</button>';
+    });
+  };
+  window.pcVolver = function () { abrir(); };
+  window.pcALeudadoTab = function (id) { abrir(); pcALeudado(id); };
+  window.pcLeudadoOk = function (id, origen, stockId, stockNom) {
+    fetch(SB + 'rpc/pedido_item_a_leudado', { method: 'POST', headers: H, body: JSON.stringify({ p_item: id, p_origen: origen, p_stock_id: stockId || null, p_stock_nombre: stockNom || null }) })
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j && j.message); return j; }); })
+      .then(function () { if (typeof addToLog === 'function') addToLog('🧊 Pedido mandado a Leudado (ya había en ' + origen + ')' + (stockNom ? ': ' + stockNom : ''), 'pedido'); return cargar(); })
+      .catch(function (e) { alert('No se pudo mandar a leudado: ' + (e.message || 'revisá la conexión')); abrir(); });
+  };
   window.pcAvanzar = function (id, estado) {
     if (estado === 'despachado' && !confirm('¿Despachar al Salón? Se manda a Recepción del Salón para sumar a su stock.')) return;
     fetch(SB + 'rpc/pedido_item_avanzar', { method: 'POST', headers: H, body: JSON.stringify({ p_item: id, p_estado: estado }) })
@@ -3435,7 +3467,7 @@ async function descontarDelFreezer(nombreProducto, cantidad) {
         '<div style="font-size:12px;color:#555;margin:3px 0 4px">' + (p.envio ? '🛵 Envío a ' + esc(p.direccion) : '🏪 Retira en el local') + (p.notas ? ' · 📝 ' + esc(p.notas) : '') + '</div>' +
         g.it.map(function (i) { return '<div class="pc-it"><b>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + '</b>' +
           (i.estado === 'pendiente' ? '<button class="pc-btn" style="background:#1565C0" onclick="pcAvanzar(' + i.id + ',\'recibido\')">👍 Recibido</button>' : '<span style="font-size:12px;color:#1565C0">✓ recibido</span>') +
-          '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button></div>'; }).join('') +
+          '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button>' + (SECTOR === 'panaderia' ? '<button class="pc-btn" style="background:#6D4C41" onclick="pcALeudadoTab(' + i.id + ')">🧊 Ya hay → a leudado</button>' : '') + '</div>'; }).join('') +
         '<div style="margin-top:6px"><button class="pc-btn" style="background:#555" onclick="pcRemito(' + p.id + ')">🖨 Remito</button></div></div>'; }).join('')
       : '<div style="font-size:13px;color:#888;padding:6px 0 10px">No hay pedidos de clientes pendientes 👌</div>';
     h += '<button onclick="pcVerHist()" style="width:100%;margin:6px 0;padding:9px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#444;font:600 13px system-ui,sans-serif;cursor:pointer">' + (verHist ? '▴ Ocultar entregados' : '📦 Ver pedidos entregados (últimos 45 días) · reimprimir remitos') + '</button>';

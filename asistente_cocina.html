@@ -2647,18 +2647,32 @@ adjustStock = function(...args) {
 let conectorCamara = [];
 let conectorFreezer = [];
 let conectorLeudando = [];
+let conectorPedidosLeudar = [];
 
 async function loadConectorPanaderia() {
   try { conectorCamara = await sbSelect('camara_panaderia', '?order=nombre.asc') || []; } catch(e){ conectorCamara = []; }
   try { conectorFreezer = await sbSelect('freezer_panaderia', '') || []; } catch(e){ conectorFreezer = []; }
   try { const desde = new Date(Date.now() - 36*3600*1000).toISOString(); conectorLeudando = await sbSelect('cocina_leudado', '?estado=eq.leudando&created_at=gte.' + encodeURIComponent(desde) + '&order=created_at.asc') || []; } catch(e){ conectorLeudando = []; }
+  try { conectorPedidosLeudar = await sbSelect('cocina_leudado', '?estado=eq.por_sacar&order=para_fecha.asc,created_at.asc') || []; } catch(e){ conectorPedidosLeudar = []; }
   renderConectorPanaderia();
 }
 
 function renderConectorPanaderia() {
   const el = document.getElementById('conector-panaderia');
   if (!el) return;
-  let html = '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">🥖 Sacar a leudar — cámara o freezer</div>';
+  let html = '';
+  // Pedidos de clientes que Panadería mandó a leudado porque ya había en el freezer o la cámara
+  if ((conectorPedidosLeudar || []).length) {
+    html += '<div style="background:#FFF3E0;border:2px solid #E65100;border-radius:12px;padding:12px;margin-bottom:14px;"><div style="font-size:14px;font-weight:800;color:#BF360C;margin-bottom:6px;">📦 Pedidos de clientes para sacar a leudar</div>';
+    conectorPedidosLeudar.forEach(l => {
+      const f = l.para_fecha ? new Date(l.para_fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday:'short', day:'numeric', month:'numeric' }) : '';
+      html += '<div style="background:#fff;border-radius:10px;padding:10px;margin:6px 0;color:#222;"><div style="font-weight:700;font-size:15px;">' + (l.producto_nombre || l.producto_id) + ' × ' + l.cantidad + '</div>'
+        + '<div style="font-size:12px;color:#555;margin:2px 0 8px;">' + (l.origen === 'camara' ? '❄️ Cámara' : '🧊 Freezer') + (f ? ' · entrega ' + f : '') + (l.nota ? '<br>' + l.nota : '') + '</div>'
+        + '<button class="leudado-notif-btn" onclick="sacarPedidoALeudar(\'' + l.id + '\')">🥖 Ya lo saqué a leudar</button></div>';
+    });
+    html += '</div>';
+  }
+  html += '<div style="font-size:14px;font-weight:700;color:#E64A19;margin-bottom:8px;">🥖 Sacar a leudar — cámara o freezer</div>';
 
   const disp = [];
   (conectorCamara || []).forEach(r => { if ((r.cantidad || 0) > 0) disp.push({ origen:'camara', id:r.id, nombre:r.nombre || r.id, cant: r.cantidad }); });
@@ -2727,6 +2741,21 @@ async function sacarALeudar(origen, prodId) {
   loadConectorPanaderia();
 }
 
+async function sacarPedidoALeudar(id) {
+  const l = (conectorPedidosLeudar || []).find(x => String(x.id) === String(id)); if (!l) return;
+  const qty = Number(l.cantidad) || 0;
+  if (l.stock_id && qty > 0) {
+    try {
+      if (l.origen === 'camara') await rpcStock('stock_camara_ajustar', { p_id: l.stock_id, p_nombre: null, p_delta: -qty, p_motivo: 'leudado pedido', p_usuario: usrStock() });
+      else await rpcStock('stock_freezer_pan_ajustar', { p_id: l.stock_id, p_nombre: null, p_delta_total: -qty, p_delta_sub: {}, p_motivo: 'leudado pedido', p_usuario: usrStock() });
+    } catch (e) { console.warn('descuento pedido leudado:', e); }
+  }
+  try { await sbFetch('PATCH', 'cocina_leudado', { estado: 'leudando', created_at: new Date().toISOString() }, '?id=eq.' + encodeURIComponent(id)); }
+  catch (e) { alert('No se pudo guardar, probá de nuevo.'); return; }
+  if (typeof addToLog === 'function') addToLog('🥖 Pedido sacado a leudar: ' + qty + ' ' + (l.producto_nombre || '') + ' (' + (l.nota || '') + ')', 'leudado');
+  loadConectorPanaderia();
+}
+
 async function hornearYDespachar(leudadoId) {
   const l = (conectorLeudando || []).find(x => String(x.id) === String(leudadoId));
   if (!l) return;
@@ -2734,7 +2763,8 @@ async function hornearYDespachar(leudadoId) {
     await sbFetch('PATCH', 'cocina_leudado', { estado: 'despachado', horneado_at: new Date().toISOString() }, '?id=eq.' + encodeURIComponent(leudadoId));
   } catch(e) { console.warn('patch leudado:', e); }
   try {
-    await sumarProductoAlSalon(l.producto_nombre || l.producto_id, l.producto_id, l.cantidad, 'cocina');
+    if (l.pedido_item_id) await sbFetch('POST', 'rpc/pedido_item_avanzar', { p_item: l.pedido_item_id, p_estado: 'despachado' });
+    else await sumarProductoAlSalon(l.producto_nombre || l.producto_id, l.producto_id, l.cantidad, 'cocina');
   } catch(e) { console.warn('despacho salon:', e); }
   if (typeof addToLog === 'function') addToLog('🔥 Horneado y despachado al Salón: ' + l.cantidad + ' ' + (l.producto_nombre || l.producto_id), 'leudado');
   loadConectorPanaderia();
