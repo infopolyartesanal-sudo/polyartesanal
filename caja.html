@@ -192,6 +192,8 @@
   #toast{position:fixed;bottom:44px;left:50%;transform:translateX(-50%);background:#0f3550;border:1px solid var(--cel2);color:#fff;padding:11px 17px;border-radius:6px;font-weight:600;display:none;z-index:99;max-width:90vw}
   .tag{display:inline-block;font-size:11px;padding:2px 7px;border-radius:7px;background:#fff;border:1px solid #b5dcf3;color:#0f3550}
   .tag.prueba{background:#fff4d6;border-color:#e8c46a;color:#7a5a00}
+  .tag.sf{background:#eef1f4;border-color:#b9c2cc;color:#38424d;font-size:11px}
+  .b-sf{background:#fff!important;color:#1d5f8a!important;border:2px solid #1d5f8a!important}
   .vt{display:grid;grid-template-columns:60px 70px 1fr 100px 90px;gap:8px;padding:8px 0;border-bottom:1px solid var(--brd);font-size:13px;align-items:center}
   #estadoBar{position:fixed;left:0;right:0;bottom:0;height:0}
   #ticket{display:none}
@@ -403,7 +405,7 @@ function abrirCobro(){if(!carrito.length)return;const t=total();PAGOS=[];
   <p class="muted">Tocá cómo paga. Si paga con dos medios, tocá los dos y repartí el importe. Si paga después, elegí <b>Cuenta corriente</b>.</p>
   <div class="medios">${MEDIOS.map(m=>`<button onclick="addPago('${m}')">${m==='Efectivo'?'💵':m.startsWith('Mercado')?'📱':m==='Transferencia'?'🏦':m==='Cuenta corriente'?'📒':'💳'} ${m}</button>`).join('')}</div>
   <div id="pagos"></div><div id="pagoRes" style="margin-top:12px"></div>
-  <div class="acc"><button class="b-no" onclick="cerrar()">Volver</button><button class="b-ok" id="bOk" onclick="confirmar()" disabled>✅ Confirmar venta</button></div>`);
+  <div class="acc"><button class="b-no" onclick="cerrar()">Volver</button><button class="b-ok b-sf" id="bSin" onclick="confirmar(false)" disabled title="Entra a la caja y descuenta stock, pero no emite factura">💵 Cobrar</button><button class="b-ok" id="bOk" onclick="confirmar(true)" disabled>🧾 Cobrar y facturar</button></div>`);
   pintarRemito();
 }
 function pintarRemito(){const b=$('#remBox');if(!b)return;if(!REM.on){b.innerHTML='';return}
@@ -429,11 +431,11 @@ function resPago(){const t=total(),s=PAGOS.reduce((a,p)=>a+(+p.monto||0),0);cons
   $('#pagoRes').innerHTML=`<div class="resu"><span>Total</span><b>${plata(t)}</b></div><div class="resu"><span>Pagado</span><b>${plata(s)}</b></div>
     ${Math.abs(falta)>0.009?`<div class="resu" style="color:var(--rojo)"><span>${falta>0?'Falta':'Sobra (bajá un importe)'}</span><b>${plata(Math.abs(falta))}</b></div>`:''}
     ${ef&&ef.recibe!=null?`<div class="resu grande" style="color:var(--oro)"><span>Vuelto</span><span>${ef.recibe<ef.monto?'falta plata':plata(vuelto)}</span></div>`:''}`;
-  $('#bOk').disabled=!PAGOS.length||Math.abs(falta)>0.009||(ef&&ef.recibe!=null&&ef.recibe<ef.monto)}
+  const off=!PAGOS.length||Math.abs(falta)>0.009||(ef&&ef.recibe!=null&&ef.recibe<ef.monto);$('#bOk').disabled=off;if($('#bSin'))$('#bSin').disabled=off}
 let guardando=false;
-async function confirmar(){if(guardando||$('#bOk').disabled)return;guardando=true;$('#bOk').disabled=true;$('#bOk').textContent='Guardando…';
+async function confirmar(facturar){if(facturar===undefined)facturar=true;if(guardando||$('#bOk').disabled)return;guardando=true;const bt=facturar?$('#bOk'):$('#bSin'),btTxt=bt.textContent;$('#bOk').disabled=true;$('#bSin').disabled=true;bt.textContent='Guardando…';
   const ef=PAGOS.find(p=>p.medio==='Efectivo');const vuelto=ef&&ef.recibe!=null?Math.max(0,ef.recibe-ef.monto):0;
-  const body={pedido_id:PEDIDO?PEDIDO.id:'',lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
+  const body={facturar,pedido_id:PEDIDO?PEDIDO.id:'',lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
     pagos:PAGOS.filter(p=>p.monto>0).map(p=>({medio:p.medio,monto:Math.round(p.monto*100)/100,...(p.medio==='Efectivo'&&p.recibe!=null?{recibe:p.recibe}:{})})),
     remito:REM.on,entrega_direccion:REM.on?REM.dir:'',entrega_notas:REM.on?REM.notas:'',
     items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio,bultos:REM.on&&it.bultos!=null?it.bultos:'',kg:REM.on&&it.kg!=null?it.kg:''}))};
@@ -442,8 +444,8 @@ async function confirmar(){if(guardando||$('#bOk').disabled)return;guardando=tru
     if(cliente.id&&body.pagos.some(p=>p.medio==='Cuenta corriente'))SALDOS[cliente.id]=(SALDOS[cliente.id]||0)+body.pagos.find(p=>p.medio==='Cuenta corriente').monto;
     venta.remito=r.remito_nro?{nro:r.remito_nro,dir:REM.dir,notas:REM.notas}:null;
     carrito=[];cliente={tipo:'cf'};PEDIDO=null;if(lista!=='minorista')cambiarLista('minorista');
-    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
-  }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bOk').textContent='✅ Confirmar venta'}
+    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(facturar?'':' · sin factura')+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
+  }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bSin').disabled=false;bt.textContent=btTxt}
   guardando=false}
 
 // ---------- ticket ----------
@@ -478,11 +480,13 @@ function imprimirRemito(v){const C=CFG,r=v.remito;const cc=(v.pagos||[]).some(p=
 async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
   const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,cliente_doc,fiscal_estado,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
   modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
-    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span></span>
-    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
+    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}</span>
+    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
     <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
 function reimprimir(id,rem){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;const v={id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva,bultos:i.bultos==null?null:+i.bultos,kg:i.kg==null?null:+i.kg})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre,doc:x.cliente_doc},fiscal:x.fiscal_estado};
   if(rem&&x.remito_nro){v.remito={nro:x.remito_nro,dir:x.entrega_direccion,notas:x.entrega_notas};imprimirRemito(v)}else imprimirTicket(v)}
+async function facturarDespues(id){if(!confirm('¿Facturar ahora la venta #'+id+'?'))return;
+  try{const r=await rpc('caja_facturar_venta',{p_id:id});toast(r.fiscal_estado==='prueba'?'Venta #'+id+' marcada para facturar (la caja está en modo prueba)':'🧾 Venta #'+id+' enviada a facturar',4500);verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
 async function anular(id){const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
   try{await rpc('caja_anular',{p_id:id,p_motivo:m||'sin motivo'});toast('Venta #'+id+' anulada');await estadoTurno();verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
 
