@@ -371,7 +371,7 @@ function datosCliente(){const t=$('#clT').value,d=$('#clD').value.replace(/\D/g,
 // ---------- entregar un pedido confirmado (mayoristas): trae cliente, lista y productos ----------
 async function pedidosEntregar(){if(!TURNO)return toast('Primero abrí el turno');
   const d0=new Date(Date.now()-3*3600e3-10*864e5).toISOString().slice(0,10),d1=new Date(Date.now()-3*3600e3+3*864e5).toISOString().slice(0,10);
-  let ps=[];try{ps=await api('pedidos_clientes?select=id,numero,cliente,cliente_id,fecha_retiro,hora_retiro,envio,direccion,total,sena,lista_precios,estado,notas,pedidos_clientes_items(producto,cantidad,unidad,precio)&estado=in.(pendiente,en_produccion,listo)&lista_precios=eq.mayorista&fecha_retiro=gte.'+d0+'&fecha_retiro=lte.'+d1+'&order=fecha_retiro,id')}catch(e){return toast('⚠️ '+e.message)}
+  let ps=[];try{ps=await api('pedidos_clientes?select=id,numero,cliente,cliente_id,fecha_retiro,hora_retiro,envio,direccion,total,sena,lista_precios,estado,notas,pedidos_clientes_items(producto,cantidad,unidad,precio,codigo)&estado=in.(pendiente,en_produccion,listo)&lista_precios=eq.mayorista&fecha_retiro=gte.'+d0+'&fecha_retiro=lte.'+d1+'&order=fecha_retiro,id')}catch(e){return toast('⚠️ '+e.message)}
   window._peds=ps;
   modal(`<h3>📦 Entregar un pedido mayorista</h3><p class="muted">Pedidos mayoristas confirmados de los últimos 10 días y los próximos 3. Al elegir uno se carga el cliente, la lista y los productos; al cobrar queda como <b>entregado</b>.</p>
   ${ps.length?ps.map(p=>`<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;margin:8px 0;cursor:pointer" onclick="cargarPedido(${p.id})">
@@ -384,7 +384,7 @@ async function cargarPedido(id){const p=(window._peds||[]).find(x=>x.id===id);if
   if(carrito.length&&!confirm('Hay productos en la venta actual. ¿Reemplazarlos por el pedido #'+p.numero+'?'))return;
   let al={};try{(await api('productos_venta_alias?select=alias,codigo')).forEach(a=>al[norm(a.alias).trim()]=a.codigo)}catch(e){}
   const falt=[];carrito=[];
-  (p.pedidos_clientes_items||[]).forEach(i=>{const n=norm(String(i.producto||'').split(' — ')[0].replace(/\s*\([^)]*\)\s*$/,'')).trim();const pr=PROD.find(x=>norm(x.nombre).trim()===n)||PROD.find(x=>x.codigo===al[n]);
+  (p.pedidos_clientes_items||[]).forEach(i=>{const n=norm(String(i.producto||'').split(' — ')[0].replace(/\s*\([^)]*\)\s*$/,'')).trim();const pr=(i.codigo&&PROD.find(x=>x.codigo===String(i.codigo)))||PROD.find(x=>norm(x.nombre).trim()===n)||PROD.find(x=>x.codigo===al[n.replace(/[^a-z0-9]+/g,' ').trim()]);
     const kg=i.unidad==='kg'||(pr&&pr.por_kg);
     if(!pr)falt.push(i.producto);
     carrito.push({codigo:pr?pr.codigo:null,nombre:pr&&!/ — |\(/.test(i.producto)?pr.nombre:i.producto,cantidad:+i.cantidad,unidad:kg?'kg':'u',precio:+i.precio||(pr?0:0),iva:pr?pr.iva:21,manual:true})});

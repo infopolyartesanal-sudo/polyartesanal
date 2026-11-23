@@ -2473,6 +2473,7 @@ async function cargarPV(){
 }
 function pvPorCod(c){return PV.prods.find(p=>p.codigo===c)}
 function pvAliasDe(k){return PV.alias.find(a=>a.alias===k)}
+function pvRecIdDe(k){const r=(D&&D.recetas||[]).find(x=>normV(x.nombre)===k);return r?r.id:null}
 function pvOpciones(){return `<datalist id="dlPV">${PV.prods.filter(p=>p.activo).map(p=>`<option value="${esc(p.codigo+' · '+p.nombre)}">`).join('')}</datalist>`}
 function pvLeer(v){v=(v||'').trim();if(!v)return null;const c=v.split('·')[0].trim();return pvPorCod(c)||PV.prods.find(p=>norm(p.nombre)===norm(v))||null}
 
@@ -2515,7 +2516,7 @@ async function vVenta(){
 async function pvGuardarVinc(k){IS.cargado=false;const l=PV._filas[k];const v=$('#pva'+k).value;const p=pvLeer(v);
   if(v.trim()&&!p)return toast('No encontré ese producto. Elegilo de la lista.');
   if(!p){const a=pvAliasDe(l.k);if(a)return pvQuitarVinc(a.alias);return toast('Elegí un producto de venta');}
-  const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:l.k,codigo:p.codigo}],true);
+  const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:l.k,codigo:p.codigo,receta_id:pvRecIdDe(l.k)}],true);
   PV.alias=PV.alias.filter(a=>a.alias!==l.k).concat([x]);toast('Vinculado ✅ '+l.nombre+' → '+p.nombre);vVenta()}
 // ---------- Fotos de productos (formato PedidosYa: JPG/PNG, 4:3, 1440×1080 a 4000×3000, < 1 MB) ----------
 const FOTO={ancho:1600,alto:1200,minAncho:1440,minAlto:1080,maxBytes:990000};
@@ -2568,20 +2569,20 @@ async function pvSinTrigo(cod){const p=pvPorCod(cod);if(!p)return;try{const [x]=
 async function pvVegano(cod){const p=pvPorCod(cod);if(!p)return;try{const [x]=await sbUpd('productos_venta','codigo=eq.'+encodeURIComponent(cod),{vegano:!p.vegano,updated_at:new Date().toISOString()});Object.assign(p,x);toast(x.vegano?'🌱 Marcado vegano':'Ya no figura como vegano',1500);vVenta()}catch(e){toast('⚠️ '+(e.message||'No se pudo guardar'),5000)}}
 async function pvQuitarVinc(alias){IS.cargado=false;await sbDel('productos_venta_alias','alias=eq.'+encodeURIComponent(alias));PV.alias=PV.alias.filter(a=>a.alias!==alias);toast('Vínculo quitado');vVenta()}
 async function pvVincularNuevo(){const n=normV($('#pvNn').value);const p=pvLeer($('#pvNp').value);if(!n)return toast('Escribí el nombre');if(!p)return toast('Elegí el producto de venta de la lista');
-  const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:n,codigo:p.codigo}],true);PV.alias=PV.alias.filter(a=>a.alias!==n).concat([x]);
+  const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:n,codigo:p.codigo,receta_id:pvRecIdDe(n)}],true);PV.alias=PV.alias.filter(a=>a.alias!==n).concat([x]);
   if(!PV.llegadas.find(l=>l.k===n))PV.llegadas.push({k:n,nombre:$('#pvNn').value.trim(),sectores:new Set(),veces:0});toast('Vinculado ✅');vVenta()}
 const IVA_OPC=[['','— sin cargar —'],['10.5','10,5 %'],['21','21 %'],['27','27 %'],['0','Exento']];
 function ivaTxt(v){return v==null||v===''?'—':(+v===0?'Exento':String(v).replace('.',',')+' %')}
 // recetas que se venden como este producto: por vínculo (alias) o porque se llaman igual
 function pvRecetasDe(cod){const p=pvPorCod(cod);const k=p?normV(p.nombre):'';
-  return D.recetas.filter(r=>{const n=normV(r.nombre);const a=pvAliasDe(n);return a?a.codigo===cod:(k&&n===k)}).sort((x,y)=>x.nombre.localeCompare(y.nombre))}
+  return D.recetas.filter(r=>{const ai=PV.alias.find(a=>a.receta_id===r.id);if(ai)return ai.codigo===cod;const n=normV(r.nombre);const a=pvAliasDe(n);return a?a.codigo===cod:(k&&n===k)}).sort((x,y)=>x.nombre.localeCompare(y.nombre))}
 function pvRecOpc(){return `<datalist id="dlRecPV">${D.recetas.map(r=>`<option value="${esc(r.nombre)}">${esc(r.sector||'')}</option>`).join('')}</datalist>`}
 async function pvVincReceta(cod){const v=($('#pvRec').value||'').trim();if(!v)return toast('Elegí una receta de la lista');
   const r=D.recetas.find(x=>norm(x.nombre)===norm(v));if(!r)return toast('No encontré esa receta. Elegila de la lista.');
   const k=normV(r.nombre);const ya=pvAliasDe(k);
   if(ya&&ya.codigo===cod)return toast('Esa receta ya está vinculada a este producto');
   if(ya){const otro=pvPorCod(ya.codigo);if(!confirm('"'+r.nombre+'" hoy se vende como "'+(otro?otro.nombre:ya.codigo)+'". ¿La paso a este producto?'))return}
-  IS.cargado=false;const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:k,codigo:cod}],true);
+  IS.cargado=false;const [x]=await sbIns('productos_venta_alias?on_conflict=alias',[{alias:k,codigo:cod,receta_id:r.id}],true);
   PV.alias=PV.alias.filter(a=>a.alias!==k).concat([x]);toast('Receta vinculada ✅');pvEditar(cod)}
 function pvEditar(cod){const p=cod?pvPorCod(cod):{codigo:'',nombre:'',tipo:'Artículo',precio_may:null,precio_lpu:null,precio_pey:null,iva:null,por_kg:false,activo:true};
   const recs=cod?pvRecetasDe(cod):[];const recK=new Set(recs.map(r=>normV(r.nombre)));
