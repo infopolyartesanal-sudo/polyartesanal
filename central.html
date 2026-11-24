@@ -7,13 +7,31 @@
 (function () {
   var BASE = 'sinoeoaktirnscdpbvdc.supabase.co', f0 = window.fetch;
   function token() { try { return localStorage.getItem('poly_sesion'); } catch (e) { return null; } }
+  function avisoSesion() {
+    if (document.getElementById('polyAvisoSesion')) return;
+    var d = document.createElement('div'); d.id = 'polyAvisoSesion';
+    d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#B71C1C;color:#fff;padding:14px 16px;font:700 16px system-ui,sans-serif;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.4)';
+    d.innerHTML = '⚠️ Se cerró la sesión: lo que cargues ahora NO se guarda.<br><button style="margin-top:8px;padding:10px 18px;border:0;border-radius:10px;background:#fff;color:#B71C1C;font:800 15px system-ui;cursor:pointer">Volver a entrar</button>';
+    d.querySelector('button').onclick = function () { location.href = 'index.html?volver=' + encodeURIComponent(location.pathname.split('/').pop() || ''); };
+    (document.body || document.documentElement).appendChild(d);
+    try { alert('⚠️ Se cerró la sesión en esta computadora. Lo último que cargaste NO se guardó. Volvé a entrar y cargalo de nuevo.'); } catch (e) {}
+  }
+  window.polyAvisoSesion = avisoSesion;
   window.fetch = function (u, o) {
     var url = typeof u === 'string' ? u : (u && u.url) || '', t = token();
+    var metodo = String((o && o.method) || (typeof u !== 'string' && u && u.method) || 'GET').toUpperCase();
+    if (url.indexOf(BASE) >= 0 && !t && metodo !== 'GET' && !/rpc\/(login|verificar_sesion|cerrar_sesion)/.test(url)) avisoSesion();
     if (!t || url.indexOf(BASE) < 0 || window.__polySinFirma) return f0.call(this, u, o);
     var o2 = Object.assign({}, o || {}), h = new Headers((o && o.headers) || (typeof u !== 'string' && u && u.headers) || {});
     h.set('x-poly-token', t); o2.headers = h;
     var self = this;
-    return f0.call(self, u, o2).catch(function (e) {
+    return f0.call(self, u, o2).then(function (resp) {
+      // Si la base rechaza por sesión vencida o sin permiso, se avisa en pantalla (antes fallaba en silencio)
+      if (metodo !== 'GET' && (resp.status === 401 || resp.status === 403 || resp.status === 400)) {
+        resp.clone().text().then(function (x) { if (resp.status !== 400 || /sesi[oó]n venci|row-level security/i.test(x)) avisoSesion(); }).catch(function () {});
+      }
+      return resp;
+    }).catch(function (e) {
       // si el navegador rechaza el encabezado, se sigue trabajando como antes
       if (e && e.name === 'TypeError') { window.__polySinFirma = true; return f0.call(self, u, o); }
       throw e;
