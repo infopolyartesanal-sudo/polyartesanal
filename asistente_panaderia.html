@@ -1021,8 +1021,12 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
 
   <!-- REGISTRO -->
   <div class="panel" id="panel-log">
-    <div class="search-bar">
-      <input class="search-input" id="search-log" placeholder="Buscar en el registro..." oninput="filterLog(this.value)" />
+    <div class="search-bar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button onclick="regMoverDia(-1)" style="padding:8px 12px;border-radius:10px;border:1px solid #ddd;background:#fff;font-weight:700;cursor:pointer">◀</button>
+      <input type="date" id="reg-fecha" onchange="REG.fecha=this.value;renderLog()" style="padding:8px;border-radius:10px;border:1px solid #ddd;font-size:15px">
+      <button onclick="regMoverDia(1)" style="padding:8px 12px;border-radius:10px;border:1px solid #ddd;background:#fff;font-weight:700;cursor:pointer">▶</button>
+      <button onclick="REG.fecha=regHoy();renderLog()" style="padding:8px 12px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer">Hoy</button>
+      <input class="search-input" id="search-log" placeholder="Buscar en el registro..." oninput="filterLog(this.value)" style="flex:1;min-width:140px" />
     </div>
     <div id="log-panel" style="flex:1;overflow-y:auto;"></div>
     <button id="log-export-btn" onclick="exportLog()"><i class="ti ti-download"></i> Exportar registro del día</button>
@@ -1296,14 +1300,65 @@ function addToLog(text, type) {
   renderLog();
 }
 
-function renderLog() {
-  const el = document.getElementById('log-panel');
-  if (log.length === 0) { el.innerHTML = '<div class="empty-state">El registro del día está vacío.<br>Las acciones se guardan automáticamente.</div>'; return; }
-  el.innerHTML = log.slice().reverse().map(e => `
-    <div class="log-entry">
-      <div class="log-time">${e.time}</div>
-      <div class="log-text"><span class="log-badge badge-${e.type}">${e.type}</span>${e.text}</div>
-    </div>`).join('');
+// ── REGISTRO: se lee de la base (lo que se cargó desde cualquier celular o computadora), con días anteriores ──
+const REG = { fecha: null, filas: [], cargando: false };
+function regHoy() { return new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10); }
+function regMoverDia(n) { const d = new Date((REG.fecha || regHoy()) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); REG.fecha = d.toISOString().slice(0, 10); renderLog(); }
+function regEsc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function regNum(x) { const n = Math.round((+x || 0) * 1000) / 1000; return String(n).replace('.', ','); }
+function regNombre(id, nom) {
+  if (nom) return nom;
+  const c = (typeof FREEZER_CATALOG !== 'undefined' && FREEZER_CATALOG.find(x => x.id === id)) || (typeof PROD_CATALOG !== 'undefined' && PROD_CATALOG.find(x => x.id === id));
+  return c ? c.nombre : id;
+}
+function regMotivo(m) {
+  m = m || '';
+  if (m === 'panaderia') return ['🏭', 'Panadería', 'receta'];
+  if (m === 'leudado' || m === 'leudado pedido') return ['🥖', 'Sacado a leudar (Cocina)', 'timer'];
+  if (m === 'madrugada') return ['🌙', 'Madrugada', 'timer'];
+  if (m.indexOf('cocina:') === 0) return ['🍳', 'Usado por Cocina · ' + m.slice(7).trim(), 'tarea'];
+  if (m === 'inventario' || m.indexOf('conteo') === 0) return ['📋', 'Conteo / ajuste de stock', 'tarea'];
+  return ['•', m, 'tarea'];
+}
+async function renderLog() {
+  const el = document.getElementById('log-panel'); if (!el) return;
+  if (!REG.fecha) REG.fecha = regHoy();
+  const inp = document.getElementById('reg-fecha'); if (inp) inp.value = REG.fecha;
+  const desde = new Date(REG.fecha + 'T00:00:00-03:00').toISOString(), hasta = new Date(new Date(REG.fecha + 'T00:00:00-03:00').getTime() + 86400e3).toISOString();
+  el.innerHTML = '<div class="empty-state">Cargando el registro…</div>';
+  const rango = 'gte.' + encodeURIComponent(desde) + '&fecha=lt.' + encodeURIComponent(hasta);
+  let prod = [], mov = [];
+  try {
+    [prod, mov] = await Promise.all([
+      sbSelect('produccion', '?sector=eq.panaderia&fecha=' + rango + '&order=fecha.asc&select=fecha,producto,tandas,unidades,estado'),
+      sbSelect('movimientos_terminados', '?tabla=in.(freezer_panaderia,camara_panaderia)&fecha=' + rango + '&order=fecha.asc&select=fecha,tabla,producto_id,nombre,campo,delta,valor,motivo,usuario')
+    ]);
+  } catch (e) {}
+  if (prod === null && mov === null) { el.innerHTML = '<div class="empty-state">No se pudo leer el registro. Revisá la conexión.</div>'; return; }
+  const filas = [];
+  (prod || []).forEach(r => filas.push({ t: r.fecha, ic: '🏭', tipo: 'receta', txt: '<b>Tanda: ' + regEsc(r.producto) + '</b> — ' + regNum(r.tandas) + ' tanda' + (+r.tandas === 1 ? '' : 's') + (r.unidades ? ' (' + regNum(r.unidades) + ')' : '') + (r.estado === 'sin_receta' ? ' <span style="color:#B71C1C">· sin receta vinculada</span>' : '') }));
+  (mov || []).forEach(m => {
+    const [ic, lab, tipo] = regMotivo(m.motivo);
+    const dep = m.tabla === 'camara_panaderia' ? 'cámara' : 'freezer';
+    let cambio = '';
+    if (m.campo && m.campo.charAt(0) === '{') { try { cambio = Object.entries(JSON.parse(m.campo)).map(([k, v]) => k.replace(/_/g, ' ') + ' ' + (v > 0 ? '+' : '') + regNum(v)).join(', '); } catch (e) {} }
+    else if (m.delta != null) cambio = (m.delta > 0 ? '+' : '') + regNum(m.delta);
+    filas.push({ t: m.fecha, ic, tipo, txt: '<b>' + regEsc(regNombre(m.producto_id, m.nombre)) + '</b> ' + regEsc(cambio) + ' en ' + dep + (m.valor != null ? ' · quedó ' + regNum(m.valor) : '') + '<div style="font-size:11px;color:#888">' + regEsc(lab) + (m.usuario ? ' · ' + regEsc(m.usuario) : '') + '</div>' });
+  });
+  // Lo anotado en este aparato ese día (temporizadores, recetas, etc.)
+  try { const loc = JSON.parse(localStorage.getItem('panaderia_log_' + new Date(REG.fecha + 'T12:00:00').toDateString()) || '[]');
+    loc.forEach(e => { const [h, mi] = String(e.time || '00:00').split(':'); filas.push({ t: REG.fecha + 'T' + (h || '00').padStart(2, '0') + ':' + (mi || '00').padStart(2, '0') + ':00-03:00', ic: '📱', tipo: e.type || 'tarea', txt: regEsc(e.text) + '<div style="font-size:11px;color:#888">en este aparato</div>' }); }); } catch (e) {}
+  filas.sort((a, b) => new Date(b.t) - new Date(a.t));
+  REG.filas = filas;
+  const dia = new Date(REG.fecha + 'T12:00:00Z').getUTCDay();
+  const tandas = (prod || []).filter(r => +r.tandas > 0), resumen = {};
+  tandas.forEach(r => { resumen[r.producto] = (resumen[r.producto] || 0) + (+r.tandas || 0); });
+  let html = '<div style="font-size:13px;color:#555;margin:4px 0 10px">' + new Date(REG.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }) + '</div>';
+  if (Object.keys(resumen).length) html += '<div class="log-entry" style="background:#F1F8E9"><div class="log-text"><b>Resumen de tandas:</b> ' + Object.entries(resumen).map(([k, v]) => regEsc(k) + ' ' + regNum(v)).join(' · ') + '</div></div>';
+  if (!filas.length) html += '<div class="empty-state">No hay nada registrado ese día.' + (dia === 0 || dia === 6 ? '<br>Sábados, domingos y feriados Panadería no trabaja.' : '') + '</div>';
+  html += filas.map(f => '<div class="log-entry log-item"><div class="log-time">' + new Date(f.t).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }) + ' ' + f.ic + '</div><div class="log-text">' + f.txt + '</div></div>').join('');
+  el.innerHTML = html;
+  const q = document.getElementById('search-log'); if (q && q.value) filterLog(q.value);
 }
 
 
@@ -2952,15 +3007,17 @@ function switchTab(name) {
   if (name === 'pedidos-panaderia' && typeof loadPedidos_panaderia === 'function') loadPedidos_panaderia();
   if (name === 'freezer' && typeof renderFreezer === 'function') renderFreezer();
   if (name === 'produccion' && typeof renderProduccion === 'function') renderProduccion();
+  if (name === 'log' && typeof renderLog === 'function') renderLog();
 }
 
 function exportLog() {
-  const text = '=== REGISTRO DE PANADERÍA - ' + new Date().toLocaleDateString('es-AR') + ' ===\n\n' +
-    log.map(e => `[${e.time}] [${e.type.toUpperCase()}] ${e.text}`).join('\n');
+  const tmp = document.createElement('div');
+  const text = '=== REGISTRO DE PANADERÍA - ' + (REG.fecha || regHoy()).split('-').reverse().join('/') + ' ===\n\n' +
+    (REG.filas || []).slice().reverse().map(f => { tmp.innerHTML = f.txt; return '[' + new Date(f.t).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' }) + '] ' + tmp.innerText.replace(/\s+/g, ' '); }).join('\n');
   const blob = new Blob([text], {type:'text/plain'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'registro_panaderia_' + new Date().toISOString().slice(0,10) + '.txt';
+  a.href = url; a.download = 'registro_panaderia_' + (REG.fecha || regHoy()) + '.txt';
   a.click(); URL.revokeObjectURL(url);
 }
 
