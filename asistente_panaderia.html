@@ -1833,7 +1833,10 @@ function buildSystemPrompt(recipeCtx) {
       const dayKey = hoy.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
       const metaHoy = cat.dias[dayKey] || null;
 
-      if (faltan > 0) {
+      const dispIA = getStockDisponible(cat.id);
+      if (faltan > 0 && dispIA > 0 && dispIA >= (metaHoy || 0)) {
+        completos.push(`- ${cat.nombre}: ✅ hay stock (${dispIA} ${cat.unidad}${metaHoy ? ', meta hoy ' + metaHoy : ''}). NO mandar a hacer hoy.`);
+      } else if (faltan > 0) {
         pendientes.push(`- ${cat.nombre}: ${hechas}/${cat.tandas} tandas hechas, faltan ${faltan} tandas (rinde ${cat.rendimiento} ${cat.unidad}/tanda). ${esSoloCamara(cat.id) ? 'Cámara' : 'Freezer + cámara'} actual: ${getStockDisponible(cat.id)} ${cat.unidad}${metaHoy ? '. Meta hoy: ' + metaHoy + ' ' + cat.unidad : ''}`);
       } else {
         completos.push(`- ${cat.nombre}: ✅ cuota semanal completa`);
@@ -2215,8 +2218,10 @@ function renderProduccion() {
     const unidadesHechas = Math.round(hechas * cat.rendimiento * 10) / 10;
     const freezer = getFreezerTotal(cat.id);
     const hoyTarget = cat.dias[dayName] || null;
-    const status = pct >= 100 ? 'ok' : pct >= 50 ? 'warn' : 'danger';
-    const badge = pct >= 100 ? '✓ Completo' : `${fmtTandas(hechas)}/${total} tandas`;
+    const dispHoy = getStockDisponible(cat.id);
+    const hayStock = dispHoy > 0 && dispHoy >= (hoyTarget || 0);
+    const status = (pct >= 100 || hayStock) ? 'ok' : pct >= 50 ? 'warn' : 'danger';
+    const badge = pct >= 100 ? '✓ Completo' : hayStock ? `✅ Hay stock · ${fmtTandas(hechas)}/${total}` : `${fmtTandas(hechas)}/${total} tandas`;
 
     html += `<div class="prod-card">
       <div class="prod-card-header">
@@ -2364,7 +2369,7 @@ function renderWelcomeSummary() {
       const item = prodState[cat.id] || { tandasHechas: 0 };
       const faltan = Math.max(0, cat.tandas - item.tandasHechas);
       const metaHoy = cat.dias[dayKey] || null;
-      if (metaHoy && faltan > 0) pendientes.push(cat.nombre + ' (' + fmtTandas(faltan) + ' tanda' + (faltan > 1 ? 's' : '') + ')');
+      if (metaHoy && faltan > 0 && getStockDisponible(cat.id) < metaHoy) pendientes.push(cat.nombre + ' (' + fmtTandas(faltan) + ' tanda' + (faltan > 1 ? 's' : '') + ')');
     }
     if (pendientes.length > 0) lines.push('🏭 Para hoy: ' + pendientes.slice(0,3).join(', ') + (pendientes.length > 3 ? ' y más...' : '') + '.');
     else if (Object.keys(prodState).length > 0) lines.push('✅ ¡Toda la producción del día completada!');
@@ -2375,6 +2380,7 @@ function renderWelcomeSummary() {
   if (typeof FREEZER_CATALOG !== 'undefined') {
     for (const cat of FREEZER_CATALOG) {
       const fp = freezerPanState[cat.id];
+      if (getStockDisponible(cat.id) > 0) continue;   // hay en freezer o cámara
       if (!fp) { criticos.push(cat.nombre); continue; }
       if (cat.subtipos && cat.subtipos.length > 0) {
         const total = Object.values(fp.subtipos || {}).reduce((a,b)=>a+b,0);
@@ -2382,7 +2388,7 @@ function renderWelcomeSummary() {
       } else if (fp.total === 0) criticos.push(cat.nombre);
     }
   }
-  if (criticos.length > 0) lines.push('🚨 Sin stock en freezer: ' + criticos.slice(0,3).join(', ') + (criticos.length > 3 ? '...' : '') + '.');
+  if (criticos.length > 0) lines.push('🚨 Sin stock: ' + criticos.slice(0,3).join(', ') + (criticos.length > 3 ? '...' : '') + '.');
 
   el.innerHTML = lines.join(' ') + (lines.length > 1 ? '<br><span style="color:#888;font-size:12px;">Escribí o hablá para que te arme el plan del día.</span>' : '');
 }
@@ -2407,13 +2413,12 @@ function checkStockAlerts() {
     for (const cat of FREEZER_CATALOG) {
       const fp = freezerPanState[cat.id];
       if (!fp) continue;
+      // Si entre freezer y cámara ya hay mercadería, no se alerta (antes mandaba a hacer cremonas/libritos que había)
+      if (getStockDisponible(cat.id) > 0) continue;
       if (cat.subtipos && cat.subtipos.length > 0) {
-        for (const sub of cat.subtipos) {
-          const val = (fp.subtipos && fp.subtipos[sub.id]) || 0;
-          if (val === 0) alerts.push('🧊 ' + sub.nombre + ' (freezer): sin stock');
-        }
-      } else if (fp.total === 0) {
-        alerts.push('🧊 ' + cat.nombre + ': sin stock en freezer');
+        alerts.push('🧊 ' + cat.nombre + ': sin stock');
+      } else if (!fp.total) {
+        alerts.push('🧊 ' + cat.nombre + ': sin stock');
       }
     }
   }
