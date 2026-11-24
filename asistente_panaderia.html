@@ -1834,7 +1834,7 @@ function buildSystemPrompt(recipeCtx) {
       const metaHoy = cat.dias[dayKey] || null;
 
       if (faltan > 0) {
-        pendientes.push(`- ${cat.nombre}: ${hechas}/${cat.tandas} tandas hechas, faltan ${faltan} tandas (rinde ${cat.rendimiento} ${cat.unidad}/tanda). Freezer actual: ${freezer} ${cat.unidad}${metaHoy ? '. Meta hoy: ' + metaHoy + ' ' + cat.unidad : ''}`);
+        pendientes.push(`- ${cat.nombre}: ${hechas}/${cat.tandas} tandas hechas, faltan ${faltan} tandas (rinde ${cat.rendimiento} ${cat.unidad}/tanda). ${esSoloCamara(cat.id) ? 'Cámara' : 'Freezer + cámara'} actual: ${getStockDisponible(cat.id)} ${cat.unidad}${metaHoy ? '. Meta hoy: ' + metaHoy + ' ' + cat.unidad : ''}`);
       } else {
         completos.push(`- ${cat.nombre}: ✅ cuota semanal completa`);
       }
@@ -1989,6 +1989,15 @@ let prodState = {};
 let freezerState = {};
 
 
+// Productos que se guardan solo en la cámara (nunca en el freezer)
+const SOLO_CAMARA = ['emp_clasicas', 'emp_integral'];
+function esSoloCamara(id) { return SOLO_CAMARA.indexOf(id) >= 0; }
+// Lo que hay para cubrir la meta: freezer + cámara (las tapas, solo cámara)
+function getStockDisponible(prodId) {
+  const cam = (typeof getCamaraTotal === 'function') ? (+getCamaraTotal(prodId) || 0) : 0;
+  if (esSoloCamara(prodId)) return cam;
+  return Math.round(((+getFreezerTotal(prodId) || 0) + cam) * 10) / 10;
+}
 function getFreezerTotal(prodId) {
   // Get total units from freezerPanState for a given product
   const map = PROD_TO_FREEZER[prodId];
@@ -2236,18 +2245,18 @@ function renderProduccion() {
             <button class="prod-tanda-btn plus" onclick="addTanda('${cat.id}')">+</button>
           </div>
         </div>
-        <div class="prod-freezer-row">
+        ${esSoloCamara(cat.id) ? (hoyTarget ? `<div class="prod-freezer-row"><span class="prod-freezer-label">🎯 Meta hoy</span><span class="prod-freezer-value">${hoyTarget} ${cat.unidad}</span></div>` : '') : `<div class="prod-freezer-row">
           <span class="prod-freezer-label">🧊 Stock freezer</span>
           <div style="text-align:right">
             <div class="prod-freezer-value">${freezer} ${cat.unidad}</div>
             ${hoyTarget ? `<div class="prod-freezer-sub">Meta hoy: ${hoyTarget} ${cat.unidad}</div>` : ''}
           </div>
-        </div>
+        </div>`}
         <div class="prod-freezer-row">
           <span class="prod-freezer-label">❄️ Stock cámara</span>
           <span class="prod-freezer-value" onclick="setCamaraExacto('${cat.id}')" style="cursor:pointer;" title="Tocá para escribir el stock exacto">${getCamaraTotal(cat.id)} ${cat.unidad} ✏️</span>
         </div>
-        ${hoyTarget ? `<div class="prod-day-detail">📅 Hoy necesitás: <strong>${hoyTarget} ${cat.unidad}</strong> — ${freezer >= hoyTarget ? '✅ cubierto' : '⚠️ faltan ' + (Math.round((hoyTarget - freezer)*10)/10) + ' ' + cat.unidad}</div>` : ''}
+        ${hoyTarget ? `<div class="prod-day-detail">📅 Hoy necesitás: <strong>${hoyTarget} ${cat.unidad}</strong> — ${getStockDisponible(cat.id) >= hoyTarget ? '✅ cubierto' : '⚠️ faltan ' + (Math.round((hoyTarget - getStockDisponible(cat.id))*10)/10) + ' ' + cat.unidad}</div>` : ''}
       </div>
     </div>`;
   }
@@ -2386,10 +2395,10 @@ function checkStockAlerts() {
   // Check produccion vs meta del día
   for (const cat of PROD_CATALOG) {
     if (cat.pedidoOnly || !cat.cuota) continue;
-    const freezer = getFreezerTotal(cat.id);
+    const disp = getStockDisponible(cat.id);
     const metaHoy = cat.dias[dayName] || null;
-    if (metaHoy && freezer < metaHoy) {
-      alerts.push(cat.nombre + ': meta hoy ' + metaHoy + ' ' + cat.unidad + ', freezer tiene ' + freezer);
+    if (metaHoy && disp < metaHoy) {
+      alerts.push(cat.nombre + ': meta hoy ' + metaHoy + ' ' + cat.unidad + ', hay ' + disp + (esSoloCamara(cat.id) ? ' en cámara' : ' (freezer + cámara)'));
     }
   }
 
@@ -2409,7 +2418,7 @@ function checkStockAlerts() {
     }
   }
 
-  updateAlertUI(alerts, 'tab-produccion', '⚠️ Stock crítico en freezer:');
+  updateAlertUI(alerts, 'tab-produccion', '⚠️ Stock crítico:');
   renderWelcomeSummary();
 }
 
@@ -2650,8 +2659,7 @@ const FREEZER_CATALOG = [
   { id: 'bizcochitos', nombre: 'Bizcochitos Manteca y Grasa', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
   { id: 'palitos_queso', nombre: 'Palitos de Queso Hojaldre', unidad: 'kg', unidadesPorTanda: 8, subtipos: [] },
   { id: 'palmeritas', nombre: 'Palmeritas', unidad: 'kg', unidadesPorTanda: 4, subtipos: [] },
-  { id: 'emp_clasicas', nombre: 'Tapas Empanadas Clásicas', unidad: 'u', unidadesPorTanda: 80, subtipos: [] },
-  { id: 'emp_integral', nombre: 'Tapas Empanadas Integral', unidad: 'u', unidadesPorTanda: 15, subtipos: [] },
+  // Las tapas de empanada NO van al freezer: se guardan en la cámara (ver SOLO_CAMARA)
 ];
 
 // Mapa de produccion → freezer
@@ -2665,8 +2673,6 @@ const PROD_TO_FREEZER = {
   'bizcochitos': { id: 'bizcochitos' },
   'palitos_queso': { id: 'palitos_queso' },
   'palmeritas': { id: 'palmeritas' },
-  'emp_clasicas': { id: 'emp_clasicas' },
-  'emp_integral': { id: 'emp_integral' },
 };
 
 let freezerPanState = {}; // { productId: { total, subtipos: { subtipId: cantidad } } }
@@ -2814,6 +2820,7 @@ function loadProdDestino() {
 }
 const DESTINO_DEFAULT_CAMARA = ['pan_blanco','pan_boniato','pan_integral_sinsal','emp_clasicas','emp_integral'];
 function getProdDestino(id) {
+  if (typeof esSoloCamara === 'function' && esSoloCamara(id)) return 'camara';   // las tapas van siempre a la cámara
   if (prodDestino[id]) return prodDestino[id] === 'camara' ? 'camara' : 'freezer';
   return DESTINO_DEFAULT_CAMARA.includes(id) ? 'camara' : 'freezer';
 }
