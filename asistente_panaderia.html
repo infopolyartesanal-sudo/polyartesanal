@@ -2794,7 +2794,7 @@ function loadProdDestino() {
     renderProduccion();
   }).catch(() => {});
 }
-const DESTINO_DEFAULT_CAMARA = ['pan_blanco','pan_boniato','pan_integral_sinsal'];
+const DESTINO_DEFAULT_CAMARA = ['pan_blanco','pan_boniato','pan_integral_sinsal','emp_clasicas','emp_integral'];
 function getProdDestino(id) {
   if (prodDestino[id]) return prodDestino[id] === 'camara' ? 'camara' : 'freezer';
   return DESTINO_DEFAULT_CAMARA.includes(id) ? 'camara' : 'freezer';
