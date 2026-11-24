@@ -45,21 +45,30 @@
         return cant(q, x.unidad) + ' ' + limpiar(nomX);
       }).filter(Boolean);
     }
+    // Rinde que entiende la calculadora: arranca con el número de la base ("1 kg", "1 unidad", "24 u por tanda")
+    function rindeCalc(g, original) {
+      var ut = +g.unidades_tanda || 0, kg = String(g.unidad_venta || '').toLowerCase() === 'kg';
+      var hab = original ? ' (tanda habitual: ' + String(original).replace(/^Por unidad · /, '') + ')' : '';
+      if (ut > 0) return String(ut).replace('.', ',') + (kg ? ' kg' : ' unidades') + ' por tanda' + hab;
+      var rend = +g.rendimiento || 1;
+      if (rend !== 1 && /\d\s*(kg|gm|gr|g)\b/i.test(String(original || ''))) kg = true;   // ej. 'Masa seca: 8 kg'
+      if (rend === 1) return (kg ? '1 kg — receta por kilo' : '1 unidad — receta por unidad') + ', usá la calculadora 🧮' + hab;
+      return String(rend).replace('.', ',') + (kg ? ' kg' : ' unidades') + hab;
+    }
     var porId = {}; rows.forEach(function (g) { porId[g.id] = g; });
     var porNombre = {}; rows.forEach(function (g) { var k = norm(g.nombre); if (k && !porNombre[k]) porNombre[k] = g; });
     var porProducto = {}; map.forEach(function (m) { if (m.receta_id && porId[m.receta_id]) porProducto[norm(m.producto)] = porId[m.receta_id]; });
     var cambio = false;
-    var REEMPLAZA = { cocina: 1 };   // sectores donde Gestión reemplaza la receta vieja del sector
+    var REEMPLAZA = { cocina: 1, pasteleria: 1 };   // sectores donde Gestión reemplaza la receta vieja del sector
     if (REEMPLAZA[sector]) recipes.forEach(function (r) {
       if (r.gestion) return;
       var g = porProducto[norm(r.name)] || porNombre[norm(r.name)]; if (!g) return;
       var ings = lineas(g); if (!ings.length) return;
-      var porUnidad = !(+g.unidades_tanda > 0) && (+g.rendimiento || 1) === 1;
-      if (!r._rendOriginal) r._rendOriginal = r.rendimiento || '';
+      if (r._rendOriginal == null) r._rendOriginal = r.rendimiento || '';
       r.ingredients = ings;
       var pasos = Array.isArray(g.pasos) ? g.pasos.filter(function (p) { return p && String(p).trim(); }) : [];
       if (pasos.length) r.steps = pasos;
-      r.rendimiento = porUnidad ? 'Por unidad' + (r._rendOriginal ? ' · ' + r._rendOriginal : '') : r._rendOriginal;
+      r.rendimiento = rindeCalc(g, r._rendOriginal);
       r.deGestion = true; cambio = true;
     });
     var propias = recipes.filter(function (r) { return !r.gestion; });
@@ -75,7 +84,7 @@
       if (!ings.length) return;
       nuevas.push({ id: 900000 + i, gestion: true, name: nom.charAt(0).toUpperCase() + nom.slice(1), ingredients: ings,
         steps: Array.isArray(g.pasos) ? g.pasos.filter(function (p) { return p && String(p).trim(); }) : [],
-        rendimiento: rinde + (kg ? ' kg' : ' unidades') + (ut > 0 ? ' por tanda' : ''), deposito: 'local', cookTime: null });
+        rendimiento: rindeCalc(g, ''), deposito: 'local', cookTime: null });
     });
     recipes.length = 0; propias.concat(nuevas).forEach(function (r) { recipes.push(r); });
     if ((nuevas.length || cambio) && typeof renderRecipes === 'function') renderRecipes();
