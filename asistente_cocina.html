@@ -2219,11 +2219,19 @@ function renderStock(filterQ) {
   // Group by deposito type
   const groups = { local: [], heladera: [], freezer: [], estante: [], pedido: [] };
   for (const r of recipes) {
+    if (/^(masa|tapas?) (de )?empanadas?/i.test(r.name)) continue;   // las tapas son de la cámara de Panadería, no de Cocina
     const dep = r.deposito || 'local';
     if (groups[dep]) groups[dep].push(r);
   }
 
   let html = '';
+  // Tapas: las hace Panadería y quedan en su cámara; se descuentan solas al registrar empanadas y canastitas
+  const camTapas = (typeof conectorCamara !== 'undefined' ? conectorCamara : []).filter(c => c.id === 'emp_clasicas' || c.id === 'emp_integral');
+  if (!filterQ || 'tapas empanadas'.includes(filterQ)) {
+    html += '<div class="stock-section-title">🥟 Tapas (cámara de Panadería)</div><div class="stock-card"><div class="stock-card-header"><div>'
+      + (camTapas.length ? camTapas.map(c => '<b>' + c.nombre + ':</b> ' + (+c.cantidad || 0) + ' u').join('<br>') : 'Cargando…')
+      + '<div style="font-size:12px;color:#888;margin-top:4px">Se descuentan solas al registrar empanadas y canastitas.</div></div></div></div>';
+  }
   const sections = [
     { key: 'heladera', label: '❄️ Heladera' },
     { key: 'freezer',  label: '🧊 Freezer' },
@@ -2682,6 +2690,7 @@ async function loadConectorPanaderia() {
 }
 
 function renderConectorPanaderia() {
+  try { const q = document.getElementById('search-stock'); renderStock(q ? q.value : ''); } catch (e) {}
   const el = document.getElementById('conector-panaderia');
   if (!el) return;
   let html = '';
@@ -3313,6 +3322,8 @@ window.polyEtiquetas = function (p, its) {
 };
 </script>
 <script src="calc_receta.js?v=1"></script>
-<script src="recetas_gestion.js?v=1"></script>
+<script src="recetas_gestion.js?v=2"></script>
+<script src="registro_sector.js?v=1"></script>
+<script>window.addEventListener('load', function () { if (window.registroSector) registroSector({ sector:'cocina', panel:'log-panel', tab:'log', tablas:['cocina_stock'], motivoLike:'cocina:*', leudado:true }); });</script>
 </body>
 </html>
