@@ -2445,16 +2445,17 @@ adjustStock = async function(name, dep, delta) {
           g.it.map(function (i) {
             return '<div class="pc-it"><b>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + '</b>' +
               (i.estado === 'pendiente' ? '<button class="pc-btn" style="background:#1565C0" onclick="pcAvanzar(' + i.id + ',\'recibido\')">👍 Recibido</button>' : '<span style="font-size:12px;color:#1565C0">✓ recibido</span>') +
-              '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button></div>';
+              '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button><button class="pc-btn" style="background:#00838F" onclick="pcAvanzar(' + i.id + ',\'en_local\')">🏪 Ya está en el local</button></div>';
           }).join('') + '</div>';
       }).join('') : '<p style="color:#888;text-align:center;padding:20px">No hay pedidos pendientes 👌</p>');
     ov.style.display = 'flex';
   }
   window.pcAvanzar = function (id, estado) {
     if (estado === 'despachado' && !confirm('¿Despachar al Salón? Se manda a Recepción del Salón para sumar a su stock.')) return;
+    if (estado === 'en_local' && !confirm('¿Ya está en el local? El pedido queda listo y NO se vuelve a sumar al stock del Salón (porque ya lo mandaste con la producción).')) return;
     fetch(SB + 'rpc/pedido_item_avanzar', { method: 'POST', headers: H, body: JSON.stringify({ p_item: id, p_estado: estado }) })
       .then(function (r) { return r.json(); })
-      .then(function () { if (typeof addToLog === 'function') addToLog((estado === 'recibido' ? '👍 Pedido de cliente recibido' : '🚚 Pedido de cliente despachado al Salón') + ' (#' + id + ')', 'pedido'); return cargar(); })
+      .then(function () { if (typeof addToLog === 'function') addToLog((estado === 'recibido' ? '👍 Pedido de cliente recibido' : estado === 'en_local' ? '🏪 Pedido de cliente: ya estaba en el local' : '🚚 Pedido de cliente despachado al Salón') + ' (#' + id + ')', 'pedido'); return cargar(); })
       .catch(function () { alert('No se pudo guardar. Revisá la conexión y probá de nuevo.'); });
   };
   // ── En la solapa "Pedidos": pedidos de clientes pendientes + entregados (para reimprimir el remito) ──
@@ -2481,7 +2482,7 @@ adjustStock = async function(name, dep, delta) {
         '<div style="font-size:12px;color:#555;margin:3px 0 4px">' + (p.envio ? '🛵 Envío a ' + esc(p.direccion) : '🏪 Retira en el local') + (p.notas ? ' · 📝 ' + esc(p.notas) : '') + '</div>' +
         g.it.map(function (i) { return '<div class="pc-it"><b>' + esc(i.producto) + ' × ' + (+i.cantidad) + ' ' + esc(i.unidad || 'u') + '</b>' +
           (i.estado === 'pendiente' ? '<button class="pc-btn" style="background:#1565C0" onclick="pcAvanzar(' + i.id + ',\'recibido\')">👍 Recibido</button>' : '<span style="font-size:12px;color:#1565C0">✓ recibido</span>') +
-          '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button></div>'; }).join('') +
+          '<button class="pc-btn" style="background:#2E7D32" onclick="pcAvanzar(' + i.id + ',\'despachado\')">🚚 Despachar al Salón</button><button class="pc-btn" style="background:#00838F" onclick="pcAvanzar(' + i.id + ',\'en_local\')">🏪 Ya está en el local</button></div>'; }).join('') +
         '<div style="margin-top:6px"><button class="pc-btn" style="background:#555" onclick="pcRemito(' + p.id + ')">🖨 Remito</button></div></div>'; }).join('')
       : '<div style="font-size:13px;color:#888;padding:6px 0 10px">No hay pedidos de clientes pendientes 👌</div>';
     h += '<button onclick="pcVerHist()" style="width:100%;margin:6px 0;padding:9px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#444;font:600 13px system-ui,sans-serif;cursor:pointer">' + (verHist ? '▴ Ocultar entregados' : '📦 Ver pedidos entregados (últimos 45 días) · reimprimir remitos') + '</button>';
