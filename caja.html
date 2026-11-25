@@ -224,6 +224,7 @@
     #ticket .c{text-align:center}#ticket .r{text-align:right}#ticket hr{border:0;border-top:1px dashed #000;margin:4px 0}
     #ticket table{width:100%;border-collapse:collapse}#ticket td{vertical-align:top;padding:1px 0}
     #ticket .g{font-size:16px;font-weight:900}#ticket hr{border-top:2px dashed #000}
+    #ticket.raster{width:72mm;padding:0}#ticket.raster img{display:block;width:72mm;height:auto;image-rendering:pixelated}
     #ticket.a4{page:remito;width:auto;padding:0;font:400 12px/1.35 Arial,sans-serif}
     #ticket.a4 .hoja{padding:2mm;break-inside:avoid}
     #ticket.a4 .corte{border-top:1px dashed #000;margin:10mm 0 8mm;text-align:center;font-size:10px}
@@ -478,21 +479,42 @@ async function confirmar(facturar){if(facturar===undefined)facturar=true;if(guar
   guardando=false}
 
 // ---------- ticket ----------
-function imprimirTicket(v){const C=CFG;$('#ticket').className='';const prueba=(v.fiscal||'')!=='autorizada';
+// Se dibuja como imagen en blanco y negro puro a la resolución de la térmica (203 dpi, 576 puntos = 72 mm),
+// así el driver no "grisea" los bordes de las letras y sale negro y nítido como el ticket de Ayres.
+function ticketRaster(L){const W=576,M=6,F='Arial,Helvetica,sans-serif';
+  const cv=document.createElement('canvas');cv.width=W;cv.height=8000;const g=cv.getContext('2d');
+  g.fillStyle='#fff';g.fillRect(0,0,W,cv.height);g.fillStyle='#000';g.textBaseline='top';let y=10;
+  const fnt=(s,b)=>{g.font=(b===false?'':'bold ')+s+'px '+F};
+  const wrap=(t,ancho)=>{const out=[];String(t).split('\n').forEach(par=>{let l='';par.split(' ').forEach(w=>{const p=l?l+' '+w:w;if(g.measureText(p).width<=ancho||!l)l=p;else{out.push(l);l=w}});out.push(l)});return out};
+  L.forEach(x=>{const s=x.s||26,lh=Math.round(s*1.28);
+    if(x.hr){for(let i=M;i<W-M;i+=14)g.fillRect(i,y+6,8,3);y+=16;return}
+    if(x.gap){y+=x.gap;return}
+    if(x.qr){try{const q=qrcode(0,'M');q.addData(x.qr);q.make();const n=q.getModuleCount(),k=Math.floor(260/n),ox=Math.round((W-n*k)/2);
+      for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(q.isDark(r,c))g.fillRect(ox+c*k,y+r*k,k,k);y+=n*k+8}catch(e){}return}
+    fnt(s,x.b);
+    if(x.r!=null){const rw=g.measureText(x.r).width;g.fillText(x.r,W-M-rw,y);wrap(x.l||'',W-2*M-rw-16).forEach(t=>{g.fillText(t,M,y);y+=lh});return}
+    wrap(x.t||'',W-2*M).forEach(t=>{const tw=g.measureText(t).width;g.fillText(t,x.a==='c'?(W-tw)/2:M,y);y+=lh})});
+  y+=24;const out=document.createElement('canvas');out.width=W;out.height=y;const o=out.getContext('2d');o.drawImage(cv,0,0);
+  const d=o.getImageData(0,0,W,y),p=d.data;for(let i=0;i<p.length;i+=4){const v=(p[i]*.3+p[i+1]*.59+p[i+2]*.11)<170?0:255;p[i]=p[i+1]=p[i+2]=v;p[i+3]=255}
+  o.putImageData(d,0,0);return out.toDataURL('image/png')}
+function imprimirRaster(L){const t=$('#ticket');t.className='raster';t.innerHTML='';const img=new Image();
+  img.onload=()=>setTimeout(()=>window.print(),60);img.src=ticketRaster(L);t.appendChild(img)}
+function imprimirTicket(v){const C=CFG;const prueba=(v.fiscal||'')!=='autorizada';
   const iva={};v.items.forEach(it=>{const a=it.iva==null?21:+it.iva;const s=it.cantidad*it.precio;iva[a]=(iva[a]||0)+s});
   const ivaCont=Object.entries(iva).reduce((a,[al,s])=>a+s-s/(1+al/100),0);
-  $('#ticket').innerHTML=`<div class="c g">${esc(C.nombre_fantasia||'Poly Artesanal')}</div>${C.razon_social&&C.razon_social!==C.nombre_fantasia?`<div class="c">${esc(C.razon_social)}</div>`:''}
-  <div class="c">${esc(C.domicilio||'')}</div>${C.cuit?`<div class="c">CUIT ${esc(C.cuit)} · IIBB ${esc(C.iibb||'')}</div><div class="c">${esc(C.cond_iva||'')} · Inicio act. ${esc(C.inicio_actividades||'')}</div>`:''}
-  <hr><div class="c g">${prueba?'COMPROBANTE NO VÁLIDO COMO FACTURA':'FACTURA '+v.cbte.letra+' (Cód. '+(CBTE_COD[v.cbte.tipo]||'')+')'}</div>${prueba?'':`<div class="c g">N° ${String(v.cbte.pto).padStart(5,'0')}-${String(v.cbte.nro).padStart(8,'0')}</div>`}
-  <div>Venta #${v.id} · ${v.fecha.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</div>
-  ${v.cliente&&(v.cliente.nombre||v.cliente.doc)?`<div>${esc(v.cliente.nombre||'')} ${v.cliente.doc?'· '+esc(v.cliente.doc):''}</div>`:'<div>A CONSUMIDOR FINAL</div>'}
-  <hr><table>${v.items.map(it=>`<tr><td colspan="2">${esc(it.nombre)}</td></tr><tr><td>${it.unidad==='kg'?kgTxt(it.cantidad)+' kg':it.cantidad+' u'} x ${plata(it.precio)}</td><td class="r">${plata(it.cantidad*it.precio)}</td></tr>`).join('')}</table>
-  <hr><table><tr><td class="g">TOTAL</td><td class="r g">${plata(v.total)}</td></tr>${v.pagos.map(p=>`<tr><td>${esc(p.medio)}</td><td class="r">${plata(p.medio==='Efectivo'&&p.recibe!=null?p.recibe:p.monto)}</td></tr>`).join('')}${v.vuelto?`<tr><td>Vuelto</td><td class="r">${plata(v.vuelto)}</td></tr>`:''}</table>
-  ${!prueba&&v.cbte.letra==='A'?`<hr><table><tr><td>Neto gravado</td><td class="r">${plata(v.cbte.neto)}</td></tr>${(v.cbte.alicuotas||[]).map(a=>`<tr><td>IVA ${({3:'0',4:'10,5',5:'21',6:'27',8:'5',9:'2,5'})[a.Id]||''}%</td><td class="r">${plata(a.Imp)}</td></tr>`).join('')}</table>`:''}
-  <hr><div style="font-size:11px">Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</div><div style="font-size:11px">IVA Contenido: ${plata(ivaCont)}</div><div style="font-size:11px">Otros Impuestos Nacionales Indirectos: $ 0</div>
-  ${prueba?'':`<hr><div>CAE: ${esc(v.cbte.cae)}</div><div>Vto. CAE: ${v.cbte.cae_vto?v.cbte.cae_vto.split('-').reverse().join('/'):''}</div>${v.cbte.qr&&qrImg(v.cbte.qr)?`<div class="c" style="margin-top:4px"><img src="${qrImg(v.cbte.qr)}" style="width:32mm;height:32mm;image-rendering:pixelated"></div>`:''}<div class="c" style="font-size:11px">Comprobante autorizado por ARCA</div>`}
-  <hr><div class="c">¡Gracias por elegirnos!</div><div class="c">@polyartesanal</div>`;
-  setTimeout(()=>window.print(),80)}
+  const L=[],c=(t,s,b)=>L.push({t,a:'c',s,b}),l=(t,s,b)=>L.push({t,s,b}),lr=(a,b,s)=>L.push({l:a,r:b,s}),hr=()=>L.push({hr:1});
+  c(C.nombre_fantasia||'Poly Artesanal',38);if(C.razon_social&&C.razon_social!==C.nombre_fantasia)c(C.razon_social);
+  c(C.domicilio||'');if(C.cuit){c('CUIT '+C.cuit+' · IIBB '+(C.iibb||''));c((C.cond_iva||'')+' · Inicio act. '+(C.inicio_actividades||''))}
+  hr();if(prueba)c('COMPROBANTE NO VÁLIDO COMO FACTURA',30);else{c('FACTURA '+v.cbte.letra+' (Cód. '+(CBTE_COD[v.cbte.tipo]||'')+')',32);c('N° '+String(v.cbte.pto).padStart(5,'0')+'-'+String(v.cbte.nro).padStart(8,'0'),32)}
+  l('Venta #'+v.id+' · '+v.fecha.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}));
+  l(v.cliente&&(v.cliente.nombre||v.cliente.doc)?((v.cliente.nombre||'')+(v.cliente.doc?' · '+v.cliente.doc:'')):'A CONSUMIDOR FINAL');
+  hr();v.items.forEach(it=>{l(it.nombre);lr((it.unidad==='kg'?kgTxt(it.cantidad)+' kg':it.cantidad+' u')+' x '+plata(it.precio),plata(it.cantidad*it.precio))});
+  hr();lr('TOTAL',plata(v.total),36);v.pagos.forEach(p=>lr(p.medio,plata(p.medio==='Efectivo'&&p.recibe!=null?p.recibe:p.monto)));if(v.vuelto)lr('Vuelto',plata(v.vuelto));
+  if(!prueba&&v.cbte.letra==='A'){hr();lr('Neto gravado',plata(v.cbte.neto));(v.cbte.alicuotas||[]).forEach(a=>lr('IVA '+(({3:'0',4:'10,5',5:'21',6:'27',8:'5',9:'2,5'})[a.Id]||'')+'%',plata(a.Imp)))}
+  hr();l('Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)',22);l('IVA Contenido: '+plata(ivaCont),22);l('Otros Impuestos Nacionales Indirectos: $ 0',22);
+  if(!prueba){hr();l('CAE: '+(v.cbte.cae||''));l('Vto. CAE: '+(v.cbte.cae_vto?v.cbte.cae_vto.split('-').reverse().join('/'):''));if(v.cbte.qr){L.push({gap:4});L.push({qr:v.cbte.qr})}c('Comprobante autorizado por ARCA',22)}
+  hr();c('¡Gracias por elegirnos!');c('@polyartesanal');
+  imprimirRaster(L)}
 
 function nroRem(n){return '0001-'+String(n).padStart(8,'0')}
 function imprimirRemito(v){const C=CFG,r=v.remito;const cc=(v.pagos||[]).some(p=>p.medio==='Cuenta corriente');
