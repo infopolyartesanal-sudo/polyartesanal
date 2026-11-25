@@ -412,6 +412,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <a href="#compras">🛒 Compras</a>
   <a href="#finanzas">💰 Finanzas</a>
   <a href="#mantenimiento">🔧 Mantenimiento</a>
+  <a href="#certificados">📜 Certificados</a>
   <a href="#estadisticas">📊 Estadísticas</a>
   <a href="#mayoristas" data-grupo="mayoristas comunidad campanias contenidos instagram cuentas">⭐ Comunidad</a>
   <a href="#rrhh">👥 RRHH</a>
@@ -827,7 +828,7 @@ async function depGuardar(){
 }
 
 // ================= RUTEO =================
-const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,mantenimiento:vMantenimiento,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,cuentas:vCuentas,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
+const VISTAS={inicio:vInicio,recetas:vRecetas,facturas:vFacturas,produccion:vProduccion,inventario:vInventario,invsalon:vInvSalon,depositos:vDepositos,churrero:vChurrero,venta:vVenta,papelera:vPapelera,compras:vCompras,finanzas:vFinanzas,mantenimiento:vMantenimiento,certificados:vCertificados,estadisticas:vEstadisticas,mayoristas:vMayoristas,comunidad:vComunidad,cuentas:vCuentas,campanias:vCampanias,contenidos:vContenidos,instagram:vInstagram,rrhh:vRRHH,usuarios:vUsuarios};
 let vistaActual='inicio';
 function ir(){vistaActual=(location.hash||'#inicio').slice(1);if(!VISTAS[vistaActual])vistaActual='inicio';
   document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+vistaActual||(a.dataset.grupo||'').split(' ').includes(vistaActual)));
@@ -968,6 +969,48 @@ async function mantGuardar(id){
       catch(e){cerrarModal();vMantenimiento();return toast('⚠️ El arreglo se guardó pero la factura no se pudo subir: '+e.message,7000)}}
     cerrarModal();toast(arch?'Arreglo y factura guardados ✅':'Arreglo guardado ✅');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000);const b=$('#bMG');if(b){b.disabled=false;b.textContent='💾 Guardar'}}}
 async function mantBorrar(id){try{await sbDel('facturas','id=eq.'+id);D.facturas=D.facturas.filter(f=>f.id!==id);toast('Borrado');vMantenimiento()}catch(e){toast('⚠️ '+e.message,5000)}}
+// ================= CERTIFICADOS =================
+const CERT_CAT=[['habilitacion','🏛️ Habilitación'],['manipulacion','🧑‍🍳 Manipulación de alimentos'],['tanques','💧 Limpieza de tanques'],['campanas','🔥 Limpieza de campanas'],['fumigacion','🐀 Fumigación y desratización'],['arca','📄 Formularios ARCA']];
+const CERT={L:null,cargando:false};
+async function certCargar(){CERT.cargando=true;try{CERT.L=await sb('certificados?select=id,categoria,titulo,emitido,vence,notas,nombre,tipo,bytes&order=vence.asc.nullslast,id.desc')||[]}catch(e){CERT.L=[];toast('⚠️ '+e.message,5000)}CERT.cargando=false}
+function certEstado(c){if(!c.vence)return {t:'sin vencimiento',k:'neu',o:3};const d=Math.round((new Date(c.vence+'T12:00:00')-new Date(hoy()+'T12:00:00'))/864e5);
+  if(d<0)return {t:'vencido hace '+(-d)+' día'+(d===-1?'':'s'),k:'mal',o:0};if(d<=30)return {t:'vence en '+d+' día'+(d===1?'':'s'),k:'med',o:1};return {t:'vigente',k:'ok',o:2}}
+function vCertificados(){
+  if(!CERT.L){if(!CERT.cargando)certCargar().then(()=>{if(location.hash.startsWith('#certificados'))vCertificados()});$('#app').innerHTML='<h2>📜 Certificados</h2><div class="cargando">Cargando…</div>';return}
+  const venc=CERT.L.filter(c=>certEstado(c).o<=1);
+  $('#app').innerHTML=`<h2>📜 Certificados</h2>
+  <p class="muted">Habilitación, certificados y constancias del local, con su archivo. Te avisa cuando algo está por vencer.</p>
+  ${venc.length?`<div class="card" style="border-left:4px solid var(--rojo);margin-bottom:12px"><b>⚠️ Para renovar:</b> ${venc.map(c=>`${esc(c.titulo)} (<span class="chip ${certEstado(c).k}">${certEstado(c).t}</span>)`).join(' · ')}</div>`:''}
+  <div class="grid g2" style="align-items:start">${CERT_CAT.map(([k,n])=>{const L=CERT.L.filter(c=>c.categoria===k);
+    return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="margin:0">${n}</h3><button class="btn sec peq" onclick="certForm(null,'${k}')">➕ Cargar</button></div>
+    ${L.length?`<table style="margin-top:8px">${L.map(c=>{const e=certEstado(c);return `<tr class="click" onclick="certForm(${c.id})"><td><b>${esc(c.titulo)}</b>${c.notas?`<div class="muted" style="font-size:12px">${esc(c.notas)}</div>`:''}
+      <div class="muted" style="font-size:12px">${c.emitido?'Emitido '+fechaCorta(c.emitido):''}${c.emitido&&c.vence?' · ':''}${c.vence?'Vence '+fechaCorta(c.vence):''}</div></td>
+      <td style="text-align:right;white-space:nowrap"><span class="chip ${e.k}">${e.t}</span> ${c.nombre?`<button class="btn sec peq" title="Ver archivo" onclick="event.stopPropagation();certVer(${c.id})">📎 Ver</button>`:''}</td></tr>`}).join('')}</table>`:'<p class="muted" style="margin:8px 0 0">Todavía no hay nada cargado.</p>'}</div>`}).join('')}</div>`}
+function certForm(id,cat){const c=id?CERT.L.find(x=>x.id===id):null;const v=(k,d='')=>c&&c[k]!=null?c[k]:d;
+  modal(`<h2>${c?'Editar':'Cargar'} certificado</h2>
+  <label>Sección</label><select id="cC">${CERT_CAT.map(([k,n])=>`<option value="${k}" ${(c?c.categoria:cat)===k?'selected':''}>${n}</option>`).join('')}</select>
+  <label>Nombre</label><input id="cT" placeholder="ej: Certificado de fumigación noviembre" value="${esc(v('titulo'))}">
+  <div class="fila"><div><label>Fecha de emisión</label><input id="cE" type="date" value="${esc(v('emitido'))}"></div><div><label>Vence (si tiene)</label><input id="cV" type="date" value="${esc(v('vence'))}"></div></div>
+  <label>Notas</label><input id="cN" placeholder="ej: empresa, N° de expediente, a quién corresponde" value="${esc(v('notas'))}">
+  <label>Archivo (foto o PDF)</label>
+  ${c&&c.nombre?`<div style="margin:4px 0 6px"><span class="chip neu">📎 ${esc(c.nombre)} <a href="#" onclick="event.preventDefault();certVer(${c.id})">Ver</a></span> <span class="muted" style="font-size:12px">Si subís otro, reemplaza a este.</span></div>`:''}
+  <input id="cA" type="file" accept="image/*,application/pdf"><p class="muted" style="margin:2px 0 0;font-size:12px">Podés sacarle una foto con el celular o subir el PDF.</p>
+  <div class="acciones" style="margin-top:12px"><button class="btn" id="bCG">💾 Guardar</button>${c?`<button class="btn rojo" onclick="confirmar('¿Borrar este certificado y su archivo?',()=>certBorrar(${c.id}))">Borrar</button>`:''}</div>`);
+  $('#bCG').onclick=()=>certGuardar(id)}
+async function certGuardar(id){const t=$('#cT').value.trim();if(!t)return toast('Poné un nombre');
+  let a=null;try{a=await mantLeerArchivo(($('#cA').files||[])[0])}catch(e){return toast('⚠️ '+e.message,5000)}
+  const row={categoria:$('#cC').value,titulo:t,emitido:$('#cE').value||null,vence:$('#cV').value||null,notas:$('#cN').value.trim()||null,updated_at:new Date().toISOString()};
+  if(a)Object.assign(row,{nombre:a.nombre,tipo:a.tipo,bytes:a.bytes,datos:a.datos});
+  $('#bCG').disabled=true;$('#bCG').textContent='Guardando…';
+  try{const sel='?select=id,categoria,titulo,emitido,vence,notas,nombre,tipo,bytes';
+    if(id){const [x]=await sb('certificados'+sel+'&id=eq.'+id,{method:'PATCH',body:row,prefer:'return=representation'});Object.assign(CERT.L.find(c=>c.id===id),x)}
+    else{const [x]=await sb('certificados'+sel,{method:'POST',body:[row],prefer:'return=representation'});CERT.L.push(x)}
+    cerrarModal();toast('Guardado ✅');vCertificados()}catch(e){toast('⚠️ '+e.message,5000);const b=$('#bCG');if(b){b.disabled=false;b.textContent='💾 Guardar'}}}
+async function certBorrar(id){try{await sbDel('certificados','id=eq.'+id);CERT.L=CERT.L.filter(c=>c.id!==id);toast('Borrado');vCertificados()}catch(e){toast('⚠️ '+e.message,5000)}}
+async function certVer(id){const w=window.open('','_blank');try{
+  const [a]=await sb('certificados?select=nombre,tipo,datos&id=eq.'+id);if(!a||!a.datos)throw new Error('No tiene archivo');
+  const b=atob(a.datos),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+  const url=URL.createObjectURL(new Blob([u],{type:a.tipo||'application/octet-stream'}));if(w)w.location=url;else location.href=url}catch(e){if(w)w.close();toast('⚠️ '+e.message,5000)}}
 // ================= INICIO =================
 function ventasDia(ymd){return D.cierres.filter(c=>diaLocal(c.fecha)===ymd).reduce((a,c)=>a+(+c.total||0),0)}
 function ventasRango(a,b){return D.cierres.filter(c=>{const d=diaLocal(c.fecha);return d>=a&&d<=b}).reduce((s,c)=>s+(+c.total||0),0)}
