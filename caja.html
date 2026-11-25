@@ -270,6 +270,7 @@
 <div id="ov"><div id="box"></div></div>
 <div id="toast"></div>
 <div id="ticket"></div>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 
 <script>
 const SB='https://sinoeoaktirnscdpbvdc.supabase.co/rest/v1/';
@@ -277,6 +278,12 @@ const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6
 const H={apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json'};
 async function api(path,opt){const r=await fetch(SB+path,Object.assign({headers:H},opt||{}));const t=await r.text();const j=t?JSON.parse(t):null;if(!r.ok)throw new Error((j&&j.message)||('Error '+r.status));return j}
 const rpc=(fn,body)=>api('rpc/'+fn,{method:'POST',body:JSON.stringify(body||{})});
+// Pide el CAE a ARCA (función del servidor). Devuelve los datos de la factura o lanza el error de ARCA.
+async function pedirCAE(id){const r=await fetch(SB.replace('/rest/v1/','/functions/v1/arca-fe'),{method:'POST',headers:H,body:JSON.stringify({venta_id:id})});
+  const j=await r.json().catch(()=>({}));if(!j.ok)throw new Error(j.error||'ARCA no respondió');return j}
+const CBTE_COD={1:'001',6:'006'};
+function datosCbte(j){return {letra:j.letra,tipo:j.cbte_tipo,pto:j.pto_vta,nro:j.cbte_nro,cae:j.cae,cae_vto:j.cae_vto,qr:j.qr,neto:j.neto,iva:j.iva,alicuotas:j.alicuotas}}
+function qrImg(txt){try{const q=qrcode(0,'M');q.addData(txt);q.make();return q.createDataURL(3,0)}catch(e){return ''}}
 const $=s=>document.querySelector(s);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
@@ -462,7 +469,10 @@ async function confirmar(facturar){if(facturar===undefined)facturar=true;if(guar
     if(cliente.id&&body.pagos.some(p=>p.medio==='Cuenta corriente'))SALDOS[cliente.id]=(SALDOS[cliente.id]||0)+body.pagos.find(p=>p.medio==='Cuenta corriente').monto;
     venta.remito=r.remito_nro?{nro:r.remito_nro,dir:REM.dir,notas:REM.notas}:null;
     carrito=[];cliente={tipo:'cf'};PEDIDO=null;if(lista!=='minorista')cambiarLista('minorista');
-    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);toast('✅ Venta #'+r.id+' · '+plata(r.total)+(facturar?'':' · sin factura')+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
+    if(r.fiscal_estado==='pendiente'){bt.textContent='Facturando en ARCA…';
+      try{const j=await pedirCAE(r.id);venta.fiscal='autorizada';venta.cbte=datosCbte(j)}
+      catch(e){venta.fiscal='error';toast('⚠️ La venta #'+r.id+' se guardó, pero ARCA no la facturó: '+e.message+'. Reintentá desde 📋 Ventas del turno.',9000)}}
+    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);if(venta.fiscal!=='error')toast('✅ Venta #'+r.id+' · '+plata(r.total)+(facturar?'':' · sin factura')+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
   }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bSin').disabled=false;bt.textContent=btTxt}
   guardando=false}
 
@@ -472,12 +482,14 @@ function imprimirTicket(v){const C=CFG;$('#ticket').className='';const prueba=(v
   const ivaCont=Object.entries(iva).reduce((a,[al,s])=>a+s-s/(1+al/100),0);
   $('#ticket').innerHTML=`<div class="c g">${esc(C.nombre_fantasia||'Poly Artesanal')}</div>${C.razon_social&&C.razon_social!==C.nombre_fantasia?`<div class="c">${esc(C.razon_social)}</div>`:''}
   <div class="c">${esc(C.domicilio||'')}</div>${C.cuit?`<div class="c">CUIT ${esc(C.cuit)} · IIBB ${esc(C.iibb||'')}</div><div class="c">${esc(C.cond_iva||'')} · Inicio act. ${esc(C.inicio_actividades||'')}</div>`:''}
-  <hr><div class="c g">${prueba?'COMPROBANTE NO VÁLIDO COMO FACTURA':(v.cbte||'FACTURA')}</div>
+  <hr><div class="c g">${prueba?'COMPROBANTE NO VÁLIDO COMO FACTURA':'FACTURA '+v.cbte.letra+' (Cód. '+(CBTE_COD[v.cbte.tipo]||'')+')'}</div>${prueba?'':`<div class="c g">N° ${String(v.cbte.pto).padStart(5,'0')}-${String(v.cbte.nro).padStart(8,'0')}</div>`}
   <div>Venta #${v.id} · ${v.fecha.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</div>
   ${v.cliente&&(v.cliente.nombre||v.cliente.doc)?`<div>${esc(v.cliente.nombre||'')} ${v.cliente.doc?'· '+esc(v.cliente.doc):''}</div>`:'<div>A CONSUMIDOR FINAL</div>'}
   <hr><table>${v.items.map(it=>`<tr><td colspan="2">${esc(it.nombre)}</td></tr><tr><td>${it.unidad==='kg'?kgTxt(it.cantidad)+' kg':it.cantidad+' u'} x ${plata(it.precio)}</td><td class="r">${plata(it.cantidad*it.precio)}</td></tr>`).join('')}</table>
   <hr><table><tr><td class="g">TOTAL</td><td class="r g">${plata(v.total)}</td></tr>${v.pagos.map(p=>`<tr><td>${esc(p.medio)}</td><td class="r">${plata(p.medio==='Efectivo'&&p.recibe!=null?p.recibe:p.monto)}</td></tr>`).join('')}${v.vuelto?`<tr><td>Vuelto</td><td class="r">${plata(v.vuelto)}</td></tr>`:''}</table>
+  ${!prueba&&v.cbte.letra==='A'?`<hr><table><tr><td>Neto gravado</td><td class="r">${plata(v.cbte.neto)}</td></tr>${(v.cbte.alicuotas||[]).map(a=>`<tr><td>IVA ${({3:'0',4:'10,5',5:'21',6:'27',8:'5',9:'2,5'})[a.Id]||''}%</td><td class="r">${plata(a.Imp)}</td></tr>`).join('')}</table>`:''}
   <hr><div style="font-size:11px">Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)</div><div style="font-size:11px">IVA Contenido: ${plata(ivaCont)}</div><div style="font-size:11px">Otros Impuestos Nacionales Indirectos: $ 0</div>
+  ${prueba?'':`<hr><div>CAE: ${esc(v.cbte.cae)}</div><div>Vto. CAE: ${v.cbte.cae_vto?v.cbte.cae_vto.split('-').reverse().join('/'):''}</div>${v.cbte.qr&&qrImg(v.cbte.qr)?`<div class="c" style="margin-top:4px"><img src="${qrImg(v.cbte.qr)}" style="width:32mm;height:32mm;image-rendering:pixelated"></div>`:''}<div class="c" style="font-size:11px">Comprobante autorizado por ARCA</div>`}
   <hr><div class="c">¡Gracias por elegirnos!</div><div class="c">@polyartesanal</div>`;
   setTimeout(()=>window.print(),80)}
 
@@ -496,15 +508,25 @@ function imprimirRemito(v){const C=CFG,r=v.remito;const cc=(v.pagos||[]).some(p=
 
 // ---------- ventas del turno / anular ----------
 async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
-  const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,cliente_doc,fiscal_estado,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
+  const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,cliente_doc,fiscal_estado,fiscal_error,cbte_tipo,pto_vta,cbte_nro,cae,cae_vto,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
   modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
-    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}</span>
-    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
+    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}${['error','pendiente'].includes(x.fiscal_estado)&&x.estado==='ok'?` <span class="tag sf" style="background:var(--rojo);color:#fff" title="${esc(x.fiscal_error||'')}">SIN CAE</span>`:''}${x.fiscal_estado==='autorizada'?` <span class="muted" style="font-size:11px">Fact. ${x.cbte_tipo===1?'A':'B'} ${String(x.pto_vta).padStart(5,'0')}-${String(x.cbte_nro).padStart(8,'0')}</span>`:''}</span>
+    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}${['error','pendiente'].includes(x.fiscal_estado)?`<button class="tb" onclick="reintentarCAE(${x.id})" title="Reintentar factura en ARCA">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
     <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
 function reimprimir(id,rem){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;const v={id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva,bultos:i.bultos==null?null:+i.bultos,kg:i.kg==null?null:+i.kg})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre,doc:x.cliente_doc},fiscal:x.fiscal_estado};
+  if(x.fiscal_estado==='autorizada'){const tot=+x.total;const ivas={};(x.ventas_items||[]).forEach(i=>{const a=i.iva==null?21:+i.iva;ivas[a]=(ivas[a]||0)+i.cantidad*i.precio});
+    const al=Object.entries(ivas).map(([a,b])=>({Id:({0:3,10.5:4,21:5,27:6,5:8,2.5:9})[a],Imp:Math.round((b-b/(1+a/100))*100)/100}));const iv=al.reduce((s,a)=>s+a.Imp,0);
+    const qr={ver:1,fecha:diaAR(x.created_at),cuit:+String(CFG.cuit||'').replace(/\D/g,''),ptoVta:x.pto_vta,tipoCmp:x.cbte_tipo,nroCmp:+x.cbte_nro,importe:tot,moneda:'PES',ctz:1,tipoDocRec:99,nroDocRec:0,tipoCodAut:'E',codAut:+x.cae};
+    const d=String(x.cliente_doc||'').replace(/\D/g,'');if(d.length===11){qr.tipoDocRec=80;qr.nroDocRec=+d}else if(d.length>=7&&d.length<=8){qr.tipoDocRec=96;qr.nroDocRec=+d}
+    v.cbte={letra:x.cbte_tipo===1?'A':'B',tipo:x.cbte_tipo,pto:x.pto_vta,nro:x.cbte_nro,cae:x.cae,cae_vto:x.cae_vto,qr:'https://www.afip.gob.ar/fe/qr/?p='+btoa(JSON.stringify(qr)),neto:Math.round((tot-iv)*100)/100,iva:iv,alicuotas:al}}
   if(rem&&x.remito_nro){v.remito={nro:x.remito_nro,dir:x.entrega_direccion,notas:x.entrega_notas};imprimirRemito(v)}else imprimirTicket(v)}
 async function facturarDespues(id){if(!confirm('¿Facturar ahora la venta #'+id+'?'))return;
-  try{const r=await rpc('caja_facturar_venta',{p_id:id});toast(r.fiscal_estado==='prueba'?'Venta #'+id+' marcada para facturar (la caja está en modo prueba)':'🧾 Venta #'+id+' enviada a facturar',4500);verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
+  try{const r=await rpc('caja_facturar_venta',{p_id:id});if(r.fiscal_estado==='prueba'){toast('Venta #'+id+' marcada para facturar (la caja está en modo prueba)',4500);return verVentas()}
+    await reintentarCAE(id,true)}catch(e){toast('⚠️ '+e.message,6000)}}
+async function reintentarCAE(id,sinPreg){if(!sinPreg&&!confirm('¿Pedir ahora a ARCA la factura de la venta #'+id+'?'))return;toast('Facturando en ARCA…',3000);
+  try{const j=await pedirCAE(id);toast('🧾 Factura '+j.letra+' '+String(j.pto_vta).padStart(5,'0')+'-'+String(j.cbte_nro).padStart(8,'0')+' autorizada',5000);await verVentas();reimprimir(id)}
+  catch(e){toast('⚠️ ARCA no la facturó: '+e.message,9000);verVentas()}}
+function diaAR(f){return new Date(f).toLocaleDateString('sv-SE',{timeZone:'America/Argentina/Buenos_Aires'})}
 async function anular(id){const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
   try{await rpc('caja_anular',{p_id:id,p_motivo:m||'sin motivo'});toast('Venta #'+id+' anulada');await estadoTurno();verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
 
