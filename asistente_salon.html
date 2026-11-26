@@ -685,7 +685,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
   <div class="panel" id="panel-control">
     <div style="flex:1;overflow-y:auto;padding:12px;font-family:system-ui,sans-serif;">
       <div style="font-size:15px;font-weight:800;color:#6A1B9A;margin-bottom:4px;">📋 Control de stock diario</div>
-      <div style="font-size:12px;color:#888;margin-bottom:10px;">Inicial + Ingreso − Final = Vendido. El total debe coincidir con la facturación.</div>
+      <div style="font-size:12px;color:#888;margin-bottom:10px;">Inicial + Ingreso − Egreso − Vendido (caja) = <b>Final</b>, se calcula solo. Si contás y hay otra cantidad, cambiá el Final: la diferencia queda marcada (rojo = falta).</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;">
         <input type="date" id="ctrl-fecha" onchange="loadControl()" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
         <select id="ctrl-turno" onchange="loadControl()" style="padding:6px;border:1px solid #ddd;border-radius:6px;">
@@ -700,7 +700,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
       <div id="ctrl-tabla"></div>
       <div id="ctrl-pie"></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
-        <button onclick="traerIngresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📥 Traer despachos</button>
+        <button onclick="traerIngresos();traerVentasCaja()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">🔄 Actualizar ingresos y ventas</button>
         <button onclick="traerEgresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📤 Traer egresos</button>
         <button onclick="guardarControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#6A1B9A;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">💾 Guardar</button>
         <button onclick="cerrarTurnoControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#E65100;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🔒 Cerrar turno</button>
@@ -2147,12 +2147,13 @@ async function loadControl(){
 
   if(existing){
     const itemsMap={};
-    (existing.items||[]).forEach(it=>{ itemsMap[it.c]={i:Number(it.i)||0,g:Number(it.g)||0,e:Number(it.e)||0,f:Number(it.f)||0}; });
+    (existing.items||[]).forEach(it=>{ itemsMap[it.c]={i:Number(it.i)||0,g:Number(it.g)||0,e:Number(it.e)||0,f:Number(it.f)||0,v:Number(it.v)||0,vm:it.vm!=null?Number(it.vm):null,fm:it.fm!=null?!!it.fm:((Number(it.f)||0)>0)}; });
+    CONTROL_CATALOGO.forEach(p=>{ if(!itemsMap[p.c]) itemsMap[p.c]={i:0,g:0,e:0,f:0,v:0}; });
     controlState={ id:existing.id, fecha, turno, responsable:existing.responsable||'', hora_apertura:existing.hora_apertura||'',
       hora_cierre:existing.hora_cierre||'', estado:existing.estado||'abierto',
       remanentes:existing.remanentes||'', devoluciones:existing.devoluciones||'', consumo_interno:existing.consumo_interno||'',
       items:itemsMap, ref:existing.referencia||null };
-    if(controlState.estado!=='cerrado'){ await traerIngresos(true); await traerEgresos(true); }
+    if(controlState.estado!=='cerrado'){ await traerIngresos(true); await traerEgresos(true); await traerVentasCaja(true); }
   } else {
     // NUEVO: inicial = final del turno anterior (arrastre)
     const inicialMap=await calcularInicialArrastre(fecha,turno);
@@ -2163,6 +2164,7 @@ async function loadControl(){
       remanentes:'', devoluciones:'', consumo_interno:'', items:itemsMap };
     await traerIngresos(true); // ingresos del turno desde los despachos (no editable)
     await traerEgresos(true); // pre-cargar egresos del turno (editable)
+    await traerVentasCaja(true); // lo vendido en la caja y los pedidos entregados
     if(inicialMap.__desdeStock && !inicialMap.__yaAjustado){
       // el stock del Salón ya incluye lo que entró y salió en este turno: se descuenta para no contarlo dos veces
       Object.keys(itemsMap).forEach(c=>{ const it=itemsMap[c]; it.i=Math.max(0,Math.round(((it.i||0)-(it.g||0)+(it.e||0))*1000)/1000); });
@@ -2310,9 +2312,37 @@ async function traerEgresos(silent){
   }
 }
 
-function ctrlVendido(it){ return (Number(it.i)||0)+(Number(it.g)||0)-(Number(it.e)||0)-(Number(it.f)||0); }
+// Vendido = lo que se cobró en la caja + pedidos entregados (lo trae el sistema). Final = Inicial + Ingreso − Egreso − Vendido.
+// Si cuentan y ponen otro Final, la diferencia queda marcada (faltante o sobrante).
+function ctrlVendido(it){ return Number(it.v)||0; }
+function ctrlFinalCalc(it){ return Math.round(((Number(it.i)||0)+(Number(it.g)||0)-(Number(it.e)||0)-(Number(it.v)||0))*1000)/1000; }
+function ctrlFinal(it){ return it.fm ? (Number(it.f)||0) : Math.max(0, ctrlFinalCalc(it)); }
+function ctrlDif(it){ return it.fm ? Math.round(((Number(it.f)||0)-ctrlFinalCalc(it))*1000)/1000 : 0; }
 function ctrlTotal(){
-  let t=0; CONTROL_CATALOGO.forEach(p=>{ const it=controlState.items[p.c]; if(it){ t+=ctrlVendido(it)*p.p; } }); return t;
+  let t=0; CONTROL_CATALOGO.forEach(p=>{ const it=controlState.items[p.c]; if(it){ t+=(it.vm!=null?Number(it.vm):ctrlVendido(it)*p.p); } }); return Math.round(t);
+}
+function ctrlNum(p,x){ x=Math.round((Number(x)||0)*1000)/1000; return p.kg?String(x).replace('.',','):x; }
+async function traerVentasCaja(silent){
+  if(!controlState) return;
+  const f=controlState.fecha, manana=controlState.turno==='manana';
+  const desde=f+(manana?'T00:00:00-03:00':'T14:00:00-03:00'), hasta=f+(manana?'T14:00:00-03:00':'T23:59:59.999-03:00');
+  const acum={}, plata={};
+  try{
+    const vs=await sbSelect('ventas','?select=id&estado=eq.ok&created_at=gte.'+encodeURIComponent(desde)+'&created_at=lt.'+encodeURIComponent(hasta))||[];
+    for(let k=0;k<vs.length;k+=80){
+      const ids=vs.slice(k,k+80).map(v=>v.id).join(',');
+      const its=await sbSelect('ventas_items','?select=codigo,cantidad,subtotal&venta_id=in.('+ids+')')||[];
+      its.forEach(i=>{ if(!i.codigo) return; const c=String(i.codigo); acum[c]=(acum[c]||0)+(Number(i.cantidad)||0); plata[c]=(plata[c]||0)+(Number(i.subtotal)||0); });
+    }
+    const ped=await sbSelect('pedidos_clientes','?select=id&stock_descontado=eq.true&venta_id=is.null&entregado_at=gte.'+encodeURIComponent(desde)+'&entregado_at=lt.'+encodeURIComponent(hasta))||[];
+    if(ped.length){
+      const its=await sbSelect('pedidos_clientes_items','?select=codigo,cantidad,precio,estado&pedido_id=in.('+ped.map(x=>x.id).join(',')+')')||[];
+      its.forEach(i=>{ if(!i.codigo||i.estado==='cancelado') return; const c=String(i.codigo); acum[c]=(acum[c]||0)+(Number(i.cantidad)||0); plata[c]=(plata[c]||0)+(Number(i.cantidad)||0)*(Number(i.precio)||0); });
+    }
+  }catch(e){ console.warn('traerVentasCaja',e); if(!silent) showToast('⚠️ No se pudieron traer las ventas de la caja'); return; }
+  let n=0;
+  Object.keys(controlState.items).forEach(c=>{ const it=controlState.items[c]; it.v=Math.round((acum[c]||0)*1000)/1000; it.vm=Math.round(plata[c]||0); if(it.v) n++; });
+  if(!silent){ renderControlTabla(); renderControlPie(); showToast('🧾 Ventas de la caja cargadas: '+n+' productos'); }
 }
 
 function renderControlEstado(){
@@ -2329,11 +2359,11 @@ function renderControlTabla(){
   let h='<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-family:system-ui,sans-serif;font-size:12px;">'
     +'<thead><tr style="background:#F3E5F5;color:#4A148C;">'
     +'<th style="text-align:left;padding:6px;position:sticky;left:0;background:#F3E5F5;">Producto</th>'
-    +'<th style="padding:6px;">Inicial</th><th style="padding:6px;">Ingreso</th><th style="padding:6px;">Egreso</th><th style="padding:6px;">Final</th>'
-    +'<th style="padding:6px;">Vend.</th><th style="padding:6px;">$ a rendir</th></tr></thead><tbody>';
+    +'<th style="padding:6px;">Inicial</th><th style="padding:6px;">Ingreso</th><th style="padding:6px;">Egreso</th><th style="padding:6px;" title="Lo cobrado en la caja + pedidos entregados">Vendido<br><span style="font-weight:400;font-size:10px;">caja</span></th>'
+    +'<th style="padding:6px;" title="Se calcula solo: Inicial + Ingreso − Egreso − Vendido. Si contás y da otra cosa, cambialo">Final<br><span style="font-weight:400;font-size:10px;">calculado</span></th><th style="padding:6px;">Dif.</th><th style="padding:6px;">$ vendido</th></tr></thead><tbody>';
   for(const p of prods){
     const it=controlState.items[p.c]||{i:0,g:0,f:0};
-    const v=Math.round(ctrlVendido(it)*1000)/1000; const imp=v*p.p;
+    const v=Math.round(ctrlVendido(it)*1000)/1000; const imp=it.vm!=null?Number(it.vm):v*p.p; const dif=ctrlDif(it);
     const dis=controlState.estado==='cerrado'?'disabled':'';
     const tk=p.kg?' type="text" inputmode="decimal" data-kg="1" title="En kilos: 1,250"':'';
     const inp='width:52px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;font-size:12px;';
@@ -2342,8 +2372,9 @@ function renderControlTabla(){
       +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?'':' readonly tabindex="-1" title="Solo Micaela puede corregir el Inicial"')+(tk||' type="number" inputmode="numeric"')+' id="ci-'+p.c+'" value="'+ctrlVal(p,it.i)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
       +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?' inputmode="numeric" oninput="ctrlEdit(\''+p.c+'\')"':' readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores. Solo Micaela o Poly lo pueden corregir"')+(tk||' type="number"')+' id="cg-'+p.c+'" value="'+ctrlVal(p,it.g)+'" style="'+inp+ctrlMarcaG(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'"></td>'
       +'<td style="text-align:center;"><input '+dis+(tk||' type="number" inputmode="numeric"')+' id="ce-'+p.c+'" value="'+ctrlVal(p,it.e)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
-      +'<td style="text-align:center;"><input '+dis+(tk||' type="number" inputmode="numeric"')+' id="cf-'+p.c+'" value="'+ctrlVal(p,it.f)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
-      +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+(p.kg?String(v).replace('.',','):v)+'</td>'
+      +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+ctrlNum(p,v)+'</td>'
+      +'<td style="text-align:center;"><input '+dis+(tk||' type="number" inputmode="numeric"')+' id="cf-'+p.c+'" value="'+ctrlVal(p,ctrlFinal(it))+'" oninput="ctrlEdit(\''+p.c+'\',true)" title="Calculado: '+ctrlNum(p,ctrlFinalCalc(it))+'" style="'+inp+'background:'+(it.fm?'#FFF8E1':'#E8F5E9')+';color:#1a1a1a;'+(ctrlFinalCalc(it)<0?'outline:2px solid #C62828;':'')+'"></td>'
+      +'<td style="text-align:center;font-weight:700;" id="cd-'+p.c+'">'+ctrlDifTxt(p,dif)+'</td>'
       +'<td style="text-align:right;padding-right:6px;font-weight:700;color:#2E7D32;" id="cm-'+p.c+'">'+fmtPrecio(imp)+'</td>'
       +'</tr>';
   }
@@ -2357,15 +2388,18 @@ function ctrlMarca(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(i
 function ctrlMarcaG(cod,it){ const r=controlState&&controlState.ref&&controlState.ref[cod]; return (r && (Number(it.g)||0)!==(Number(r.g)||0)) ? 'outline:3px solid #F57C00;outline-offset:1px;' : ''; }
 function ctrlMarcaTxt(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? '<div id="cim-'+cod+'" style="font-size:9px;color:#E65100;font-weight:700;margin-top:5px;">sistema: '+r+'</div>' : '<div id="cim-'+cod+'"></div>'; }
 function ctrlVal(p,x){ x=Number(x)||0; return p.kg?String(Math.round(x*1000)/1000).replace('.',','):x; }
-function ctrlEdit(cod){
+function ctrlDifTxt(p,d){ return Math.abs(d)<0.0005?'':'<span style="color:'+(d<0?'#C62828':'#1565C0')+'">'+(d<0?'−':'+')+ctrlNum(p,Math.abs(d))+'</span>'; }
+function ctrlEdit(cod,finalTocado){
   if(!controlState||!controlState.items[cod]) return;
   const gi=id=>{const e=document.getElementById(id);if(!e)return 0;if(e.dataset.kg){const n=leerKgSalon(e.value,false);return n>0&&n<50?n:(n>=50?Math.round(n)/1000:0);}return parseFloat(e.value)||0;};
   const it=controlState.items[cod];
-  it.i=gi('ci-'+cod); it.g=gi('cg-'+cod); it.e=gi('ce-'+cod); it.f=gi('cf-'+cod);
+  it.i=gi('ci-'+cod); it.g=gi('cg-'+cod); it.e=gi('ce-'+cod);
+  if(finalTocado){ it.f=gi('cf-'+cod); it.fm=true; }
   const p=CONTROL_CATALOGO.find(x=>x.c===cod);
   const v=Math.round(ctrlVendido(it)*1000)/1000;
-  const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=p&&p.kg?String(v).replace('.',','):v;
-  const cm=document.getElementById('cm-'+cod); if(cm) cm.textContent=fmtPrecio(v*p.p);
+  const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=ctrlNum(p,v);
+  const cf=document.getElementById('cf-'+cod); if(cf){ if(!finalTocado) cf.value=ctrlVal(p,ctrlFinal(it)); cf.style.background=it.fm?'#FFF8E1':'#E8F5E9'; cf.title='Calculado: '+ctrlNum(p,ctrlFinalCalc(it)); }
+  const cd=document.getElementById('cd-'+cod); if(cd) cd.innerHTML=ctrlDifTxt(p,ctrlDif(it));
   const ci=document.getElementById('ci-'+cod), r=ctrlRefI(cod);
   if(ci && r!==null){ const cambio=(Number(it.i)||0)!==r; ci.style.outline=cambio?'3px solid #F57C00':''; ci.style.outlineOffset='1px';
     const m=document.getElementById('cim-'+cod); if(m){ m.textContent=cambio?'sistema: '+r:''; m.style.cssText='font-size:9px;color:#E65100;font-weight:700;margin-top:5px;'; } }
@@ -2398,7 +2432,7 @@ function ctrlMeta(){
 
 function ctrlBuildRow(){
   ctrlMeta();
-  const items=CONTROL_CATALOGO.map(p=>{ const it=controlState.items[p.c]||{i:0,g:0,e:0,f:0}; return {c:p.c,i:it.i||0,g:it.g||0,e:it.e||0,f:it.f||0}; });
+  const items=CONTROL_CATALOGO.map(p=>{ const it=controlState.items[p.c]||{i:0,g:0,e:0,f:0}; return {c:p.c,i:it.i||0,g:it.g||0,e:it.e||0,v:it.v||0,vm:it.vm||0,f:ctrlFinal(it),fm:!!it.fm}; });
   return {
     fecha:controlState.fecha, turno:controlState.turno, responsable:controlState.responsable,
     hora_apertura:(document.getElementById('ctrl-hora')||{}).value||'',
@@ -2428,8 +2462,9 @@ async function guardarControl(silent){
 
 async function cerrarTurnoControl(){
   if(!controlState) return;
-  const conFinal=Object.values(controlState.items||{}).some(it=>(Number(it.f)||0)>0);
-  if(!conFinal){ alert('⚠️ No cargaste el Final: contá lo que queda en el local y ponelo en la columna Final antes de cerrar. Si no, el próximo turno arranca en 0.'); return; }
+  await traerIngresos(true); await traerEgresos(true); await traerVentasCaja(true);
+  const negs=CONTROL_CATALOGO.filter(p=>{ const it=controlState.items[p.c]; return it&&!it.fm&&ctrlFinalCalc(it)<0; }).map(p=>p.n);
+  if(negs.length&&!confirm('⚠️ Estos productos dan Final negativo (se vendió más de lo que figuraba): '+negs.slice(0,8).join(', ')+(negs.length>8?'…':'')+'.\nContalos y corregí el Final, o tocá Aceptar para cerrar igual (quedan en 0).')) { renderControlTabla(); renderControlPie(); return; }
   if(!confirm('¿Cerrar el turno '+turnoLabel(controlState.turno)+' del '+controlState.fecha+'?\nEl Final pasará como Inicial del próximo turno.')) return;
   ctrlMeta();
   controlState.estado='cerrado';
@@ -2443,8 +2478,8 @@ function imprimirControl(){
   if(!controlState) return;
   ctrlMeta();
   const filas=CONTROL_CATALOGO.map(p=>{
-    const it=controlState.items[p.c]||{i:0,g:0,f:0}; const v=ctrlVendido(it);
-    return '<tr><td>'+p.n+'</td><td class="n">'+(it.i||0)+'</td><td class="n">'+(it.g||0)+'</td><td class="n">'+(it.e||0)+'</td><td class="n">'+(it.f||0)+'</td><td class="n">'+v+'</td><td class="n">'+fmtPrecio(p.p)+'</td><td class="n">'+fmtPrecio(v*p.p)+'</td></tr>';
+    const it=controlState.items[p.c]||{i:0,g:0,f:0}; const v=ctrlVendido(it); const d=ctrlDif(it);
+    return '<tr><td>'+p.n+'</td><td class="n">'+ctrlNum(p,it.i)+'</td><td class="n">'+ctrlNum(p,it.g)+'</td><td class="n">'+ctrlNum(p,it.e)+'</td><td class="n">'+ctrlNum(p,v)+'</td><td class="n">'+ctrlNum(p,ctrlFinal(it))+'</td><td class="n">'+(Math.abs(d)<0.0005?'':(d<0?'−':'+')+ctrlNum(p,Math.abs(d)))+'</td><td class="n">'+fmtPrecio(it.vm!=null?it.vm:v*p.p)+'</td></tr>';
   }).join('');
   const w=window.open('','_print','width=900,height=700');
   w.document.write('<html><head><title>Control de stock</title><style>'
@@ -2457,7 +2492,7 @@ function imprimirControl(){
     +'<h1>Control de stock — Poly Artesanal</h1>'
     +'<div class="hdr"><b>Fecha:</b> '+controlState.fecha+' &nbsp; <b>Turno:</b> '+turnoLabel(controlState.turno).replace(/[^A-Za-zñÑ ]/g,'').trim()
     +' &nbsp; <b>Responsable:</b> '+(controlState.responsable||'__________')+' &nbsp; <b>Hora:</b> '+((document.getElementById('ctrl-hora')||{}).value||'____')+'</div>'
-    +'<table><thead><tr><th>Producto</th><th>Inicial</th><th>Ingreso</th><th>Egreso</th><th>Final</th><th>Vendido</th><th>Precio</th><th>$ a rendir</th></tr></thead><tbody>'+filas+'</tbody></table>'
+    +'<table><thead><tr><th>Producto</th><th>Inicial</th><th>Ingreso</th><th>Egreso</th><th>Vendido (caja)</th><th>Final</th><th>Dif.</th><th>$ vendido</th></tr></thead><tbody>'+filas+'</tbody></table>'
     +'<div class="tot">TOTAL A RENDIR: '+fmtPrecio(ctrlTotal())+'</div>'
     +'<div style="margin-top:8px;font-size:12px;"><b>Remanentes:</b> '+(controlState.remanentes||'')+'<br><b>Devoluciones:</b> '+(controlState.devoluciones||'')+'<br><b>Consumo interno:</b> '+(controlState.consumo_interno||'')+'</div>'
     +'<div class="firmas"><div class="firma">Firma vendedora</div><div class="firma">Firma encargada</div></div>'
