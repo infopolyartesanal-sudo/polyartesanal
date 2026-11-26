@@ -2803,20 +2803,17 @@ function renderTareas(){
     var its = (p.pedidos_clientes_items || []).filter(function (i) { return i.estado !== 'cancelado'; });
     var faltan = its.filter(function (i) { return i.estado !== 'despachado'; });
     if (faltan.length && !confirm('Todavía no se despachó: ' + faltan.map(function (i) { return i.producto; }).join(', ') + '.\n¿Lo entregás igual? (se descuenta del stock del salón)')) return;
-    if (!faltan.length && !confirm('¿Entregar el pedido #' + p.numero + ' a ' + p.cliente + '? Saldo a cobrar: ' + plata((+p.total || 0) - (+p.sena || 0)))) return;
+    if (!faltan.length && !confirm('¿Entregar el pedido #' + p.numero + ' a ' + p.cliente + '? Saldo a cobrar: ' + plata((+p.total || 0) - (+p.sena || 0)) + '\n\n⚠️ Si lo vas a COBRAR o FACTURAR, no lo entregues desde acá: hacelo en la Caja → Pedidos (ahí se cobra, se descuenta el stock y queda entregado).\n\nAceptar = marcarlo entregado sin cobrar')) return;
     var conf = Promise.resolve();
     if (typeof loadDespachosPendientes === 'function') conf = loadDespachosPendientes().then(function () {
       var pend = (window.despachosPend || (typeof despachosPend !== 'undefined' ? despachosPend : [])).filter(function (r) { return String(r.pedido_id) === String(p.id); });
       return pend.reduce(function (pr, r) { return pr.then(function () { return confirmarDespacho(r.id); }); }, Promise.resolve());
     });
+    // El descuento del stock lo hace el servidor, una sola vez (si el pedido ya se cobró en la caja, no se vuelve a descontar)
     conf.then(function () {
-      its.forEach(function (i) {
-        var pid = (typeof resolverProductoSalon === 'function') ? resolverProductoSalon(i.receta_id || i.producto, i.producto) : null;
-        if (pid && typeof stockState !== 'undefined') stockState[pid] = Math.max(0, Math.round(((stockState[pid] || 0) - (+i.cantidad || 0)) * 100) / 100);
-      });
-      if (typeof saveStock === 'function') saveStock();
-      if (typeof renderStock === 'function') renderStock();
       return api('rpc/pedido_cliente_estado', { method: 'POST', body: JSON.stringify({ p_pedido: id, p_estado: 'entregado' }) });
+    }).then(function () {
+      if (typeof syncStockServidor === 'function') return syncStockServidor(false);
     }).then(function () {
       if (typeof addToLog === 'function') addToLog('📦 Pedido #' + p.numero + ' entregado a ' + p.cliente);
       aviso('📦 Pedido #' + p.numero + ' entregado. Stock descontado.'); cargarPedidos();

@@ -434,7 +434,15 @@ async function cargarPedido(id){const p=(window._peds||[]).find(x=>x.id===id);if
 
 // ---------- cobro ----------
 let PAGOS=[];
-function abrirCobro(){if(!carrito.length)return;const t=total();PAGOS=[];PROP={monto:0,medio:null};
+// Si el cliente tiene un pedido pendiente y lo están cobrando "a mano", se avisa para cargarlo como pedido
+// (así queda entregado, vinculado a la venta y con la lista/cuenta corriente correcta, y el stock se descuenta una sola vez).
+async function abrirCobro(){if(!carrito.length)return;
+  if(!PEDIDO&&(cliente.id||cliente.nombre)){let ps=[];try{ps=await rpc('caja_pedidos_de_cliente',{p_cliente_id:cliente.id||null,p_nombre:cliente.nombre||''})}catch(e){}
+    for(const p of ps||[]){if(confirm('⚠️ '+p.cliente+' tiene el PEDIDO #'+p.numero+' ('+plata(p.total)+', para el '+p.fecha_retiro+') sin entregar.\n\n¿Esta venta es ese pedido?\n\nAceptar = cargar el pedido (reemplaza lo que hay en la venta)\nCancelar = es otra venta'))return cargarPedidoId(p.id)}}
+  abrirCobro2()}
+async function cargarPedidoId(id){let ps=[];try{ps=await api('pedidos_clientes?select=id,numero,cliente,cliente_id,fecha_retiro,hora_retiro,envio,direccion,total,sena,lista_precios,estado,notas,pedidos_clientes_items(producto,cantidad,unidad,precio,codigo)&id=eq.'+id)}catch(e){return toast('⚠️ '+e.message)}
+  window._peds=ps;carrito=[];await cargarPedido(id);toast('Pedido cargado: revisá y tocá Cobrar. Si debe, elegí Cuenta corriente.',5000)}
+function abrirCobro2(){if(!carrito.length)return;const t=total();PAGOS=[];PROP={monto:0,medio:null};
   REM={on:!!(cliente.mayorista||lista==='mayorista'),dir:cliente.dir||'',notas:''};carrito.forEach(it=>{if(it.kg==null&&it.unidad==='kg')it.kg=it.cantidad});
   modal(`<h3>💰 Cobrar ${plata(t)}</h3>
   <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--tx);margin:4px 0 8px;cursor:pointer"><input type="checkbox" id="remOn" style="width:auto" ${REM.on?'checked':''} onchange="REM.on=this.checked;pintarRemito()"> 📦 Hacer remito de entrega (bultos, kilos y unidades)</label>
