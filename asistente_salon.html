@@ -2158,11 +2158,12 @@ async function loadControl(){
     const inicialMap=await calcularInicialArrastre(fecha,turno);
     const itemsMap={};
     CONTROL_CATALOGO.forEach(p=>{ itemsMap[p.c]={i:inicialMap[p.c]||0,g:0,e:0,f:0}; });
+    if(inicialMap.__yaAjustado) showToast('ℹ️ No hay turno anterior cerrado: el Inicial se calculó con el stock + lo vendido − lo que entró en el turno');
     controlState={ id:null, fecha, turno, responsable:'', hora_apertura:'', hora_cierre:'', estado:'abierto',
       remanentes:'', devoluciones:'', consumo_interno:'', items:itemsMap };
     await traerIngresos(true); // ingresos del turno desde los despachos (no editable)
     await traerEgresos(true); // pre-cargar egresos del turno (editable)
-    if(inicialMap.__desdeStock){
+    if(inicialMap.__desdeStock && !inicialMap.__yaAjustado){
       // el stock del Salón ya incluye lo que entró y salió en este turno: se descuenta para no contarlo dos veces
       Object.keys(itemsMap).forEach(c=>{ const it=itemsMap[c]; it.i=Math.max(0,Math.round(((it.i||0)-(it.g||0)+(it.e||0))*1000)/1000); });
       showToast('ℹ️ No hay turno anterior cerrado: el Inicial se tomó del stock del Salón');
@@ -2199,9 +2200,15 @@ async function calcularInicialArrastre(fecha,turno){
     if(prev) (prev.items||[]).forEach(it=>{ map[it.c]=Number(it.f)||0; });
     else {
       // No hay turno anterior cerrado: el inicial sale del stock actual del Salón (el mismo que se ve en la pestaña Stock)
+      // Stock de ahora + lo que se vendió, se tiró o se consumió desde que empezó el turno − lo que entró = lo que había al empezar
       map.__desdeStock=true;
       const st=await sbSelect('salon_stock','?select=id,cantidad&id=like.pv:*');
       (st||[]).forEach(r=>{ const c=String(r.id).slice(3); const v=Number(r.cantidad)||0; if(v>0) map[c]=v; });
+      try{
+        const r=await polyRPC('salon_inicial_desde_stock',{p_fecha:fecha,p_turno:turno});
+        if(r && typeof r==='object'){ Object.keys(map).forEach(k=>{ if(!k.startsWith('__')) delete map[k]; }); Object.entries(r).forEach(([c,q])=>{ map[c]=Number(q)||0; }); map.__yaAjustado=true; }
+      }catch(e){ console.warn('inicial desde stock',e); }
+      Object.keys(map).forEach(c=>{ if(c.startsWith('__')) return; map[c]=Math.max(0,Math.round(map[c]*1000)/1000); });
     }
   }catch(e){ console.warn('arrastre',e); }
   return map;
