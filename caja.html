@@ -257,6 +257,7 @@
   <button onclick="pedidosEntregar()" id="bPed">Pedidos</button>
   <button onclick="verVentas()">Ventas del turno</button>
   <button onclick="notaCredito()">Nota de crédito</button>
+  <button onclick="retiroCaja()">Retiro / Pago a proveedor</button>
 </div>
 <div id="main">
   <section id="der">
@@ -433,14 +434,14 @@ async function cargarPedido(id){const p=(window._peds||[]).find(x=>x.id===id);if
 
 // ---------- cobro ----------
 let PAGOS=[];
-function abrirCobro(){if(!carrito.length)return;const t=total();PAGOS=[];
+function abrirCobro(){if(!carrito.length)return;const t=total();PAGOS=[];PROP={monto:0,medio:null};
   REM={on:!!(cliente.mayorista||lista==='mayorista'),dir:cliente.dir||'',notas:''};carrito.forEach(it=>{if(it.kg==null&&it.unidad==='kg')it.kg=it.cantidad});
   modal(`<h3>💰 Cobrar ${plata(t)}</h3>
   <label style="display:flex;gap:8px;align-items:center;font-size:15px;color:var(--tx);margin:4px 0 8px;cursor:pointer"><input type="checkbox" id="remOn" style="width:auto" ${REM.on?'checked':''} onchange="REM.on=this.checked;pintarRemito()"> 📦 Hacer remito de entrega (bultos, kilos y unidades)</label>
   <div id="remBox"></div>
   <p class="muted">Tocá cómo paga. Si paga con dos medios, tocá los dos y repartí el importe. Si paga después, elegí <b>Cuenta corriente</b>.</p>
   <div class="medios">${MEDIOS.map(m=>`<button onclick="addPago('${m}')">${m==='Efectivo'?'💵':m.startsWith('Mercado')?'📱':m==='Transferencia'?'🏦':m==='Cuenta corriente'?'📒':'💳'} ${m}</button>`).join('')}</div>
-  <div id="pagos"></div><div id="pagoRes" style="margin-top:12px"></div>
+  <div id="pagos"></div><div id="propBox"></div><div id="pagoRes" style="margin-top:12px"></div>
   <div class="acc"><button class="b-no" onclick="cerrar()">Volver</button><button class="b-ok b-sf" id="bSin" onclick="confirmar(false)" disabled title="Entra a la caja y descuenta stock, pero no emite factura">💵 Cobrar</button><button class="b-ok" id="bOk" onclick="confirmar(true)" disabled>🧾 Cobrar y facturar</button></div>`);
   pintarRemito();
 }
@@ -461,11 +462,23 @@ function addPago(m){const t=total();const ya=PAGOS.reduce((a,p)=>a+p.monto,0);
   const i=document.querySelector(m==='Efectivo'?'#pr'+(PAGOS.length-1):'#pm'+(PAGOS.length-1));if(i){i.focus();i.select()}}
 function pintarPagos(){const t=total();
   $('#pagos').innerHTML=PAGOS.map((p,k)=>`<div class="pago"><b>${p.medio}</b><input id="pm${k}" value="${p.monto}" inputmode="decimal" oninput="PAGOS[${k}].monto=num(this.value);resPago()"><button class="x" style="background:none;border:0;color:var(--tx2);font-size:18px" onclick="PAGOS.splice(${k},1);pintarPagos()">✕</button></div>
-    ${p.medio==='Efectivo'?`<div class="pago"><span class="muted">Con cuánto paga</span><input id="pr${k}" value="${p.recibe==null?'':p.recibe}" placeholder="opcional" inputmode="decimal" oninput="PAGOS[${k}].recibe=this.value===''?null:num(this.value);resPago()" onkeydown="if(event.key==='Enter')confirmar()"><span></span></div>`:''}`).join('');resPago()}
+    ${p.medio==='Efectivo'?`<div class="pago"><span class="muted">Con cuánto paga</span><input id="pr${k}" value="${p.recibe==null?'':p.recibe}" placeholder="opcional" inputmode="decimal" oninput="PAGOS[${k}].recibe=this.value===''?null:num(this.value);resPago()" onkeydown="if(event.key==='Enter')confirmar()"><span></span></div>`:''}`).join('');pintarPropina();resPago()}
+// Propina: solo en pagos online (QR, transferencia, tarjetas). No es parte de la venta: no se factura ni suma al total,
+// pero entra junto con el cobro online y se suma en el control online del cierre.
+let PROP={monto:0,medio:null};
+function pintarPropina(){const b=$('#propBox');if(!b)return;const on=PAGOS.filter(p=>MEDIOS_ON.includes(p.medio)||(!['Efectivo','Cuenta corriente'].includes(p.medio)));
+  if(!on.length){PROP={monto:0,medio:null};b.innerHTML='';return}
+  if(!on.some(p=>p.medio===PROP.medio))PROP.medio=on[0].medio;const t=total();
+  b.innerHTML=`<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;margin-top:10px;background:var(--bg)">
+  <div style="font-weight:700;margin-bottom:6px">🙌 Propina <span class="muted" style="font-weight:400;font-size:12px">(opcional · no se factura)</span></div>
+  <div class="pago" style="margin:0"><span class="muted">Importe</span><input id="propIn" inputmode="decimal" placeholder="0" value="${PROP.monto||''}" oninput="PROP.monto=num(this.value);resPago()"><span></span></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${[10,15].map(x=>`<button class="tb" onclick="PROP.monto=Math.round(${t}*${x/100});$('#propIn').value=PROP.monto;resPago()">${x}% (${plata(Math.round(t*x/100))})</button>`).join('')}<button class="tb" onclick="PROP.monto=0;$('#propIn').value='';resPago()">Sin propina</button></div>
+  ${on.length>1?`<label style="margin-top:6px">Entra por</label><select onchange="PROP.medio=this.value;resPago()">${on.map(p=>`<option ${p.medio===PROP.medio?'selected':''}>${esc(p.medio)}</option>`).join('')}</select>`:''}</div>`}
 function resPago(){const t=total(),s=PAGOS.reduce((a,p)=>a+(+p.monto||0),0);const ef=PAGOS.find(p=>p.medio==='Efectivo');
   const vuelto=ef&&ef.recibe!=null?Math.max(0,Math.round((ef.recibe-ef.monto)*100)/100):0;const falta=Math.round((t-s)*100)/100;
   $('#pagoRes').innerHTML=`<div class="resu"><span>Total</span><b>${plata(t)}</b></div><div class="resu"><span>Pagado</span><b>${plata(s)}</b></div>
     ${Math.abs(falta)>0.009?`<div class="resu" style="color:var(--rojo)"><span>${falta>0?'Falta':'Sobra (bajá un importe)'}</span><b>${plata(Math.abs(falta))}</b></div>`:''}
+    ${PROP.monto>0&&PROP.medio?`<div class="resu" style="color:var(--verde)"><span>🙌 Propina (por ${esc(PROP.medio)})</span><b>${plata(PROP.monto)}</b></div><div class="resu grande"><span>Cobrar por ${esc(PROP.medio)}</span><span>${plata((PAGOS.find(p=>p.medio===PROP.medio)||{monto:0}).monto+PROP.monto)}</span></div>`:''}
     ${ef&&ef.recibe!=null?`<div class="resu grande" style="color:var(--oro)"><span>Vuelto</span><span>${ef.recibe<ef.monto?'falta plata':plata(vuelto)}</span></div>`:''}`;
   const off=!PAGOS.length||Math.abs(falta)>0.009||(ef&&ef.recibe!=null&&ef.recibe<ef.monto);$('#bOk').disabled=off;if($('#bSin'))$('#bSin').disabled=off}
 let guardando=false;
@@ -474,6 +487,7 @@ async function confirmar(facturar){if(facturar===undefined)facturar=true;if(guar
   const body={facturar,pedido_id:PEDIDO?PEDIDO.id:'',lista,cliente_tipo:cliente.tipo,cliente_doc:cliente.doc||'',cliente_nombre:cliente.nombre||'',cliente_id:cliente.id||'',vuelto,
     pagos:PAGOS.filter(p=>p.monto>0).map(p=>({medio:p.medio,monto:Math.round(p.monto*100)/100,...(p.medio==='Efectivo'&&p.recibe!=null?{recibe:p.recibe}:{})})),
     remito:REM.on,entrega_direccion:REM.on?REM.dir:'',entrega_notas:REM.on?REM.notas:'',
+    propina:PROP.medio&&PROP.monto>0?Math.round(PROP.monto*100)/100:0,propina_medio:PROP.medio&&PROP.monto>0?PROP.medio:'',
     items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio,bultos:REM.on&&it.bultos!=null?it.bultos:'',kg:REM.on&&it.kg!=null?it.kg:''}))};
   try{const r=await rpc('caja_vender',{p:body});
     const venta={id:r.id,fecha:new Date(),items:carrito.slice(),pagos:body.pagos,vuelto,total:r.total,cliente:Object.assign({},cliente),lista,fiscal:r.fiscal_estado};
@@ -483,7 +497,7 @@ async function confirmar(facturar){if(facturar===undefined)facturar=true;if(guar
     if(r.fiscal_estado==='pendiente'){bt.textContent='Facturando en ARCA…';
       try{const j=await pedirCAE(r.id);venta.fiscal='autorizada';venta.cbte=datosCbte(j)}
       catch(e){venta.fiscal='error';toast('⚠️ La venta #'+r.id+' se guardó, pero ARCA no la facturó: '+e.message+'. Reintentá desde 📋 Ventas del turno.',9000)}}
-    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);if(venta.fiscal!=='error')toast('✅ Venta #'+r.id+' · '+plata(r.total)+(facturar?'':' · sin factura')+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):''),4000);estadoTurno();
+    cerrar();if(venta.remito)imprimirRemito(venta);else imprimirTicket(venta);if(venta.fiscal!=='error')toast('✅ Venta #'+r.id+' · '+plata(r.total)+(facturar?'':' · sin factura')+(r.remito_nro?' · remito N° '+r.remito_nro:'')+(vuelto?' · vuelto '+plata(vuelto):'')+(+r.propina>0?' · propina '+plata(r.propina):''),4000);estadoTurno();
   }catch(e){toast('⚠️ '+e.message,6000);$('#bOk').disabled=false;$('#bSin').disabled=false;bt.textContent=btTxt}
   guardando=false}
 
@@ -541,9 +555,9 @@ function imprimirRemito(v){const C=CFG,r=v.remito;const cc=(v.pagos||[]).some(p=
 
 // ---------- ventas del turno / anular ----------
 async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
-  const v=await api('ventas?select=id,created_at,total,estado,anulada_motivo,pagos,cliente_nombre,cliente_doc,fiscal_estado,fiscal_error,cbte_tipo,pto_vta,cbte_nro,cae,cae_vto,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
+  const v=await api('ventas?select=id,created_at,total,estado,anulada_motivo,pagos,cliente_nombre,cliente_doc,fiscal_estado,fiscal_error,cbte_tipo,pto_vta,cbte_nro,cae,cae_vto,remito_nro,entrega_direccion,entrega_notas,propina,propina_medio,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
   modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
-    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}${['error','pendiente'].includes(x.fiscal_estado)&&x.estado==='ok'?` <span class="tag sf" style="background:var(--rojo);color:#fff" title="${esc(x.fiscal_error||'')}">SIN CAE</span>`:''}${x.fiscal_estado==='autorizada'?` <span class="muted" style="font-size:11px">Fact. ${x.cbte_tipo===1?'A':'B'} ${String(x.pto_vta).padStart(5,'0')}-${String(x.cbte_nro).padStart(8,'0')}</span>`:''}</span>
+    <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${+x.propina>0?` <span style="color:var(--verde);font-size:12px">🙌 propina ${plata(x.propina)}</span>`:''}${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}${['error','pendiente'].includes(x.fiscal_estado)&&x.estado==='ok'?` <span class="tag sf" style="background:var(--rojo);color:#fff" title="${esc(x.fiscal_error||'')}">SIN CAE</span>`:''}${x.fiscal_estado==='autorizada'?` <span class="muted" style="font-size:11px">Fact. ${x.cbte_tipo===1?'A':'B'} ${String(x.pto_vta).padStart(5,'0')}-${String(x.cbte_nro).padStart(8,'0')}</span>`:''}</span>
     <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}${['error','pendiente'].includes(x.fiscal_estado)?`<button class="tb" onclick="reintentarCAE(${x.id})" title="Reintentar factura en ARCA">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> ${x.fiscal_estado==='autorizada'?`<button class="tb" onclick="ncDeVenta(${x.id})" title="Anular con nota de crédito">↩️</button>`:`<button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`}`:x.anulada_motivo&&/^Nota de crédito/.test(x.anulada_motivo)?'<span class="tag nc">NC</span>':''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
     <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
 function reimprimir(id,rem){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;const v={id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva,bultos:i.bultos==null?null:+i.bultos,kg:i.kg==null?null:+i.kg})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre,doc:x.cliente_doc},fiscal:x.fiscal_estado};
@@ -563,6 +577,28 @@ function diaAR(f){return new Date(f).toLocaleDateString('sv-SE',{timeZone:'Ameri
 async function anular(id){const x=(window._ventas||[]).find(v=>v.id===id);if(x&&x.fiscal_estado==='autorizada')return ncDeVenta(id);const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
   try{await rpc('caja_anular',{p_id:id,p_motivo:m||'sin motivo'});toast('Venta #'+id+' anulada');await estadoTurno();verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
 
+// ---------- retiro / pago a proveedor ----------
+// Sale efectivo de la caja durante el turno: se resta del efectivo que tiene que haber al cerrar.
+let RET={tipo:'proveedor'};
+async function retiroCaja(){if(!TURNO)return toast('Primero abrí el turno');let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}
+  const L=r.retiros_lista||[],P=r.proveedores||[];
+  modal(`<h3>💸 Retiro / Pago a proveedor</h3>
+  <p class="muted" style="font-size:13px">Es plata en <b>efectivo</b> que sale de la caja. Se descuenta del efectivo que tiene que haber al cerrar el turno.</p>
+  <div class="medios" style="grid-template-columns:1fr 1fr"><button id="rtP" onclick="RET.tipo='proveedor';tipoRet()">🚚 Pago a proveedor</button><button id="rtR" onclick="RET.tipo='retiro';tipoRet()">💵 Retiro de efectivo</button></div>
+  <div id="rtProvBox"><label>Proveedor</label><input id="rtProv" list="rtProvL" placeholder="Ej: Emiliano chipa, churrero…" autocomplete="off"><datalist id="rtProvL">${P.map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
+  <label>Importe ($)</label><input id="rtM" inputmode="decimal" placeholder="0" onkeydown="if(event.key==='Enter')okRetiro()">
+  <label id="rtNl">Detalle (opcional)</label><input id="rtN" placeholder="Ej: factura 0001-123, lo retiró Poly…">
+  ${L.length?`<div class="sec">En este turno</div>${L.map(x=>`<div class="vt" style="grid-template-columns:1fr 110px 40px"><span>${x.tipo==='proveedor'?'🚚 '+esc(x.proveedor||''):'💵 Retiro'}${x.nota?' <span class="muted">· '+esc(x.nota)+'</span>':''}<br><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} · ${esc(x.usuario||'')}</span></span><b style="text-align:right">${plata(x.monto)}</b><button class="tb" onclick="anularRetiro(${x.id})" title="Anular (se cargó mal)">✕</button></div>`).join('')}<div class="resu"><b>Total salido</b><b>${plata(r.retiros)}</b></div>`:''}
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button><button class="b-ok" onclick="okRetiro()">Guardar</button></div>`);tipoRet()}
+function tipoRet(){const p=RET.tipo==='proveedor';$('#rtP').style.outline=p?'3px solid var(--oro)':'';$('#rtR').style.outline=p?'':'3px solid var(--oro)';
+  $('#rtProvBox').style.display=p?'':'none';$('#rtNl').textContent=p?'Detalle (opcional)':'Motivo / quién lo retira (obligatorio)';setTimeout(()=>(p?$('#rtProv'):$('#rtM')).focus(),30)}
+async function okRetiro(){const m=num($('#rtM').value),pv=RET.tipo==='proveedor'?$('#rtProv').value.trim():'',nt=$('#rtN').value.trim();
+  if(!(m>0))return toast('Poné el importe');if(RET.tipo==='proveedor'&&!pv)return toast('Poné a qué proveedor');if(RET.tipo==='retiro'&&!nt)return toast('Poné el motivo o quién lo retira');
+  if(!confirm('¿Sale '+plata(m)+' en efectivo de la caja'+(pv?' para '+pv:'')+'?'))return;
+  try{await rpc('caja_retiro',{p_tipo:RET.tipo,p_monto:m,p_proveedor:pv||null,p_nota:nt||null});cerrar();toast('✅ Guardado: '+plata(m)+(pv?' a '+pv:' retiro'),3500)}catch(e){toast('⚠️ '+e.message,5000)}}
+async function anularRetiro(id){if(!confirm('¿Anular este movimiento? (vuelve a contar como efectivo en la caja)'))return;
+  try{await rpc('caja_retiro_anular',{p_id:id});toast('Anulado');retiroCaja()}catch(e){toast('⚠️ '+e.message,5000)}}
+
 // ---------- turno ----------
 function turnoBtn(){TURNO?cerrarTurno():abrirTurno()}
 function abrirTurno(){const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});const sug=h>=5&&h<13?'Mañana':h>=13&&h<21?'Tarde':'Noche';
@@ -576,9 +612,10 @@ let CIERRE=null;
 async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}if(!r.abierto)return estadoTurno();
   const pm=r.por_medio||{},cc=r.cc_cobrado||{},nc=r.nc_reintegros||{};
   const ef=(+pm['Efectivo']||0)-(+r.vuelto||0);const ccef=+cc['Efectivo']||0;const ncef=+nc['Efectivo']||0;
-  const esperado=(+r.turno.fondo_inicial||0)+ef+ccef-ncef;
-  const sis={};MEDIOS_ON.forEach(m=>sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0));
-  Object.keys(pm).forEach(m=>{if(!['Efectivo','Cuenta corriente'].includes(m)&&!(m in sis))sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0)});
+  const ret=+r.retiros||0,pr=r.propinas||{},totProp=Object.values(pr).reduce((a,b)=>a+(+b||0),0);
+  const esperado=(+r.turno.fondo_inicial||0)+ef+ccef-ncef-ret;
+  const sis={};MEDIOS_ON.forEach(m=>sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0)+(+pr[m]||0));
+  Object.keys(pm).concat(Object.keys(pr)).forEach(m=>{if(!['Efectivo','Cuenta corriente'].includes(m)&&!(m in sis))sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0)+(+pr[m]||0)});
   const totOn=Object.values(sis).reduce((a,b)=>a+b,0);
   CIERRE={esperado,sis};
   const desde=new Date(r.turno.abierto_at);const dias=Math.floor((Date.now()-desde)/864e5);
@@ -589,18 +626,20 @@ async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){retu
   <div class="resu"><span>📱 Venta online (QR, transferencia, tarjetas)</span><span>${plata(Object.keys(sis).reduce((a,m)=>a+(+pm[m]||0),0))}</span></div>
   ${pm['Cuenta corriente']?`<div class="resu"><span class="muted">A cuenta corriente (no entra plata)</span><span>${plata(pm['Cuenta corriente'])}</span></div>`:''}
   ${Object.keys(cc).length?`<div class="resu"><span class="muted">Cobros de cuenta corriente</span><span>${Object.entries(cc).map(([m,v])=>esc(m)+' '+plata(v)).join(' · ')}</span></div>`:''}
+  ${ret?`<div class="resu"><span class="muted">Retiros y pagos a proveedores (salió efectivo)</span><span style="color:var(--rojo)">−${plata(ret)}</span></div>`:''}
+  ${totProp?`<div class="resu"><span class="muted">🙌 Propinas online (no son venta)</span><span>${plata(totProp)}</span></div>`:''}
   ${Object.keys(nc).length?`<div class="resu"><span class="muted">Devoluciones por nota de crédito</span><span style="color:var(--rojo)">${Object.entries(nc).map(([m,v])=>esc(m)+' −'+plata(v)).join(' · ')}</span></div>`:''}
 
   <div class="sec">💵 Arqueo de efectivo</div>
   <p class="muted" style="font-size:12px;margin:4px 0 8px">Contá cuántos billetes hay de cada uno. El total se suma solo.</p>
   <div class="arq">${BILLETES.map(b=>`<div><b>$ ${b.toLocaleString('es-AR')}</b><input class="bil" data-b="${b}" inputmode="numeric" placeholder="0" oninput="sumarArqueo()"><small id="bs${b}"></small></div>`).join('')}
     <div><b>Monedas y otros ($)</b><input id="arqOtros" inputmode="decimal" placeholder="0" oninput="sumarArqueo()"><small></small></div></div>
-  <div class="resu" style="margin-top:8px"><span>Efectivo que tiene que haber <span class="muted">(cambio ${plata(r.turno.fondo_inicial)} + ventas${ccef?' + cobros':''}${ncef?' − devoluciones':''})</span></span><b>${plata(esperado)}</b></div>
+  <div class="resu" style="margin-top:8px"><span>Efectivo que tiene que haber <span class="muted">(cambio ${plata(r.turno.fondo_inicial)} + ventas${ccef?' + cobros':''}${ncef?' − devoluciones':''}${ret?' − retiros':''})</span></span><b>${plata(esperado)}</b></div>
   <label>Efectivo contado en la caja</label><input id="cE" inputmode="decimal" oninput="CIERRE.manual=true;difCierre()">
   <div id="cDif" style="margin-top:6px;font-weight:700"></div>
 
   <div class="sec">📱 Venta online</div>
-  <p class="muted" style="font-size:12px;margin:4px 0 6px">Fijate en la app de Mercado Pago y en el cierre de lote del posnet cuánto entró en este turno y ponelo. Si no lo podés ver, dejalo vacío.</p>
+  <p class="muted" style="font-size:12px;margin:4px 0 6px">Fijate en la app de Mercado Pago y en el cierre de lote del posnet cuánto entró en este turno y ponelo. Si no lo podés ver, dejalo vacío.${totProp?' "Según la caja" ya incluye las propinas.':''}</p>
   <div class="onl h"><span>Medio</span><span style="text-align:right">Según la caja</span><span>Lo que figura</span><span style="text-align:right">Diferencia</span></div>
   ${Object.keys(sis).map((m,k)=>`<div class="onl"><span>${esc(m)}</span><span style="text-align:right">${plata(sis[m])}</span><input class="onIn" data-m="${esc(m)}" data-k="${k}" inputmode="decimal" oninput="difCierre()"><span id="od${k}" style="text-align:right;font-weight:700"></span></div>`).join('')}
   <div class="onl" style="border:0"><b>Total online</b><b style="text-align:right">${plata(totOn)}</b><span></span><span id="odT" style="text-align:right;font-weight:700"></span></div>
@@ -626,6 +665,8 @@ async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efec
     <div class="resu"><span>Efectivo esperado</span><b>${plata(r.efectivo_esperado)}</b></div><div class="resu"><span>Efectivo contado</span><b>${plata(r.efectivo_contado)}</b></div>
     <div class="resu grande" style="color:${Math.abs(r.diferencia)<1?'var(--verde)':'var(--rojo)'}"><span>💵 ${Math.abs(r.diferencia)<1?'Cierra':'Diferencia'}</span><span>${plata(r.diferencia)}</span></div>
     ${don!=null?`<div class="resu grande" style="color:${Math.abs(don)<1?'var(--verde)':'var(--rojo)'}"><span>📱 ${Math.abs(don)<1?'Online cierra':'Online'}</span><span>${plata(don)}</span></div>`:''}
+    ${+r.retiros?`<div class="resu"><span>Retiros / pagos a proveedores</span><b>${plata(r.retiros)}</b></div>`:''}
+    ${r.propinas&&Object.keys(r.propinas).length?`<div class="resu"><span>🙌 Propinas del turno</span><b>${plata(Object.values(r.propinas).reduce((a,b)=>a+(+b||0),0))}</b></div>`:''}
     <p class="muted" style="margin-top:10px">La venta del turno ya quedó cargada en Gestión → Finanzas.</p><div class="acc"><button class="b-ok" onclick="cerrar()">Listo</button></div>`);
     await estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
 
