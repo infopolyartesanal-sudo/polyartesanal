@@ -249,6 +249,7 @@
   <h1>Caja Poly · <span>Poly Artesanal</span></h1>
   <div id="estado">Cargando…</div>
   <button class="tb" onclick="cobrarCC()" id="bCCtop" style="display:none">Cobrar cuenta corriente</button>
+  <button class="tb" onclick="actualizarCaja(this)" title="Trae de nuevo productos, precios, clientes y pedidos (no borra la venta que estás cargando)">🔄 Actualizar</button>
   <button class="tb" id="bTurno" onclick="turnoBtn()">…</button>
   <a class="tb" id="bSalon" href="asistente_salon.html" style="text-decoration:none">Salón</a>
 </div>
@@ -332,6 +333,11 @@ async function cargar(){
   await estadoTurno();
   pintarListas();pintarGrid();pintarCarrito();
 }
+// Botón Actualizar (en la compu del local F5 no recarga): vuelve a leer todo sin perder la venta en curso
+async function actualizarCaja(b){const t=b.textContent;b.disabled=true;b.textContent='Actualizando…';
+  try{await cargar();toast('✅ Caja actualizada')}catch(e){toast('⚠️ '+e.message,5000)}b.disabled=false;b.textContent=t}
+// Además se actualiza sola cada 10 minutos si no hay nada abierto
+setInterval(()=>{if(!carrito.length&&$('#ov').style.display!=='flex')cargar().catch(()=>{})},600000);
 async function estadoTurno(){
   let r=null;try{r=await rpc('caja_resumen')}catch(e){toast('⚠️ '+e.message,5000)}
   TURNO=r&&r.abierto?r:null;
