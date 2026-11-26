@@ -109,13 +109,13 @@
     try { localStorage.setItem('poly_usuario', JSON.stringify(u)); } catch (e) {}
     if (!permitido(u)) { irA(destino(u)); return; }
     window.POLY_USUARIO = u;
-    var listo = function () { barra(u); mostrar(); };
+    var listo = function () { barra(u); mostrar(); try { document.dispatchEvent(new Event('poly-usuario')); } catch (e) {} };
     if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
   }, function () {
     // sin internet: si ya había entrado en este dispositivo, lo dejamos trabajar
     if (guardado && permitido(guardado)) {
       window.POLY_USUARIO = guardado;
-      var listo = function () { barra(guardado); mostrar(); };
+      var listo = function () { barra(guardado); mostrar(); try { document.dispatchEvent(new Event('poly-usuario')); } catch (e) {} };
       if (document.body) listo(); else document.addEventListener('DOMContentLoaded', listo);
     } else { irA('index.html'); }
   });
@@ -1113,6 +1113,11 @@ function filterStock(q) { renderStock(q); }
 
 // Solo Micaela Ramos (usuario 'salon') y Poly (admin) pueden tocar el stock a mano, los precios y el Inicial del control
 function puedeEditarStock(){ const u = window.POLY_USUARIO || {}; return u.rol === 'admin' || u.usuario === 'salon'; }
+// El usuario se confirma después de que la pantalla ya se dibujó: se vuelve a dibujar para que Micaela/Poly vean los controles de edición
+document.addEventListener('poly-usuario', function(){
+  try { if (typeof renderStock === 'function') renderStock(); } catch(e){}
+  try { if (typeof renderControlTabla === 'function' && typeof controlState !== 'undefined' && controlState) renderControlTabla(); } catch(e){}
+});
 function sinPermisoStock(){ alert('Solo Micaela puede corregir el stock a mano. Si algo no coincide, avisale a ella o a Poly. Vos podés cargar egresos.'); }
 function adjustStock(id, delta) {
   if (!puedeEditarStock()) { sinPermisoStock(); return; }
@@ -2291,7 +2296,7 @@ function renderControlTabla(){
     h+='<tr style="border-bottom:1px solid #f0f0f0;">'
       +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
       +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?'':' readonly tabindex="-1" title="Solo Micaela puede corregir el Inicial"')+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
-      +'<td style="text-align:center;"><input readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores" type="number" id="cg-'+p.c+'" value="'+(it.g||0)+'" style="'+inp+'background:#EEEEEE;color:#555;"></td>'
+      +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?' inputmode="numeric" oninput="ctrlEdit(\''+p.c+'\')"':' readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores. Solo Micaela o Poly lo pueden corregir"')+' type="number" id="cg-'+p.c+'" value="'+(it.g||0)+'" style="'+inp+ctrlMarcaG(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ce-'+p.c+'" value="'+(it.e||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
       +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
       +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+v+'</td>'
@@ -2305,6 +2310,7 @@ function renderControlTabla(){
 // Inicial distinto de lo que calculó el sistema: se marca en naranja y muestra el valor original
 function ctrlRefI(cod){ const r=controlState&&controlState.ref&&controlState.ref[cod]; return r?Number(r.i)||0:null; }
 function ctrlMarca(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? 'outline:3px solid #F57C00;outline-offset:1px;' : ''; }
+function ctrlMarcaG(cod,it){ const r=controlState&&controlState.ref&&controlState.ref[cod]; return (r && (Number(it.g)||0)!==(Number(r.g)||0)) ? 'outline:3px solid #F57C00;outline-offset:1px;' : ''; }
 function ctrlMarcaTxt(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? '<div id="cim-'+cod+'" style="font-size:9px;color:#E65100;font-weight:700;margin-top:5px;">sistema: '+r+'</div>' : '<div id="cim-'+cod+'"></div>'; }
 function ctrlEdit(cod){
   if(!controlState||!controlState.items[cod]) return;
@@ -2318,6 +2324,7 @@ function ctrlEdit(cod){
   const ci=document.getElementById('ci-'+cod), r=ctrlRefI(cod);
   if(ci && r!==null){ const cambio=(Number(it.i)||0)!==r; ci.style.outline=cambio?'3px solid #F57C00':''; ci.style.outlineOffset='1px';
     const m=document.getElementById('cim-'+cod); if(m){ m.textContent=cambio?'sistema: '+r:''; m.style.cssText='font-size:9px;color:#E65100;font-weight:700;margin-top:5px;'; } }
+  const cg=document.getElementById('cg-'+cod); if(cg){ const mg=ctrlMarcaG(cod,it); cg.style.outline=mg?'3px solid #F57C00':''; cg.style.outlineOffset='1px'; }
   renderControlPie(); // actualiza total
 }
 
