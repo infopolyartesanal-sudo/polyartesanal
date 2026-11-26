@@ -663,7 +663,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
           <option value="consumo_empleado">👤 Consumo interno (empleado)</option>
           <option value="devolucion">↩ Devolución al sector</option>
         </select>
-        <input type="number" id="egr-cantidad" placeholder="Cant." min="1" style="width:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;text-align:center;outline:none;" />
+        <input type="text" inputmode="decimal" id="egr-cantidad" placeholder="Cant." style="width:72px;padding:9px;border:1px solid var(--border);border-radius:8px;font-size:14px;text-align:center;outline:none;" />
         <button onclick="registrarEgreso()" style="padding:9px 14px;background:var(--danger);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;">Registrar</button>
       </div>
       <div id="egr-quien-box" style="display:none;margin:-4px 0 12px;">
@@ -1050,11 +1050,42 @@ function codigoVentaDe(id, nombre) {
   }
   return null;
 }
+// ── Kilos: acepta 1,250 · 1.250 · 1250 g · 1 kg 250 · 250g. Devuelve kilos (NaN si no entiende)
+function leerKgSalon(v, preguntar) {
+  let s = String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!s) return 0;
+  let m = s.match(/^(\d+(?:[.,]\d+)?)\s*kg?s?\s*(?:y\s*)?(\d+)\s*(?:g|gr|grs|gramos)?$/);           // 1 kg 250
+  if (m) return Number(m[1].replace(',', '.')) + Number(m[2]) / 1000;
+  m = s.match(/^(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos)$/); if (m) return Number(m[1].replace(',', '.')) / 1000;   // 250 g
+  s = s.replace(/\s*(kg|kgs|kilos?)$/, '');
+  if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
+  let n = Number(s); if (!isFinite(n)) return NaN;
+  if (n >= 50 && preguntar !== false) {   // casi seguro son gramos (1250 = 1,250 kg)
+    if (confirm('Pusiste ' + n + '. ¿Son ' + n + ' gramos? Tocá Aceptar y lo cargo como ' + fmtKgSalon(n / 1000) + '.')) n = n / 1000;
+    else if (!confirm('¿Seguro que son ' + n + ' KILOS?')) return NaN;
+  }
+  return Math.round(n * 1000) / 1000;
+}
+function fmtKgSalon(q) { q = Math.round((+q || 0) * 1000) / 1000; return q.toLocaleString('es-AR', { minimumFractionDigits: q % 1 ? 3 : 0, maximumFractionDigits: 3 }) + ' kg'; }
+function esKgSalon(id) {
+  if (typeof id === 'string' && id.startsWith('pv:')) { const p = (CONTROL_CATALOGO || []).find(x => x.c === id.slice(3)); if (p && p.kg) return true; }
+  const m = STOCK_META[id]; if (m && m.unidad === 'kg') return true;
+  const it = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL).find(x => x.id === id); return !!(it && it.unidad === 'kg');
+}
+function ponerKgSalon(id) {
+  if (!puedeEditarStock()) { sinPermisoStock(); return; }
+  const v = prompt('¿Cuántos kilos hay de ' + getItemName(id) + '?\nEj: 1,250 (un kilo doscientos cincuenta) · 750 g · 1 kg 250', String(Math.round((stockState[id] || 0) * 1000) / 1000).replace('.', ','));
+  if (v === null) return;
+  const n = leerKgSalon(v); if (!(n >= 0)) { alert('No entendí el peso. Escribilo así: 1,250'); return; }
+  const antes = stockState[id] || 0; stockState[id] = n; saveStock(); renderStock();
+  addToLog('⚖️ Peso corregido a mano: ' + getItemName(id) + ' ' + fmtKgSalon(antes) + ' → ' + fmtKgSalon(n));
+}
 function stockIdDe(id, nombre) { const c = codigoVentaDe(id, nombre); return c ? 'pv:' + c : id; }
 function itemsVentaStock() {
   if (!CATALOGO_VENTA_DB) return [];
   return CONTROL_CATALOGO.filter(p => stockState['pv:' + p.c] !== undefined)
-    .map(p => ({ id: 'pv:' + p.c, nombre: p.n, unidad: (STOCK_META['pv:' + p.c] || {}).unidad || 'u', sector: 'venta', minLocal: 0, paso: 1, precio: p.p }));
+    .map(p => { const kg = p.kg || (STOCK_META['pv:' + p.c] || {}).unidad === 'kg'; return { id: 'pv:' + p.c, nombre: p.n, unidad: kg ? 'kg' : ((STOCK_META['pv:' + p.c] || {}).unidad || 'u'), sector: 'venta', minLocal: 0, paso: kg ? 0.1 : 1, precio: p.p }; });
 }
 
 function renderStock(filterQ) {
@@ -1093,8 +1124,9 @@ function renderStock(filterQ) {
           <div class="stock-adj" ${puedeEditarStock() ? '' : 'hidden'}>
             <span class="stock-adj-label">Ajustar stock</span>
             <button class="adj-btn minus" onclick="adjustStock('${item.id}',-(${item.paso||1}))">−</button>
-            <span style="font-size:15px;font-weight:700;color:var(--primary-dark);min-width:36px;text-align:center;">${v}</span>
+            <span style="font-size:15px;font-weight:700;color:var(--primary-dark);min-width:36px;text-align:center;">${esKgSalon(item.id) ? fmtKgSalon(v) : v}</span>
             <button class="adj-btn plus" onclick="adjustStock('${item.id}',(${item.paso||1}))">+</button>
+            ${esKgSalon(item.id) ? `<button onclick="ponerKgSalon('${item.id}')" style="margin-left:6px;background:#EDE7F6;color:#4A148C;border:none;border-radius:6px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;">⚖️ Poner kilos</button>` : ''}
           </div>
           <div class="stock-min">Mínimo recomendado: ${item.minLocal} ${item.unidad}</div>
           <div class="stock-min" style="display:flex;align-items:center;gap:8px;margin-top:4px;">
@@ -1121,10 +1153,10 @@ document.addEventListener('poly-usuario', function(){
 function sinPermisoStock(){ alert('Solo Micaela puede corregir el stock a mano. Si algo no coincide, avisale a ella o a Poly. Vos podés cargar egresos.'); }
 function adjustStock(id, delta) {
   if (!puedeEditarStock()) { sinPermisoStock(); return; }
-  stockState[id] = Math.max(0, (stockState[id] || 0) + delta);
+  stockState[id] = Math.max(0, Math.round(((stockState[id] || 0) + delta) * 1000) / 1000);
   saveStock();
   renderStock();
-  addToLog((delta > 0 ? '➕' : '➖') + ' Ajuste manual: ' + getItemName(id) + ' → ' + stockState[id]);
+  addToLog((delta > 0 ? '➕' : '➖') + ' Ajuste manual: ' + getItemName(id) + ' → ' + (esKgSalon(id) ? fmtKgSalon(stockState[id]) : stockState[id]));
 }
 
 function getItemName(id) {
@@ -1433,15 +1465,16 @@ function imprimirTicketConsumo(d){
 async function registrarEgreso() {
   const prodId = document.getElementById('egr-producto').value;
   const tipo = document.getElementById('egr-tipo').value;
-  const cantidad = parseFloat(document.getElementById('egr-cantidad').value);
-  if (!prodId || !cantidad || cantidad <= 0) { alert('Seleccioná un producto e ingresá la cantidad.'); return; }
+  const egrTxt = document.getElementById('egr-cantidad').value;
+  const cantidad = prodId && esKgSalon(prodId) ? leerKgSalon(egrTxt) : parseFloat(String(egrTxt).replace(',', '.'));
+  if (!prodId || !cantidad || !(cantidad > 0)) { alert('Seleccioná un producto e ingresá la cantidad' + (prodId && esKgSalon(prodId) ? ' en kilos (ej: 0,250)' : '') + '.'); return; }
   const quien = tipo === 'consumo_empleado' ? ((document.getElementById('egr-quien') || {}).value || '').trim() : '';
   if (tipo === 'consumo_empleado' && quien.length < 3) { alert('Escribí el nombre de quién se lo llevó.'); const q = document.getElementById('egr-quien'); if (q) q.focus(); return; }
   const registro = (window.POLY_USUARIO && (window.POLY_USUARIO.nombre || window.POLY_USUARIO.usuario)) || 'Salón';
   const nombre = getItemName(prodId);
   let fotoUrl = null;
   if (egrPhotoFile) { try { fotoUrl = await uploadFotoEgreso(egrPhotoFile, prodId); } catch(e){ console.warn('foto egreso:', e); } }
-  stockState[prodId] = Math.max(0, (stockState[prodId] || 0) - cantidad);
+  stockState[prodId] = Math.max(0, Math.round(((stockState[prodId] || 0) - cantidad) * 1000) / 1000);
   saveStock();
   const now = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit'});
   const tipoLabels = { degustacion:'🍽 Degustación', desperdicio:'🗑 Remanente vencido', consumo_empleado:'👤 Consumo empleado', devolucion:'↩ Devolución', otro:'📋 Otro' };
@@ -2086,11 +2119,11 @@ function cargarCatalogoVenta(forzar){
   _catVentaProm = (async () => {
     try {
       const [prods, alias] = await Promise.all([
-        sbSelect('productos_venta', '?select=codigo,nombre,precio_lpu&activo=eq.true&order=nombre.asc'),
+        sbSelect('productos_venta', '?select=codigo,nombre,precio_lpu,por_kg&activo=eq.true&order=nombre.asc'),
         sbSelect('productos_venta_alias', '?select=alias,codigo')
       ]);
       if (prods && prods.length) {
-        CONTROL_CATALOGO = prods.map(r => ({ c: String(r.codigo), n: r.nombre, p: Number(r.precio_lpu) || 0 }));
+        CONTROL_CATALOGO = prods.map(r => ({ c: String(r.codigo), n: r.nombre, p: Number(r.precio_lpu) || 0, kg: !!r.por_kg }));
         const a = {}; (alias || []).forEach(r => { a[normCtrl(r.alias)] = String(r.codigo); });
         ALIAS_INGRESO = a;
         CATALOGO_VENTA_DB = true;
@@ -2293,16 +2326,17 @@ function renderControlTabla(){
     +'<th style="padding:6px;">Vend.</th><th style="padding:6px;">$ a rendir</th></tr></thead><tbody>';
   for(const p of prods){
     const it=controlState.items[p.c]||{i:0,g:0,f:0};
-    const v=ctrlVendido(it); const imp=v*p.p;
+    const v=Math.round(ctrlVendido(it)*1000)/1000; const imp=v*p.p;
     const dis=controlState.estado==='cerrado'?'disabled':'';
+    const tk=p.kg?' type="text" inputmode="decimal" data-kg="1" title="En kilos: 1,250"':'';
     const inp='width:52px;padding:4px;border:1px solid #ddd;border-radius:6px;text-align:center;font-size:12px;';
     h+='<tr style="border-bottom:1px solid #f0f0f0;">'
       +'<td style="padding:5px 6px;position:sticky;left:0;background:#fff;min-width:150px;">'+p.n+'<div style="font-size:10px;color:#bbb;">#'+p.c+' · '+fmtPrecio(p.p)+'</div></td>'
-      +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?'':' readonly tabindex="-1" title="Solo Micaela puede corregir el Inicial"')+' type="number" inputmode="numeric" id="ci-'+p.c+'" value="'+(it.i||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
-      +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?' inputmode="numeric" oninput="ctrlEdit(\''+p.c+'\')"':' readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores. Solo Micaela o Poly lo pueden corregir"')+' type="number" id="cg-'+p.c+'" value="'+(it.g||0)+'" style="'+inp+ctrlMarcaG(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'"></td>'
-      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="ce-'+p.c+'" value="'+(it.e||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
-      +'<td style="text-align:center;"><input '+dis+' type="number" inputmode="numeric" id="cf-'+p.c+'" value="'+(it.f||0)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
-      +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+v+'</td>'
+      +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?'':' readonly tabindex="-1" title="Solo Micaela puede corregir el Inicial"')+(tk||' type="number" inputmode="numeric"')+' id="ci-'+p.c+'" value="'+ctrlVal(p,it.i)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+ctrlMarca(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'">'+ctrlMarcaTxt(p.c,it)+'</td>'
+      +'<td style="text-align:center;"><input '+dis+(puedeEditarStock()?' inputmode="numeric" oninput="ctrlEdit(\''+p.c+'\')"':' readonly tabindex="-1" title="Se carga solo con lo que mandan los sectores. Solo Micaela o Poly lo pueden corregir"')+(tk||' type="number"')+' id="cg-'+p.c+'" value="'+ctrlVal(p,it.g)+'" style="'+inp+ctrlMarcaG(p.c,it)+(puedeEditarStock()?'':'background:#EEEEEE;color:#555;')+'"></td>'
+      +'<td style="text-align:center;"><input '+dis+(tk||' type="number" inputmode="numeric"')+' id="ce-'+p.c+'" value="'+ctrlVal(p,it.e)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FDECEA;"></td>'
+      +'<td style="text-align:center;"><input '+dis+(tk||' type="number" inputmode="numeric"')+' id="cf-'+p.c+'" value="'+ctrlVal(p,it.f)+'" oninput="ctrlEdit(\''+p.c+'\')" style="'+inp+'background:#FFF8E1;"></td>'
+      +'<td style="text-align:center;font-weight:700;" id="cv-'+p.c+'">'+(p.kg?String(v).replace('.',','):v)+'</td>'
       +'<td style="text-align:right;padding-right:6px;font-weight:700;color:#2E7D32;" id="cm-'+p.c+'">'+fmtPrecio(imp)+'</td>'
       +'</tr>';
   }
@@ -2315,14 +2349,15 @@ function ctrlRefI(cod){ const r=controlState&&controlState.ref&&controlState.ref
 function ctrlMarca(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? 'outline:3px solid #F57C00;outline-offset:1px;' : ''; }
 function ctrlMarcaG(cod,it){ const r=controlState&&controlState.ref&&controlState.ref[cod]; return (r && (Number(it.g)||0)!==(Number(r.g)||0)) ? 'outline:3px solid #F57C00;outline-offset:1px;' : ''; }
 function ctrlMarcaTxt(cod,it){ const r=ctrlRefI(cod); return (r!==null && (Number(it.i)||0)!==r) ? '<div id="cim-'+cod+'" style="font-size:9px;color:#E65100;font-weight:700;margin-top:5px;">sistema: '+r+'</div>' : '<div id="cim-'+cod+'"></div>'; }
+function ctrlVal(p,x){ x=Number(x)||0; return p.kg?String(Math.round(x*1000)/1000).replace('.',','):x; }
 function ctrlEdit(cod){
   if(!controlState||!controlState.items[cod]) return;
-  const gi=id=>{const e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;};
+  const gi=id=>{const e=document.getElementById(id);if(!e)return 0;if(e.dataset.kg){const n=leerKgSalon(e.value,false);return n>0&&n<50?n:(n>=50?Math.round(n)/1000:0);}return parseFloat(e.value)||0;};
   const it=controlState.items[cod];
   it.i=gi('ci-'+cod); it.g=gi('cg-'+cod); it.e=gi('ce-'+cod); it.f=gi('cf-'+cod);
   const p=CONTROL_CATALOGO.find(x=>x.c===cod);
-  const v=ctrlVendido(it);
-  const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=v;
+  const v=Math.round(ctrlVendido(it)*1000)/1000;
+  const cv=document.getElementById('cv-'+cod); if(cv) cv.textContent=p&&p.kg?String(v).replace('.',','):v;
   const cm=document.getElementById('cm-'+cod); if(cm) cm.textContent=fmtPrecio(v*p.p);
   const ci=document.getElementById('ci-'+cod), r=ctrlRefI(cod);
   if(ci && r!==null){ const cambio=(Number(it.i)||0)!==r; ci.style.outline=cambio?'3px solid #F57C00':''; ci.style.outlineOffset='1px';

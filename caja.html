@@ -369,10 +369,11 @@ function agregar(cod){
   const ya=carrito.find(it=>it.codigo===cod&&it.unidad==='u');if(ya)ya.cantidad+=1;else carrito.push({codigo:cod,nombre:p.nombre,cantidad:1,unidad:'u',precio:precio(p),iva:p.iva});
   $('#bus').value='';pintarGrid();pintarCarrito();$('#bus').focus()}
 function pedirKg(p){modal(`<h3>${esc(p.nombre)}</h3><p class="muted">${plata(precio(p))} el kilo · poné lo que marca la balanza</p>
-  <label>Kilos</label><input id="kgIn" inputmode="decimal" placeholder="ej: 0,250" autofocus onkeydown="if(event.key==='Enter')okKg('${esc(p.codigo)}')" oninput="$('#kgPr').textContent=plata(num(this.value)*${precio(p)})">
+  <label>Kilos</label><input id="kgIn" inputmode="decimal" placeholder="ej: 1,250 o 250 g" autofocus onkeydown="if(event.key==='Enter')okKg('${esc(p.codigo)}')" oninput="{let x=num(this.value);if(x>=50)x=x/1000;$('#kgPr').textContent=plata(x*${precio(p)})}">
   <div class="resu"><span>Importe</span><b id="kgPr">$ 0</b></div>
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okKg('${esc(p.codigo)}')">Agregar</button></div>`)}
-function okKg(cod){const p=PROD.find(x=>x.codigo===cod);let q=num($('#kgIn').value);if(!(q>0))return toast('Poné los kilos');if(q>=50&&!confirm('¿Seguro que son '+kgTxt(q)+' kg? Si eran gramos, poné 0,'+String(Math.round(q)).padStart(3,'0')))return;
+function okKg(cod){const p=PROD.find(x=>x.codigo===cod);let t=String($('#kgIn').value).trim().toLowerCase(),q,m;if(m=t.match(/^(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos)$/))q=num(m[1])/1000;else if(m=t.match(/^(\d+(?:[.,]\d+)?)\s*kg?s?\s*(?:y\s*)?(\d+)\s*(?:g|gr|grs|gramos)?$/))q=num(m[1])+(+m[2])/1000;else q=num(t.replace(/\s*(kg|kgs|kilos?)$/,''));if(!(q>0))return toast('Poné los kilos');
+  if(q>=50){if(confirm('Pusiste '+kgTxt(q)+'. ¿Son '+kgTxt(q)+' GRAMOS? Tocá Aceptar y lo cargo como '+kgTxt(q/1000)+' kg.'))q=q/1000;else if(!confirm('¿Seguro que son '+kgTxt(q)+' KILOS?'))return}
   carrito.push({codigo:cod,nombre:p.nombre,cantidad:Math.round(q*1000)/1000,unidad:'kg',precio:precio(p),iva:p.iva});cerrar();$('#bus').value='';pintarGrid();pintarCarrito()}
 function total(){return Math.round(carrito.reduce((a,it)=>a+it.cantidad*it.precio,0)*100)/100}
 function pintarCli(){const c=cliente;let t='Consumidor Final';
