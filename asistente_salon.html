@@ -2106,8 +2106,20 @@ function turnoLabel(t){ return t==='manana' ? '🌅 Mañana' : '🌇 Tarde'; }
 
 let controlState = null; // { fecha, turno, responsable, hora_apertura, hora_cierre, estado, remanentes, devoluciones, consumo_interno, items:{cod:{i,g,f}} }
 
+let _ctrlTurnoAuto=false, _ctrlTimer=null;
 function ctrlInitInputs(){
   const f=document.getElementById('ctrl-fecha'); if(f && !f.value) f.value=fechaHoyISO();
+  // la primera vez elige el turno según la hora (desde las 14 es la tarde); después respeta lo que elijan
+  if(!_ctrlTurnoAuto){ _ctrlTurnoAuto=true; const t=document.getElementById('ctrl-turno');
+    const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});
+    if(t) t.value=(h>=14)?'tarde':'manana'; }
+  // mientras el Control está abierto, trae ventas, ingresos y egresos cada minuto
+  if(!_ctrlTimer) _ctrlTimer=setInterval(async()=>{
+    const panel=document.getElementById('tab-control'); if(!panel||!panel.classList.contains('active')) return;
+    if(!controlState||controlState.estado==='cerrado'||controlState.fecha!==fechaHoyISO()) return;
+    const foco=document.activeElement; if(foco&&foco.id&&/^c[igef]-/.test(foco.id)) return; // no pisar mientras escriben
+    await traerIngresos(true); await traerEgresos(true); await traerVentasCaja(true); renderControlTabla(); renderControlPie();
+  },60000);
 }
 
 
