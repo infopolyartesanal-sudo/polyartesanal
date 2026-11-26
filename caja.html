@@ -302,6 +302,8 @@ const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt
 const norm=s=>(s||'').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 const plata=n=>'$ '+(Math.round((+n||0)*100)/100).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:2});
 const num=v=>{let s=String(v==null?'':v).trim().replace(/\s|\$/g,'');if(!s)return 0;if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,'');const n=+s;return isFinite(n)?n:0};
+// Plata: el punto y la coma de miles no son decimales (122.090 o 122,090 = $122.090); solo 1 o 2 dígitos al final son centavos
+const numP=v=>{let s=String(v==null?'':v).trim().replace(/\s|\$/g,'');if(!s)return 0;const m=s.match(/^(.*?)[.,](\d{1,2})$/);const n=m?+(m[1].replace(/[.,]/g,'')+'.'+m[2]):+s.replace(/[.,]/g,'');return isFinite(n)?n:0};
 const kgTxt=q=>String(Math.round(q*1000)/1000).replace('.',',');
 function toast(m,ms){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>t.style.display='none',ms||2600)}
 function modal(h){$('#box').innerHTML=h;$('#ov').style.display='flex';setTimeout(()=>{const i=$('#box [autofocus]');if(i){i.focus();if(i.select)i.select()}},60)}
@@ -390,7 +392,7 @@ function pintarCarrito(){pintarCli();
   const t=total();$('#totV').textContent=plata(t);$('#totInfo').innerHTML='Filas: '+carrito.length+' &nbsp; Items: '+kgTxt(carrito.reduce((a,it)=>a+(it.unidad==='kg'?1:it.cantidad),0));
   $('#cobrar').disabled=!carrito.length||!TURNO||carrito.some(it=>!(it.precio>0))}
 function cantidad(k,v){const q=num(v);if(!(q>0)){carrito.splice(k,1)}else carrito[k].cantidad=carrito[k].unidad==='kg'?Math.round(q*1000)/1000:q;pintarCarrito()}
-function precioMano(k,v){const p=num(v);if(!(p>0))return toast('Precio inválido');carrito[k].precio=p;carrito[k].manual=true;pintarCarrito()}
+function precioMano(k,v){const p=numP(v);if(!(p>0))return toast('Precio inválido');carrito[k].precio=p;carrito[k].manual=true;pintarCarrito()}
 
 // ---------- cliente ----------
 function elegirCliente(){modal(`<h3>👤 Cliente</h3>
@@ -476,8 +478,8 @@ function addPago(m){const t=total();const ya=PAGOS.reduce((a,p)=>a+p.monto,0);
   if(PAGOS.some(p=>p.medio===m))return;PAGOS.push({medio:m,monto:Math.max(0,Math.round((t-ya)*100)/100),recibe:null});pintarPagos();
   const i=document.querySelector(m==='Efectivo'?'#pr'+(PAGOS.length-1):'#pm'+(PAGOS.length-1));if(i){i.focus();i.select()}}
 function pintarPagos(){const t=total();
-  $('#pagos').innerHTML=PAGOS.map((p,k)=>`<div class="pago"><b>${p.medio}</b><input id="pm${k}" value="${p.monto}" inputmode="decimal" oninput="PAGOS[${k}].monto=num(this.value);resPago()"><button class="x" style="background:none;border:0;color:var(--tx2);font-size:18px" onclick="PAGOS.splice(${k},1);pintarPagos()">✕</button></div>
-    ${p.medio==='Efectivo'?`<div class="pago"><span class="muted">Con cuánto paga</span><input id="pr${k}" value="${p.recibe==null?'':p.recibe}" placeholder="opcional" inputmode="decimal" oninput="PAGOS[${k}].recibe=this.value===''?null:num(this.value);resPago()" onkeydown="if(event.key==='Enter')confirmar()"><span></span></div>`:''}`).join('');pintarPropina();resPago()}
+  $('#pagos').innerHTML=PAGOS.map((p,k)=>`<div class="pago"><b>${p.medio}</b><input id="pm${k}" value="${p.monto}" inputmode="decimal" oninput="PAGOS[${k}].monto=numP(this.value);resPago()"><button class="x" style="background:none;border:0;color:var(--tx2);font-size:18px" onclick="PAGOS.splice(${k},1);pintarPagos()">✕</button></div>
+    ${p.medio==='Efectivo'?`<div class="pago"><span class="muted">Con cuánto paga</span><input id="pr${k}" value="${p.recibe==null?'':p.recibe}" placeholder="opcional" inputmode="decimal" oninput="PAGOS[${k}].recibe=this.value===''?null:numP(this.value);resPago()" onkeydown="if(event.key==='Enter')confirmar()"><span></span></div>`:''}`).join('');pintarPropina();resPago()}
 // Propina: solo en pagos online (QR, transferencia, tarjetas). No es parte de la venta: no se factura ni suma al total,
 // pero entra junto con el cobro online y se suma en el control online del cierre.
 let PROP={monto:0,medio:null};
@@ -486,7 +488,7 @@ function pintarPropina(){const b=$('#propBox');if(!b)return;const on=PAGOS.filte
   if(!on.some(p=>p.medio===PROP.medio))PROP.medio=on[0].medio;const t=total();
   b.innerHTML=`<div style="border:1px solid var(--brd);border-radius:10px;padding:10px;margin-top:10px;background:var(--bg)">
   <div style="font-weight:700;margin-bottom:6px">🙌 Propina <span class="muted" style="font-weight:400;font-size:12px">(opcional · no se factura)</span></div>
-  <div class="pago" style="margin:0"><span class="muted">Importe</span><input id="propIn" inputmode="decimal" placeholder="0" value="${PROP.monto||''}" oninput="PROP.monto=num(this.value);resPago()"><span></span></div>
+  <div class="pago" style="margin:0"><span class="muted">Importe</span><input id="propIn" inputmode="decimal" placeholder="0" value="${PROP.monto||''}" oninput="PROP.monto=numP(this.value);resPago()"><span></span></div>
   <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${[10,15].map(x=>`<button class="tb" onclick="PROP.monto=Math.round(${t}*${x/100});$('#propIn').value=PROP.monto;resPago()">${x}% (${plata(Math.round(t*x/100))})</button>`).join('')}<button class="tb" onclick="PROP.monto=0;$('#propIn').value='';resPago()">Sin propina</button></div>
   ${on.length>1?`<label style="margin-top:6px">Entra por</label><select onchange="PROP.medio=this.value;resPago()">${on.map(p=>`<option ${p.medio===PROP.medio?'selected':''}>${esc(p.medio)}</option>`).join('')}</select>`:''}</div>`}
 function resPago(){const t=total(),s=PAGOS.reduce((a,p)=>a+(+p.monto||0),0);const ef=PAGOS.find(p=>p.medio==='Efectivo');
@@ -607,7 +609,7 @@ async function retiroCaja(){if(!TURNO)return toast('Primero abrí el turno');let
   <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button><button class="b-ok" onclick="okRetiro()">Guardar</button></div>`);tipoRet()}
 function tipoRet(){const p=RET.tipo==='proveedor';$('#rtP').style.outline=p?'3px solid var(--oro)':'';$('#rtR').style.outline=p?'':'3px solid var(--oro)';
   $('#rtProvBox').style.display=p?'':'none';$('#rtNl').textContent=p?'Detalle (opcional)':'Motivo / quién lo retira (obligatorio)';setTimeout(()=>(p?$('#rtProv'):$('#rtM')).focus(),30)}
-async function okRetiro(){const m=num($('#rtM').value),pv=RET.tipo==='proveedor'?$('#rtProv').value.trim():'',nt=$('#rtN').value.trim();
+async function okRetiro(){const m=numP($('#rtM').value),pv=RET.tipo==='proveedor'?$('#rtProv').value.trim():'',nt=$('#rtN').value.trim();
   if(!(m>0))return toast('Poné el importe');if(RET.tipo==='proveedor'&&!pv)return toast('Poné a qué proveedor');if(RET.tipo==='retiro'&&!nt)return toast('Poné el motivo o quién lo retira');
   if(!confirm('¿Sale '+plata(m)+' en efectivo de la caja'+(pv?' para '+pv:'')+'?'))return;
   try{await rpc('caja_retiro',{p_tipo:RET.tipo,p_monto:m,p_proveedor:pv||null,p_nota:nt||null});cerrar();toast('✅ Guardado: '+plata(m)+(pv?' a '+pv:' retiro'),3500)}catch(e){toast('⚠️ '+e.message,5000)}}
@@ -618,9 +620,9 @@ async function anularRetiro(id){if(!confirm('¿Anular este movimiento? (vuelve a
 function turnoBtn(){TURNO?cerrarTurno():abrirTurno()}
 function abrirTurno(){const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});const sug=h>=5&&h<13?'Mañana':h>=13&&h<21?'Tarde':'Noche';
   modal(`<h3>🔓 Abrir turno</h3><div class="fila"><div><label>Turno</label><select id="tT">${['Mañana','Tarde','Noche'].map(t=>`<option ${t===sug?'selected':''}>${t}</option>`).join('')}</select></div>
-  <div><label>Efectivo en la caja al abrir (cambio)</label><input id="tF" inputmode="decimal" placeholder="0" autofocus onkeydown="if(event.key==='Enter')okAbrir()"></div></div>
+  <div><label>Efectivo en la caja al abrir (cambio)</label><input id="tF" inputmode="decimal" placeholder="ej: 122.090" autofocus onkeydown="if(event.key==='Enter')okAbrir()" oninput="$('#tFv').textContent=this.value.trim()?'Se carga: '+plata(numP(this.value)):''"><div id="tFv" class="muted" style="font-size:13px;margin-top:4px;font-weight:700"></div></div></div>
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okAbrir()">Abrir</button></div>`)}
-async function okAbrir(){try{await rpc('caja_abrir',{p_turno:$('#tT').value,p_fondo:num($('#tF').value)});cerrar();await estadoTurno();toast('✅ Turno abierto')}catch(e){toast('⚠️ '+e.message,6000)}}
+async function okAbrir(){try{await rpc('caja_abrir',{p_turno:$('#tT').value,p_fondo:numP($('#tF').value)});cerrar();await estadoTurno();toast('✅ Turno abierto')}catch(e){toast('⚠️ '+e.message,6000)}}
 const BILLETES=[20000,10000,2000,1000,500,200,100];
 const MEDIOS_ON=['Mercado Pago / QR','Transferencia','Débito','Crédito'];
 let CIERRE=null;
@@ -662,19 +664,19 @@ async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){retu
   <label id="cNl">Notas (opcional)</label><input id="cN" placeholder="">
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-rojo" onclick="okCerrar()">Cerrar turno</button></div>`);
   setTimeout(()=>{const b=document.querySelector('.bil');if(b)b.focus()},80)}
-function sumarArqueo(){let t=0;BILLETES.forEach(b=>{const q=Math.max(0,Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value)));const st=q*b;t+=st;$('#bs'+b).textContent=q?plata(st):''});t+=num($('#arqOtros').value);
+function sumarArqueo(){let t=0;BILLETES.forEach(b=>{const q=Math.max(0,Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value)));const st=q*b;t+=st;$('#bs'+b).textContent=q?plata(st):''});t+=numP($('#arqOtros').value);
   CIERRE.arqueoTotal=t;CIERRE.manual=false;$('#cE').value=t?String(t):'';difCierre()}
 function difTxt(d){return Math.abs(d)<1?'<span style="color:var(--verde)">✅ Cierra justo</span>':'<span style="color:var(--rojo)">'+(d<0?'Falta ':'Sobra ')+plata(Math.abs(d))+'</span>'}
-function difCierre(){const v=$('#cE').value.trim();const d=num(v)-CIERRE.esperado;$('#cDif').innerHTML=v?difTxt(d):'';
-  let dt=0,alguno=false;document.querySelectorAll('.onIn').forEach(i=>{const o=$('#od'+i.dataset.k);if(!i.value.trim()){o.innerHTML='';return}alguno=true;const x=num(i.value)-CIERRE.sis[i.dataset.m];dt+=x;o.innerHTML=Math.abs(x)<1?'<span style="color:var(--verde)">✅</span>':'<span style="color:var(--rojo)">'+(x<0?'−':'+')+plata(Math.abs(x))+'</span>'});
+function difCierre(){const v=$('#cE').value.trim();const d=numP(v)-CIERRE.esperado;$('#cDif').innerHTML=v?difTxt(d):'';
+  let dt=0,alguno=false;document.querySelectorAll('.onIn').forEach(i=>{const o=$('#od'+i.dataset.k);if(!i.value.trim()){o.innerHTML='';return}alguno=true;const x=numP(i.value)-CIERRE.sis[i.dataset.m];dt+=x;o.innerHTML=Math.abs(x)<1?'<span style="color:var(--verde)">✅</span>':'<span style="color:var(--rojo)">'+(x<0?'−':'+')+plata(Math.abs(x))+'</span>'});
   $('#odT').innerHTML=alguno?(Math.abs(dt)<1?'<span style="color:var(--verde)">✅</span>':'<span style="color:var(--rojo)">'+(dt<0?'−':'+')+plata(Math.abs(dt))+'</span>'):'';
   const hay=(v&&Math.abs(d)>=1)||(alguno&&Math.abs(dt)>=1);$('#cNl').textContent=hay?'Explicá la diferencia (obligatorio)':'Notas (opcional)';CIERRE.hayDif=hay}
 async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efectivo y ponelo');
   if(CIERRE.hayDif&&!$('#cN').value.trim()){$('#cN').focus();return toast('Hay diferencia: explicá qué pasó en las notas',4000)}
-  const arq={};BILLETES.forEach(b=>{const q=Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value));if(q>0)arq[b]=q});const ot=num($('#arqOtros').value);
+  const arq={};BILLETES.forEach(b=>{const q=Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value));if(q>0)arq[b]=q});const ot=numP($('#arqOtros').value);
   const pArq=Object.keys(arq).length||ot?{billetes:arq,otros:ot,total:CIERRE.arqueoTotal||0,editado_a_mano:!!CIERRE.manual}:null;
-  const on={};document.querySelectorAll('.onIn').forEach(i=>{if(i.value.trim())on[i.dataset.m]=num(i.value)});
-  try{const r=await rpc('caja_cerrar',{p_efectivo:num($('#cE').value),p_notas:$('#cN').value||null,p_arqueo:pArq,p_online:Object.keys(on).length?on:null});
+  const on={};document.querySelectorAll('.onIn').forEach(i=>{if(i.value.trim())on[i.dataset.m]=numP(i.value)});
+  try{const r=await rpc('caja_cerrar',{p_efectivo:numP($('#cE').value),p_notas:$('#cN').value||null,p_arqueo:pArq,p_online:Object.keys(on).length?on:null});
     const don=r.diferencia_online;
     modal(`<h3>✅ Turno cerrado</h3><div class="resu"><span>Total vendido</span><b>${plata(r.total)}</b></div><div class="resu"><span>Ventas</span><b>${r.tickets}</b></div>
     <div class="resu"><span>Efectivo esperado</span><b>${plata(r.efectivo_esperado)}</b></div><div class="resu"><span>Efectivo contado</span><b>${plata(r.efectivo_contado)}</b></div>
@@ -749,7 +751,7 @@ async function archivoADatos(f){if(!f)return null;
     return {nombre:f.name,tipo:'image/jpeg',datos:c.toDataURL('image/jpeg',0.72)}}
   if(f.size>4e6)throw new Error('El PDF es muy pesado (máx. 4 MB)');
   const d=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=no;r.readAsDataURL(f)});return {nombre:f.name,tipo:f.type||'application/pdf',datos:d}}
-async function okCC(){const id=+$('#ccC').value,m=num($('#ccM').value);if(!(m>0))return toast('Poné el importe');$('#bCC').disabled=true;
+async function okCC(){const id=+$('#ccC').value,m=numP($('#ccM').value);if(!(m>0))return toast('Poné el importe');$('#bCC').disabled=true;
   try{const comp=await archivoADatos(($('#ccF').files||[])[0]);
     const r=await rpc('cc_registrar_pago',{p_cliente:id,p_monto:m,p_medio:$('#ccP').value,p_ref:$('#ccR').value||null});
     if(comp)await api('cc_comprobantes',{method:'POST',headers:Object.assign({},H,{Prefer:'return=minimal'}),body:JSON.stringify([Object.assign({mov_id:r.mov_id,cliente_id:id},comp)])});
