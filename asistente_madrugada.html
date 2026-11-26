@@ -1264,16 +1264,28 @@ async function pintarOrigen(){
   try {
     if (prodOrigen === 'freezer') { origFreezer = await sbSelect('freezer_panaderia', '') || []; L = origFreezer.filter(r => (+r.total||0) > 0).map(r => ({ id: r.id, nom: r.nombre || r.id, disp: +r.total })); }
     if (prodOrigen === 'camara') { origCamara = await sbSelect('camara_panaderia', '?order=nombre.asc') || []; L = origCamara.filter(r => (+r.cantidad||0) > 0).map(r => ({ id: r.id, nom: r.nombre || r.id, disp: +r.cantidad })); }
-    if (prodOrigen === 'fermentacion') { origMasas = await sbSelect('masas_fermentando', '?estado=eq.fermentando&order=ingreso_at.asc') || []; L = origMasas.map(r => ({ id: r.id, nom: r.codigo + ' · ' + r.receta + (r.contenido ? ' (' + r.contenido + ')' : ''), receta: r.receta })); }
+    if (prodOrigen === 'fermentacion') { origMasas = await sbSelect('masas_fermentando', '?estado=in.(fermentando,a_cocinar)&order=ingreso_at.asc') || []; L = origMasas.map(r => ({ id: r.id, nom: (r.estado === 'a_cocinar' ? '🔥 ' : '') + r.codigo + ' · ' + r.receta + (r.contenido ? ' (' + r.contenido + ')' : '') + (r.estado === 'a_cocinar' ? ' — mandada a cocinar' : ''), receta: r.receta, cocinar: r.estado === 'a_cocinar' })); }
   } catch (e) { L = []; }
   if (!L.length) { det.innerHTML = '<div style="font-size:12px;color:#B71C1C;">No hay nada cargado en ' + (prodOrigen==='freezer'?'el freezer':prodOrigen==='camara'?'la cámara':'fermentación') + '. Si igual lo sacaste de ahí, avisale a Poly.</div>'; return; }
-  L.sort((a, b) => (parecido(b) ? 1 : 0) - (parecido(a) ? 1 : 0));
+  L.sort((a, b) => (parecido(b) ? 2 : 0) + (b.cocinar ? 1 : 0) - (parecido(a) ? 2 : 0) - (a.cocinar ? 1 : 0));
+  if (prodOrigen === 'fermentacion' && masaElegida) { const i = L.findIndex(x => String(x.id) === String(masaElegida)); if (i > 0) L.unshift(L.splice(i, 1)[0]); masaElegida = null; }
   det.innerHTML = '<select id="pm-orig-item" style="width:100%;box-sizing:border-box;padding:10px;font-size:15px;border:1.5px solid #C8E6C9;border-radius:8px;">'
     + L.map(x => '<option value="'+escMad(x.id)+'">'+escMad(x.nom)+(x.disp!=null?' — hay '+String(x.disp).replace('.', ','):'')+'</option>').join('') + '</select>'
     + (prodOrigen === 'fermentacion' ? '<div style="font-size:12px;color:#666;margin-top:6px;">La masa sale de la lista de fermentación.</div>'
        : '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;"><span style="font-size:13px;">¿Cuánto sacaste?</span><input id="pm-orig-q" inputmode="decimal" autocomplete="off" placeholder="ej: 10" style="flex:1;padding:10px;font-size:16px;border:1.5px solid #C8E6C9;border-radius:8px;text-align:center;"></div>');
 }
 function elegirOrigen(k){ prodOrigen = k; pintarOrigen(); }
+// ── Una masa que Panadería mandó a cocinar: abre la carga de lo horneado con esa masa ya elegida
+let masaElegida = null;
+window.cocinarMasa = async function (m) {
+  try { await loadRecetasMad(); } catch (e) {}
+  const n = nrmMad(m.receta);
+  let r = recetasMad.find(x => nrmMad(x.nombre) === n) || recetasMad.find(x => !x._local && (nrmMad(x.nombre).includes(n) || n.includes(nrmMad(x.nombre))));
+  if (!r) { toast('No encontré la receta "' + m.receta + '". Buscala en Producción y elegí origen 🫧 Fermentación.', 6000); return; }
+  abrirProd(r.id);
+  masaElegida = m.id; prodOrigen = 'fermentacion'; await pintarOrigen();
+  setTimeout(() => { const el = document.getElementById(prodSel && prodSel._peso ? 'pm-kg' : 'pm-u'); if (el) el.focus(); }, 120);
+};
 async function descontarOrigen(){
   if (!prodOrigen || prodOrigen === 'nuevo' || prodOrigen === 'comprado') return '';
   const sel = document.getElementById('pm-orig-item'); if (!sel) return '';
@@ -1464,7 +1476,7 @@ setInterval(()=>{ const p=document.getElementById('panel-hornear'); if(p && p.cl
 document.addEventListener('DOMContentLoaded', loadLeudando);
 loadLeudando();
 </script>
-<script src="fermentando.js?v=5"></script>
+<script src="fermentando.js?v=6"></script>
 <script src="registro_sector.js?v=1"></script>
 <script>window.addEventListener('load', function () { if (!window.registroSector) return; registroSector({ sector:'madrugada', panel:'registro-list', tab:'registro', motivoLike:'madrugada*', leudado:true, registroDiario:true }); window.loadRegistro = function () { return window.renderLog(); }; });</script>
 </body>

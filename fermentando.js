@@ -13,7 +13,7 @@
     return j;
   }
   async function lista() {
-    var r = await fetch(URL_ + 'masas_fermentando?estado=eq.fermentando&order=ingreso_at.asc', { headers: hdr() });
+    var r = await fetch(URL_ + 'masas_fermentando?estado=in.(fermentando,a_cocinar)&order=ingreso_at.asc', { headers: hdr() });
     if (!r.ok) throw new Error('No se pudo leer la lista');
     return r.json();
   }
@@ -36,15 +36,18 @@
     amarillo: { bg: '#fff6c2', bd: '#c9a400', tx: '#3d3000', et: 'Más de la mitad' },
     naranja: { bg: '#ffd9b0', bd: '#d35f00', tx: '#4a2100', et: 'Casi lista' },
     rojo: { bg: '#ffd1d1', bd: '#c62828', tx: '#5c0000', et: 'TIEMPO CUMPLIDO' },
-    sin: { bg: '#eeeeee', bd: '#757575', tx: '#1a1a1a', et: 'Sin tiempo' }
+    sin: { bg: '#eeeeee', bd: '#757575', tx: '#1a1a1a', et: 'Sin tiempo' },
+    cocinar: { bg: '#e3f2fd', bd: '#1565c0', tx: '#0d2a4a', et: '🔥 PARA COCINAR' }
   };
   function estado(r) {
+    if (r.estado === 'a_cocinar') return { n: 'cocinar', tr: (Date.now() - new Date(r.a_cocinar_at || r.ingreso_at)) / 60000 };
     var tr = (Date.now() - new Date(r.ingreso_at)) / 60000;
     if (!(r.fermentar_horas > 0)) return { n: 'sin', tr: tr };
     var tot = r.fermentar_horas * 60, p = tr / tot;
     return { n: p >= 1 ? 'rojo' : p >= 0.8 ? 'naranja' : p >= 0.5 ? 'amarillo' : 'blanco', tr: tr, falta: tot - tr, p: p, vence: new Date(new Date(r.ingreso_at).getTime() + tot * 60000) };
   }
-  var ORDEN = { rojo: 4, naranja: 3, amarillo: 2, blanco: 1, sin: 0 };
+  var ORDEN = { cocinar: 5, rojo: 4, naranja: 3, amarillo: 2, blanco: 1, sin: 0 };
+  var EN_MADRUGADA = /madrugada/i.test(location.pathname);
 
   var css = document.createElement('style');
   css.textContent =
@@ -186,14 +189,14 @@
   // ── Panel con todas las masas
   var FILTRO = 'todas', DATA = [];
   async function panel() {
-    var o = modal('<h3>🫧 Masas fermentando</h3><div class="fermSeg" style="margin-bottom:8px"><button type="button" data-f="todas">Todas</button><button type="button" data-f="camara">❄️ Cámara</button><button type="button" data-f="fermentadora">🌡️ Ferment.</button><button type="button" data-f="panaderia">🥖 Panadería</button></div>' +
+    var o = modal('<h3>🫧 Masas fermentando y para cocinar</h3><div class="fermSeg" style="margin-bottom:8px"><button type="button" data-f="todas">Todas</button><button type="button" data-f="camara">❄️ Cámara</button><button type="button" data-f="fermentadora">🌡️ Ferment.</button><button type="button" data-f="panaderia">🥖 Panadería</button></div>' +
       '<input id="fBus" placeholder="Buscar por código o masa…" style="margin-bottom:4px"><div id="fLis"><p class="muted">Cargando…</p></div><button type="button" class="fermSec" id="fCer">Cerrar</button>');
     document.getElementById('fCer').onclick = cerrar;
     function pintar() {
       if (!document.getElementById('fLis')) return;
       o.querySelectorAll('[data-f]').forEach(function (b) { b.classList.toggle('on', b.dataset.f === FILTRO); });
       var q = (document.getElementById('fBus').value || '').toLowerCase();
-      var L = DATA.filter(function (r) { return (FILTRO === 'todas' || r.ubicacion === FILTRO) && (!q || (r.codigo + ' ' + r.receta).toLowerCase().indexOf(q) >= 0); })
+      var L = DATA.filter(function (r) { return (FILTRO === 'todas' || r.ubicacion === FILTRO || r.estado === 'a_cocinar') && (!q || (r.codigo + ' ' + r.receta).toLowerCase().indexOf(q) >= 0); })
         .map(function (r) { return { r: r, e: estado(r) }; })
         .sort(function (a, b) { return ORDEN[b.e.n] - ORDEN[a.e.n] || (a.e.falta || 0) - (b.e.falta || 0); });
       var porRec = {}; L.forEach(function (x) { porRec[x.r.receta] = (porRec[x.r.receta] || 0) + 1; });
@@ -201,6 +204,14 @@
         Object.keys(porRec).map(function (k) { return esc(k) + ' ×' + porRec[k]; }).join(' · ') + '</p>' : '<p class="muted">No hay masas fermentando' + (FILTRO !== 'todas' ? ' acá' : '') + '.</p>') +
         L.map(function (x) {
           var r = x.r, e = x.e, N = NIV[e.n];
+          if (e.n === 'cocinar') return '<div class="fermCard" style="background:' + N.bg + '!important;border-color:' + N.bd + '!important;color:' + N.tx + '!important">' +
+            '<span class="fermCod">' + esc(r.codigo) + '</span><span class="fermEst" style="background:' + N.bd + '!important;color:#fff!important">' + N.et + '</span>' +
+            '<div style="font-weight:700;margin-top:4px">' + esc(r.receta) + (r.contenido ? ' <span style="font-weight:400">· ' + esc(r.contenido) + '</span>' : '') + '</div>' +
+            '<div style="font-size:13px;margin-top:2px">Panadería la mandó a cocinar ' + fecha(r.a_cocinar_at || r.ingreso_at) + ' (hace ' + dur(e.tr) + ')' + (r.a_cocinar_por ? ' · ' + esc(r.a_cocinar_por) : '') + '</div>' +
+            '<div style="font-size:13px;margin-top:2px">' + (EN_MADRUGADA ? '👉 Horneala y cargala en <b>Producción</b> (origen: 🫧 Fermentación). Así llega al Salón.' : 'Esperando que Madrugada la hornee y la mande al Salón.') + '</div>' +
+            '<div class="fermAcc">' + (EN_MADRUGADA && window.cocinarMasa ? '<button type="button" data-a="hornear" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Hornear y mandar al Salón</button>' : '') +
+            '<button type="button" data-a="volver" data-id="' + r.id + '">↩ Volver a fermentar</button>' +
+            '<button type="button" data-a="print" data-id="' + r.id + '">🖨 Etiqueta</button><button type="button" data-a="descartada" data-id="' + r.id + '" style="color:#b71c1c!important;border-color:#b71c1c!important">🗑 Tirar</button></div></div>';
           var tiempo = e.n === 'sin' ? 'Entró hace <b>' + dur(e.tr) + '</b> · <b>tocá ⏱ y cargale el tiempo</b>'
             : e.n === 'rojo' ? '⏰ Cumplió su tiempo hace <b>' + dur(-e.falta) + '</b> → usarla ya o tirarla'
             : 'Faltan <b>' + dur(e.falta) + '</b> · lista ' + fecha(e.vence);
@@ -211,7 +222,8 @@
             '<div style="font-size:13px;margin-top:2px">' + tiempo + '</div>' +
             '<div style="font-size:12px;margin-top:2px">Entró ' + fecha(r.ingreso_at) + (r.fermentar_horas ? ' · fermenta ' + horasTxt(r.fermentar_horas) : '') + (r.ingreso_por ? ' · ' + esc(r.ingreso_por) : '') + '</div>' +
             (r.notas ? '<div style="font-size:13px;margin-top:2px">📝 ' + esc(r.notas) + '</div>' : '') +
-            '<div class="fermAcc"><button type="button" data-a="usada" data-id="' + r.id + '">✅ Sacar para usar/hornear</button><button type="button" data-a="tiempo" data-id="' + r.id + '">⏱ Tiempo</button>' +
+            '<div class="fermAcc">' + (EN_MADRUGADA && window.cocinarMasa ? '<button type="button" data-a="hornear" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Hornear y mandar al Salón</button>'
+              : '<button type="button" data-a="a_cocinar" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Mandar a cocinar</button>') + '<button type="button" data-a="tiempo" data-id="' + r.id + '">⏱ Tiempo</button>' +
             '<button type="button" data-a="mover" data-id="' + r.id + '">↔ Mover</button>' +
             '<button type="button" data-a="print" data-id="' + r.id + '">🖨 Etiqueta</button><button type="button" data-a="descartada" data-id="' + r.id + '" style="color:#b71c1c!important;border-color:#b71c1c!important">🗑 Tirar</button></div></div>';
         }).join('');
@@ -225,14 +237,16 @@
       var a = b.dataset.a;
       if (a === 'print') return imprimir([r], false);
       if (a === 'tiempo') return cambiarTiempo(r);
+      if (a === 'hornear') { cerrar(); return window.cocinarMasa(r); }
       var p = { id: r.id, accion: a };
       if (a === 'mover') return mover(r);
       if (a === 'descartada') { var n = prompt('¿Por qué se tira ' + r.codigo + '? (opcional)', estado(r).n === 'rojo' ? 'Se pasó de fermentación' : ''); if (n === null) return; p.nota = n; }
-      if (a === 'usada' && !confirm('¿Sacar ' + r.codigo + ' (' + r.receta + ') de fermentación?')) return;
+      if (a === 'a_cocinar' && !confirm('¿Mandar ' + r.codigo + ' (' + r.receta + ') a Madrugada para que la cocine y la despache al Salón?')) return;
+      if (a === 'volver' && !confirm('¿Volver ' + r.codigo + ' a la lista de fermentación?')) return;
       b.disabled = true;
       try {
         await rpc('masa_actualizar', p);
-        if (window.addToLog) try { addToLog((a === 'usada' ? '✅ Sacó de fermentación: ' : a === 'mover' ? '↔ Movió masa: ' : '🗑 Tiró masa: ') + r.codigo + ' · ' + r.receta, 'receta'); } catch (e2) {}
+        if (window.addToLog) try { addToLog((a === 'a_cocinar' ? '🔥 Mandó a cocinar (Madrugada): ' : a === 'volver' ? '↩ Volvió a fermentar: ' : a === 'mover' ? '↔ Movió masa: ' : '🗑 Tiró masa: ') + r.codigo + ' · ' + r.receta, 'receta'); } catch (e2) {}
         await refrescar(); pintar();
       } catch (err) { b.disabled = false; alert(err.message); }
     };
@@ -290,6 +304,7 @@
     var ids = {}; d.forEach(function (r) { ids[r.id] = 1; });
     Object.keys(VISTAS).forEach(function (k) { if (!ids[k]) delete VISTAS[k]; }); guardarVistas();
     var nuevas = d.filter(function (r) { return estado(r).n === 'rojo' && !VISTAS[r.id]; });
+    avisoCocinar(d);
     var av = document.getElementById('fermAviso');
     if (!nuevas.length) { if (av) av.remove(); return; }
     if (!av) { av = document.createElement('div'); av.id = 'fermAviso'; document.body.appendChild(av); }
@@ -302,15 +317,29 @@
     if (Date.now() - ultimoSonido > 55000) { ultimoSonido = Date.now(); sonar(); }   // repite cada minuto hasta que alguien toque "Entendido"
   }
 
+  // ── Madrugada: aviso fijo mientras haya masas mandadas a cocinar
+  function avisoCocinar(d) {
+    if (!EN_MADRUGADA) return;
+    var L = d.filter(function (r) { return r.estado === 'a_cocinar'; });
+    var av = document.getElementById('fermCocinar');
+    if (!L.length) { if (av) av.remove(); return; }
+    if (!av) { av = document.createElement('div'); av.id = 'fermCocinar'; document.body.appendChild(av); }
+    av.style.cssText = 'position:fixed;left:8px;right:8px;bottom:136px;z-index:899;background:#1565c0;color:#fff;border-radius:12px;padding:10px 14px;font:600 14px system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer';
+    av.innerHTML = '🔥 Panadería mandó a cocinar ' + (L.length === 1 ? '1 masa' : L.length + ' masas') + ': ' + L.map(function (r) { return '<b>' + esc(r.codigo) + '</b> ' + esc(r.receta); }).join(' · ') + ' <u>Ver</u>';
+    av.onclick = panel;
+  }
+
   // ── Botón flotante con la cantidad y el color de la peor masa
   var btn = document.createElement('button'); btn.id = 'fermBtn'; btn.type = 'button'; btn.textContent = '🫧 Fermentando'; btn.onclick = panel;
   function poner() { if (document.body && !document.getElementById('fermBtn')) document.body.appendChild(btn); }
   async function refrescar() { DATA = await lista(); pintarBoton(); alarmas(DATA); return DATA; }
   function pintarBoton() {
-    var peor = 'sin'; DATA.forEach(function (r) { var n = estado(r).n; if (ORDEN[n] > ORDEN[peor]) peor = n; });
+    var peor = 'sin'; DATA.forEach(function (r) { var n = estado(r).n; if (n !== 'cocinar' && ORDEN[n] > ORDEN[peor]) peor = n; });
     var col = { rojo: ['#c62828', '#fff'], naranja: ['#d35f00', '#fff'], amarillo: ['#ffd60a', '#1a1a1a'], blanco: ['#ffffff', '#1a1a1a'], sin: ['#534AB7', '#fff'] }[DATA.length ? peor : 'sin'];
     btn.style.setProperty('background', col[0], 'important'); btn.style.setProperty('color', col[1], 'important');
-    btn.textContent = '🫧 Fermentando' + (DATA.length ? ' · ' + DATA.length : '');
+    var nc = DATA.filter(function (r) { return r.estado === 'a_cocinar'; }).length, nf = DATA.length - nc;
+    btn.textContent = '🫧 Fermentando' + (nf ? ' · ' + nf : '') + (nc ? ' · 🔥 ' + nc + ' para cocinar' : '');
+    if (nc && EN_MADRUGADA) { btn.style.setProperty('background', '#1565c0', 'important'); btn.style.setProperty('color', '#fff', 'important'); }
     btn.classList.toggle('parpadea', peor === 'rojo' && DATA.length > 0);
   }
   async function contar() { try { await refrescar(); if (panel.pintar && document.getElementById('fLis')) panel.pintar(); } catch (e) {} }

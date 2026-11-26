@@ -1821,6 +1821,9 @@ function resolverProductoSalonBase(productoId, productoNombre){
   const cat = [].concat(PRODUCTOS_LOCAL, PRODUCTOS_EXTRA, INSUMOS_LOCAL);
   const nkNom = normKeySalon(productoNombre);
   const nkId = normKeySalon(productoId);
+  // si el despacho ya viene con el código de venta (pv:NN), ese es el producto: no buscar por nombre
+  // (si no, "Pan M. Integral — Común" caía en un renglón aparte que la caja no ve)
+  if (/^pv:\d+$/.test(String(productoId||''))) return String(productoId);
   // alias explícito
   if (ALIAS_DESPACHO[nkNom]) return ALIAS_DESPACHO[nkNom];
   if (ALIAS_DESPACHO[nkId]) return ALIAS_DESPACHO[nkId];
