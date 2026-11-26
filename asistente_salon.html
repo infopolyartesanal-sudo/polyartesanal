@@ -1545,7 +1545,7 @@ function imprimirInforme() { window.print(); }
 function switchTab(name) {
   // La caja necesita pantalla ancha; el resto del Salón sigue con su formato
   document.body.classList.toggle('modo-caja', name==='caja');
-  if (name==='caja') { const f=document.getElementById('caja-frame'); if (f && !f.src) f.src='caja.html'; }
+  if (name==='caja') { const f=document.getElementById('caja-frame'); if (f && !f.src) f.src='caja.html?v='+Date.now(); }
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   const _tab = document.getElementById('tab-'+name);
