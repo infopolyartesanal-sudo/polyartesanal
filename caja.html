@@ -212,6 +212,12 @@
   .tag.prueba{background:#fff4d6;border-color:#e8c46a;color:#7a5a00}
   .tag.sf{background:#eef1f4;border-color:#b9c2cc;color:#38424d;font-size:11px}
   .b-sf{background:#fff!important;color:#1d5f8a!important;border:2px solid #1d5f8a!important}
+  .arq{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.arq div{border:1px solid var(--brd);border-radius:4px;padding:6px;background:#f6fbff}
+  .arq b{display:block;font-size:12px;color:#0f3550}.arq input{margin-top:3px;text-align:right}.arq small{display:block;text-align:right;color:var(--tx2);font-size:11px;min-height:14px}
+  .onl{display:grid;grid-template-columns:1.4fr 1fr 1.2fr 1fr;gap:6px;align-items:center;font-size:13px;padding:4px 0;border-bottom:1px solid var(--brd)}
+  .onl.h{font-size:11px;color:var(--tx2);font-weight:700;border:0}
+  .sec{margin-top:14px;padding-top:10px;border-top:2px solid var(--bg3);font-weight:800;color:#0f3550;font-size:14px}
+  .tag.nc{background:#fde8e7;border-color:#e7a3a0;color:#8a1f1b}
   .vt{display:grid;grid-template-columns:60px 70px 1fr 100px 90px;gap:8px;padding:8px 0;border-bottom:1px solid var(--brd);font-size:13px;align-items:center}
   #estadoBar{position:fixed;left:0;right:0;bottom:0;height:0}
   #ticket{display:none}
@@ -250,6 +256,7 @@
   <button class="on" onclick="$('#bus').focus()">Mostrador</button>
   <button onclick="pedidosEntregar()" id="bPed">Pedidos</button>
   <button onclick="verVentas()">Ventas del turno</button>
+  <button onclick="notaCredito()">Nota de crédito</button>
 </div>
 <div id="main">
   <section id="der">
@@ -283,7 +290,9 @@ const rpc=(fn,body)=>api('rpc/'+fn,{method:'POST',body:JSON.stringify(body||{})}
 // Pide el CAE a ARCA (función del servidor). Devuelve los datos de la factura o lanza el error de ARCA.
 async function pedirCAE(id){const r=await fetch(SB.replace('/rest/v1/','/functions/v1/arca-fe'),{method:'POST',headers:H,body:JSON.stringify({venta_id:id})});
   const j=await r.json().catch(()=>({}));if(!j.ok)throw new Error(j.error||'ARCA no respondió');return j}
-const CBTE_COD={1:'001',6:'006'};
+const CBTE_COD={1:'001',6:'006',3:'003',8:'008'};
+const CBTE_NOM={1:'Factura A',6:'Factura B',3:'Nota de crédito A',8:'Nota de crédito B'};
+const cbteNro=(p,n)=>String(p).padStart(5,'0')+'-'+String(n).padStart(8,'0');
 function datosCbte(j){return {letra:j.letra,tipo:j.cbte_tipo,pto:j.pto_vta,nro:j.cbte_nro,cae:j.cae,cae_vto:j.cae_vto,qr:j.qr,neto:j.neto,iva:j.iva,alicuotas:j.alicuotas}}
 function qrImg(txt){try{const q=qrcode(0,'M');q.addData(txt);q.make();return q.createDataURL(3,0)}catch(e){return ''}}
 const $=s=>document.querySelector(s);
@@ -505,11 +514,12 @@ function imprimirTicket(v){const C=CFG;const prueba=(v.fiscal||'')!=='autorizada
   const L=[],c=(t,s,b)=>L.push({t,a:'c',s,b}),l=(t,s,b)=>L.push({t,s,b}),lr=(a,b,s)=>L.push({l:a,r:b,s}),hr=()=>L.push({hr:1});
   c(C.nombre_fantasia||'Poly Artesanal',38);if(C.razon_social&&C.razon_social!==C.nombre_fantasia)c(C.razon_social);
   c(C.domicilio||'');if(C.cuit){c('CUIT '+C.cuit+' · IIBB '+(C.iibb||''));c((C.cond_iva||'')+' · Inicio act. '+(C.inicio_actividades||''))}
-  hr();if(prueba)c('COMPROBANTE NO VÁLIDO COMO FACTURA',30);else{c('FACTURA '+v.cbte.letra+' (Cód. '+(CBTE_COD[v.cbte.tipo]||'')+')',32);c('N° '+String(v.cbte.pto).padStart(5,'0')+'-'+String(v.cbte.nro).padStart(8,'0'),32)}
-  l('Venta #'+v.id+' · '+v.fecha.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}));
+  hr();if(prueba)c('COMPROBANTE NO VÁLIDO COMO FACTURA',30);else{c((v.nc?'NOTA DE CRÉDITO ':'FACTURA ')+v.cbte.letra+' (Cód. '+(CBTE_COD[v.cbte.tipo]||'')+')',32);c('N° '+cbteNro(v.cbte.pto,v.cbte.nro),32)}
+  if(v.nc){l('Anula: '+v.nc.asoc,24,true);if(v.nc.motivo)l('Motivo: '+v.nc.motivo,22)}
+  l((v.nc?'Ref. venta #':'Venta #')+v.id+' · '+v.fecha.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}));
   l(v.cliente&&(v.cliente.nombre||v.cliente.doc)?((v.cliente.nombre||'')+(v.cliente.doc?' · '+v.cliente.doc:'')):'A CONSUMIDOR FINAL');
   hr();v.items.forEach(it=>{l(it.nombre);lr((it.unidad==='kg'?kgTxt(it.cantidad)+' kg':it.cantidad+' u')+' x '+plata(it.precio),plata(it.cantidad*it.precio))});
-  hr();lr('TOTAL',plata(v.total),36);v.pagos.forEach(p=>lr(p.medio,plata(p.medio==='Efectivo'&&p.recibe!=null?p.recibe:p.monto)));if(v.vuelto)lr('Vuelto',plata(v.vuelto));
+  hr();lr(v.nc?'TOTAL A FAVOR DEL CLIENTE':'TOTAL',plata(v.total),v.nc?30:36);if(v.nc&&v.nc.medio)lr('Se devuelve por',v.nc.medio);v.pagos.forEach(p=>lr(p.medio,plata(p.medio==='Efectivo'&&p.recibe!=null?p.recibe:p.monto)));if(v.vuelto)lr('Vuelto',plata(v.vuelto));
   if(!prueba&&v.cbte.letra==='A'){hr();lr('Neto gravado',plata(v.cbte.neto));(v.cbte.alicuotas||[]).forEach(a=>lr('IVA '+(({3:'0',4:'10,5',5:'21',6:'27',8:'5',9:'2,5'})[a.Id]||'')+'%',plata(a.Imp)))}
   hr();l('Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)',22);l('IVA Contenido: '+plata(ivaCont),22);l('Otros Impuestos Nacionales Indirectos: $ 0',22);
   if(!prueba){hr();l('CAE: '+(v.cbte.cae||''));l('Vto. CAE: '+(v.cbte.cae_vto?v.cbte.cae_vto.split('-').reverse().join('/'):''));if(v.cbte.qr){L.push({gap:4});L.push({qr:v.cbte.qr})}c('Comprobante autorizado por ARCA',22)}
@@ -531,10 +541,10 @@ function imprimirRemito(v){const C=CFG,r=v.remito;const cc=(v.pagos||[]).some(p=
 
 // ---------- ventas del turno / anular ----------
 async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
-  const v=await api('ventas?select=id,created_at,total,estado,pagos,cliente_nombre,cliente_doc,fiscal_estado,fiscal_error,cbte_tipo,pto_vta,cbte_nro,cae,cae_vto,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
+  const v=await api('ventas?select=id,created_at,total,estado,anulada_motivo,pagos,cliente_nombre,cliente_doc,fiscal_estado,fiscal_error,cbte_tipo,pto_vta,cbte_nro,cae,cae_vto,remito_nro,entrega_direccion,entrega_notas,ventas_items(nombre,cantidad,unidad,precio,iva,bultos,kg)&turno_id=eq.'+TURNO.turno.id+'&order=id.desc');
   modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
     <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}${['error','pendiente'].includes(x.fiscal_estado)&&x.estado==='ok'?` <span class="tag sf" style="background:var(--rojo);color:#fff" title="${esc(x.fiscal_error||'')}">SIN CAE</span>`:''}${x.fiscal_estado==='autorizada'?` <span class="muted" style="font-size:11px">Fact. ${x.cbte_tipo===1?'A':'B'} ${String(x.pto_vta).padStart(5,'0')}-${String(x.cbte_nro).padStart(8,'0')}</span>`:''}</span>
-    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}${['error','pendiente'].includes(x.fiscal_estado)?`<button class="tb" onclick="reintentarCAE(${x.id})" title="Reintentar factura en ARCA">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> <button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`:''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
+    <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}${['error','pendiente'].includes(x.fiscal_estado)?`<button class="tb" onclick="reintentarCAE(${x.id})" title="Reintentar factura en ARCA">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> ${x.fiscal_estado==='autorizada'?`<button class="tb" onclick="ncDeVenta(${x.id})" title="Anular con nota de crédito">↩️</button>`:`<button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`}`:x.anulada_motivo&&/^Nota de crédito/.test(x.anulada_motivo)?'<span class="tag nc">NC</span>':''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
     <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
 function reimprimir(id,rem){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;const v={id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva,bultos:i.bultos==null?null:+i.bultos,kg:i.kg==null?null:+i.kg})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre,doc:x.cliente_doc},fiscal:x.fiscal_estado};
   if(x.fiscal_estado==='autorizada'){const tot=+x.total;const ivas={};(x.ventas_items||[]).forEach(i=>{const a=i.iva==null?21:+i.iva;ivas[a]=(ivas[a]||0)+i.cantidad*i.precio});
@@ -550,7 +560,7 @@ async function reintentarCAE(id,sinPreg){if(!sinPreg&&!confirm('¿Pedir ahora a 
   try{const j=await pedirCAE(id);toast('🧾 Factura '+j.letra+' '+String(j.pto_vta).padStart(5,'0')+'-'+String(j.cbte_nro).padStart(8,'0')+' autorizada',5000);await verVentas();reimprimir(id)}
   catch(e){toast('⚠️ ARCA no la facturó: '+e.message,9000);verVentas()}}
 function diaAR(f){return new Date(f).toLocaleDateString('sv-SE',{timeZone:'America/Argentina/Buenos_Aires'})}
-async function anular(id){const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
+async function anular(id){const x=(window._ventas||[]).find(v=>v.id===id);if(x&&x.fiscal_estado==='autorizada')return ncDeVenta(id);const m=prompt('¿Por qué se anula la venta #'+id+'? (vuelve el stock al Salón)');if(m===null)return;
   try{await rpc('caja_anular',{p_id:id,p_motivo:m||'sin motivo'});toast('Venta #'+id+' anulada');await estadoTurno();verVentas()}catch(e){toast('⚠️ '+e.message,6000)}}
 
 // ---------- turno ----------
@@ -560,24 +570,114 @@ function abrirTurno(){const h=+new Date().toLocaleString('en-US',{timeZone:'Amer
   <div><label>Efectivo en la caja al abrir (cambio)</label><input id="tF" inputmode="decimal" placeholder="0" autofocus onkeydown="if(event.key==='Enter')okAbrir()"></div></div>
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okAbrir()">Abrir</button></div>`)}
 async function okAbrir(){try{await rpc('caja_abrir',{p_turno:$('#tT').value,p_fondo:num($('#tF').value)});cerrar();await estadoTurno();toast('✅ Turno abierto')}catch(e){toast('⚠️ '+e.message,6000)}}
+const BILLETES=[20000,10000,2000,1000,500,200,100];
+const MEDIOS_ON=['Mercado Pago / QR','Transferencia','Débito','Crédito'];
+let CIERRE=null;
 async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}if(!r.abierto)return estadoTurno();
-  const pm=r.por_medio||{};const ef=(+pm['Efectivo']||0)-(+r.vuelto||0);const ccef=+((r.cc_cobrado||{})['Efectivo'])||0;const esperado=(+r.turno.fondo_inicial||0)+ef+ccef;
+  const pm=r.por_medio||{},cc=r.cc_cobrado||{},nc=r.nc_reintegros||{};
+  const ef=(+pm['Efectivo']||0)-(+r.vuelto||0);const ccef=+cc['Efectivo']||0;const ncef=+nc['Efectivo']||0;
+  const esperado=(+r.turno.fondo_inicial||0)+ef+ccef-ncef;
+  const sis={};MEDIOS_ON.forEach(m=>sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0));
+  Object.keys(pm).forEach(m=>{if(!['Efectivo','Cuenta corriente'].includes(m)&&!(m in sis))sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0)});
+  const totOn=Object.values(sis).reduce((a,b)=>a+b,0);
+  CIERRE={esperado,sis};
+  const desde=new Date(r.turno.abierto_at);const dias=Math.floor((Date.now()-desde)/864e5);
   modal(`<h3>🔒 Cerrar turno ${esc(r.turno.turno)}</h3>
+  ${dias>=1?`<p style="background:#fff4d6;border:1px solid #e8c46a;padding:8px;border-radius:4px;font-size:13px">⚠️ Este turno está abierto desde el ${desde.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}. Se van a cerrar juntas todas las ventas desde ese momento.</p>`:''}
   <div class="resu"><span>Ventas</span><b>${r.ventas}</b></div><div class="resu"><span>Total vendido</span><b>${plata(r.total)}</b></div>
-  ${Object.entries(pm).map(([m,v])=>`<div class="resu"><span class="muted">${esc(m)}</span><span>${plata(m==='Efectivo'?v-(+r.vuelto||0):v)}</span></div>`).join('')}
-  ${Object.keys(r.cc_cobrado||{}).length?`<div class="resu"><span class="muted">Cobros de cuenta corriente</span><span>${Object.entries(r.cc_cobrado).map(([m,v])=>esc(m)+' '+plata(v)).join(' · ')}</span></div>`:''}
-  <div class="resu"><span>Efectivo que tiene que haber (con el cambio de ${plata(r.turno.fondo_inicial)})</span><b>${plata(esperado)}</b></div>
-  <label>Efectivo contado en la caja</label><input id="cE" inputmode="decimal" autofocus oninput="const d=num(this.value)-${esperado};$('#cDif').innerHTML=this.value?(Math.abs(d)<1?'<span style=color:var(--verde)>✅ Cierra justo</span>':'<span style=color:var(--rojo)>'+(d<0?'Falta ':'Sobra ')+plata(Math.abs(d))+'</span>'):''">
+  <div class="resu"><span>💵 Venta en efectivo</span><span>${plata(ef)}</span></div>
+  <div class="resu"><span>📱 Venta online (QR, transferencia, tarjetas)</span><span>${plata(Object.keys(sis).reduce((a,m)=>a+(+pm[m]||0),0))}</span></div>
+  ${pm['Cuenta corriente']?`<div class="resu"><span class="muted">A cuenta corriente (no entra plata)</span><span>${plata(pm['Cuenta corriente'])}</span></div>`:''}
+  ${Object.keys(cc).length?`<div class="resu"><span class="muted">Cobros de cuenta corriente</span><span>${Object.entries(cc).map(([m,v])=>esc(m)+' '+plata(v)).join(' · ')}</span></div>`:''}
+  ${Object.keys(nc).length?`<div class="resu"><span class="muted">Devoluciones por nota de crédito</span><span style="color:var(--rojo)">${Object.entries(nc).map(([m,v])=>esc(m)+' −'+plata(v)).join(' · ')}</span></div>`:''}
+
+  <div class="sec">💵 Arqueo de efectivo</div>
+  <p class="muted" style="font-size:12px;margin:4px 0 8px">Contá cuántos billetes hay de cada uno. El total se suma solo.</p>
+  <div class="arq">${BILLETES.map(b=>`<div><b>$ ${b.toLocaleString('es-AR')}</b><input class="bil" data-b="${b}" inputmode="numeric" placeholder="0" oninput="sumarArqueo()"><small id="bs${b}"></small></div>`).join('')}
+    <div><b>Monedas y otros ($)</b><input id="arqOtros" inputmode="decimal" placeholder="0" oninput="sumarArqueo()"><small></small></div></div>
+  <div class="resu" style="margin-top:8px"><span>Efectivo que tiene que haber <span class="muted">(cambio ${plata(r.turno.fondo_inicial)} + ventas${ccef?' + cobros':''}${ncef?' − devoluciones':''})</span></span><b>${plata(esperado)}</b></div>
+  <label>Efectivo contado en la caja</label><input id="cE" inputmode="decimal" oninput="CIERRE.manual=true;difCierre()">
   <div id="cDif" style="margin-top:6px;font-weight:700"></div>
-  <label>Notas (opcional)</label><input id="cN">
-  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-rojo" onclick="okCerrar()">Cerrar turno</button></div>`)}
+
+  <div class="sec">📱 Venta online</div>
+  <p class="muted" style="font-size:12px;margin:4px 0 6px">Fijate en la app de Mercado Pago y en el cierre de lote del posnet cuánto entró en este turno y ponelo. Si no lo podés ver, dejalo vacío.</p>
+  <div class="onl h"><span>Medio</span><span style="text-align:right">Según la caja</span><span>Lo que figura</span><span style="text-align:right">Diferencia</span></div>
+  ${Object.keys(sis).map((m,k)=>`<div class="onl"><span>${esc(m)}</span><span style="text-align:right">${plata(sis[m])}</span><input class="onIn" data-m="${esc(m)}" data-k="${k}" inputmode="decimal" oninput="difCierre()"><span id="od${k}" style="text-align:right;font-weight:700"></span></div>`).join('')}
+  <div class="onl" style="border:0"><b>Total online</b><b style="text-align:right">${plata(totOn)}</b><span></span><span id="odT" style="text-align:right;font-weight:700"></span></div>
+
+  <label id="cNl">Notas (opcional)</label><input id="cN" placeholder="">
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-rojo" onclick="okCerrar()">Cerrar turno</button></div>`);
+  setTimeout(()=>{const b=document.querySelector('.bil');if(b)b.focus()},80)}
+function sumarArqueo(){let t=0;BILLETES.forEach(b=>{const q=Math.max(0,Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value)));const st=q*b;t+=st;$('#bs'+b).textContent=q?plata(st):''});t+=num($('#arqOtros').value);
+  CIERRE.arqueoTotal=t;CIERRE.manual=false;$('#cE').value=t?String(t):'';difCierre()}
+function difTxt(d){return Math.abs(d)<1?'<span style="color:var(--verde)">✅ Cierra justo</span>':'<span style="color:var(--rojo)">'+(d<0?'Falta ':'Sobra ')+plata(Math.abs(d))+'</span>'}
+function difCierre(){const v=$('#cE').value.trim();const d=num(v)-CIERRE.esperado;$('#cDif').innerHTML=v?difTxt(d):'';
+  let dt=0,alguno=false;document.querySelectorAll('.onIn').forEach(i=>{const o=$('#od'+i.dataset.k);if(!i.value.trim()){o.innerHTML='';return}alguno=true;const x=num(i.value)-CIERRE.sis[i.dataset.m];dt+=x;o.innerHTML=Math.abs(x)<1?'<span style="color:var(--verde)">✅</span>':'<span style="color:var(--rojo)">'+(x<0?'−':'+')+plata(Math.abs(x))+'</span>'});
+  $('#odT').innerHTML=alguno?(Math.abs(dt)<1?'<span style="color:var(--verde)">✅</span>':'<span style="color:var(--rojo)">'+(dt<0?'−':'+')+plata(Math.abs(dt))+'</span>'):'';
+  const hay=(v&&Math.abs(d)>=1)||(alguno&&Math.abs(dt)>=1);$('#cNl').textContent=hay?'Explicá la diferencia (obligatorio)':'Notas (opcional)';CIERRE.hayDif=hay}
 async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efectivo y ponelo');
-  try{const r=await rpc('caja_cerrar',{p_efectivo:num($('#cE').value),p_notas:$('#cN').value||null});
+  if(CIERRE.hayDif&&!$('#cN').value.trim()){$('#cN').focus();return toast('Hay diferencia: explicá qué pasó en las notas',4000)}
+  const arq={};BILLETES.forEach(b=>{const q=Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value));if(q>0)arq[b]=q});const ot=num($('#arqOtros').value);
+  const pArq=Object.keys(arq).length||ot?{billetes:arq,otros:ot,total:CIERRE.arqueoTotal||0,editado_a_mano:!!CIERRE.manual}:null;
+  const on={};document.querySelectorAll('.onIn').forEach(i=>{if(i.value.trim())on[i.dataset.m]=num(i.value)});
+  try{const r=await rpc('caja_cerrar',{p_efectivo:num($('#cE').value),p_notas:$('#cN').value||null,p_arqueo:pArq,p_online:Object.keys(on).length?on:null});
+    const don=r.diferencia_online;
     modal(`<h3>✅ Turno cerrado</h3><div class="resu"><span>Total vendido</span><b>${plata(r.total)}</b></div><div class="resu"><span>Ventas</span><b>${r.tickets}</b></div>
     <div class="resu"><span>Efectivo esperado</span><b>${plata(r.efectivo_esperado)}</b></div><div class="resu"><span>Efectivo contado</span><b>${plata(r.efectivo_contado)}</b></div>
-    <div class="resu grande" style="color:${Math.abs(r.diferencia)<1?'var(--verde)':'var(--rojo)'}"><span>${Math.abs(r.diferencia)<1?'Cierra':'Diferencia'}</span><span>${plata(r.diferencia)}</span></div>
+    <div class="resu grande" style="color:${Math.abs(r.diferencia)<1?'var(--verde)':'var(--rojo)'}"><span>💵 ${Math.abs(r.diferencia)<1?'Cierra':'Diferencia'}</span><span>${plata(r.diferencia)}</span></div>
+    ${don!=null?`<div class="resu grande" style="color:${Math.abs(don)<1?'var(--verde)':'var(--rojo)'}"><span>📱 ${Math.abs(don)<1?'Online cierra':'Online'}</span><span>${plata(don)}</span></div>`:''}
     <p class="muted" style="margin-top:10px">La venta del turno ya quedó cargada en Gestión → Finanzas.</p><div class="acc"><button class="b-ok" onclick="cerrar()">Listo</button></div>`);
     await estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
+
+// ---------- nota de crédito ----------
+async function pedirNC(id){const r=await fetch(SB.replace('/rest/v1/','/functions/v1/arca-fe'),{method:'POST',headers:H,body:JSON.stringify({accion:'nc',nc_id:id})});
+  const j=await r.json().catch(()=>({}));if(!j.ok)throw new Error(j.error||'ARCA no respondió');return j}
+function notaCredito(){if(!TURNO)return toast('Primero abrí el turno');
+  modal(`<h3>↩️ Nota de crédito</h3><p class="muted" style="font-size:13px">Se usa para anular una venta que ya tiene factura de ARCA: devolución, cobro mal hecho o factura equivocada. Anula la factura completa.</p>
+  <label>N° de venta, o N° de factura (ej: 1 o 11-1)</label><div class="fila"><input id="ncQ" autofocus onkeydown="if(event.key==='Enter')buscarNC()"><button class="b-ok" style="flex:0 0 110px;border:0;border-radius:3px;font-weight:700" onclick="buscarNC()">Buscar</button></div>
+  <div id="ncR" style="margin-top:10px"></div><div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`)}
+async function buscarNC(){const q=$('#ncQ').value.trim();if(!q)return;let r;try{r=await rpc('caja_buscar_factura',{p_q:q})}catch(e){return toast('⚠️ '+e.message,5000)}
+  window._ncBus=r;if(r.length===1)return formNC(r[0]);
+  $('#ncR').innerHTML=r.length?r.map((v,k)=>`<div class="vt" style="grid-template-columns:60px 1fr 100px 90px"><b>#${v.id}</b><span>${CBTE_NOM[v.cbte_tipo]} ${cbteNro(v.pto_vta,v.cbte_nro)}<br><span class="muted">${new Date(v.created_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</span></span><b style="text-align:right">${plata(v.total)}</b><button class="tb" onclick="formNC(window._ncBus[${k}])">Elegir</button></div>`).join(''):'<p class="muted">No encontré ninguna factura con ese número.</p>'}
+async function ncDeVenta(id){if(!TURNO)return toast('Primero abrí el turno');let r;try{r=await rpc('caja_buscar_factura',{p_q:String(id)})}catch(e){return toast('⚠️ '+e.message,5000)}
+  const v=r.find(x=>x.id===id);if(!v)return toast('No encontré la factura de la venta #'+id);formNC(v)}
+function formNC(v){window._ncV=v;const n=v.nc;
+  const asoc=CBTE_NOM[v.cbte_tipo]+' '+cbteNro(v.pto_vta,v.cbte_nro);
+  const cab=`<div class="resu"><span>${asoc}</span><b>${plata(v.total)}</b></div>
+   <div class="resu"><span class="muted">Venta #${v.id} · ${new Date(v.created_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</span><span class="muted">${esc(v.cliente_nombre||'Consumidor final')}</span></div>
+   <div style="font-size:13px;margin:6px 0">${(v.items||[]).map(i=>esc((i.unidad==='kg'?kgTxt(i.cantidad)+' kg ':i.cantidad+' u ')+i.nombre)).join(' · ')}</div>
+   <div class="muted" style="font-size:12px">Se cobró: ${(v.pagos||[]).map(p=>esc(p.medio)+' '+plata(p.monto)).join(' + ')}</div>`;
+  if(n&&n.fiscal_estado==='autorizada')return modal(`<h3>↩️ Nota de crédito</h3>${cab}
+    <p style="margin-top:10px;font-weight:700;color:var(--rojo)">Esta factura ya tiene ${CBTE_NOM[n.cbte_tipo]} ${cbteNro(n.pto_vta,n.cbte_nro)}.</p>
+    <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button><button class="b-ok" onclick="imprimirNC(window._ncV,window._ncV.nc)">🖨️ Reimprimir NC</button></div>`);
+  const soloCC=(v.pagos||[]).every(p=>p.medio==='Cuenta corriente');const otroTurno=v.turno_id!==TURNO.turno.id;const pideMedio=otroTurno&&!soloCC;
+  const m0=((v.pagos||[]).find(p=>p.medio!=='Cuenta corriente')||{}).medio||'Efectivo';
+  modal(`<h3>↩️ Nota de crédito</h3>${cab}
+  ${n&&n.fiscal_estado==='error'?`<p style="color:var(--rojo);font-size:13px;margin-top:8px">El intento anterior falló: ${esc(n.fiscal_error||'')}. Podés reintentar.</p>`:''}
+  <label>Motivo</label><select id="ncM" onchange="$('#ncMo').style.display=this.value==='Otro'?'':'none'"><option>Devolución del cliente</option><option>Error en el cobro</option><option>Factura mal hecha</option><option>Venta de prueba</option><option>Otro</option></select>
+  <input id="ncMo" placeholder="Contá qué pasó" style="display:none;margin-top:6px">
+  <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="ncS" checked style="width:auto"> La mercadería vuelve al stock del Salón</label>
+  ${pideMedio?`<label>¿Cómo se le devuelve la plata al cliente?</label><select id="ncP">${MEDIOS.filter(m=>m!=='Cuenta corriente').map(m=>`<option ${m===m0?'selected':''}>${m}</option>`).join('')}</select>
+    <p class="muted" style="font-size:12px;margin-top:4px">La venta es de otro turno: la devolución se descuenta de esta caja.</p>`
+   :soloCC?'<p class="muted" style="font-size:12px;margin-top:8px">Fue a cuenta corriente: se le descuenta la deuda al cliente.</p>'
+   :'<p class="muted" style="font-size:12px;margin-top:8px">La venta es de este mismo turno: sale del cierre de caja. Si ya le devolviste la plata, sacala de la caja.</p>'}
+  <p style="font-size:13px;margin-top:10px">Se hace por el <b>total de la factura: ${plata(v.total)}</b>.</p>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-rojo" id="bNC" onclick="okNC()">Emitir nota de crédito</button></div>`)}
+async function okNC(){const v=window._ncV;let mot=$('#ncM').value;if(mot==='Otro'){mot=$('#ncMo').value.trim();if(!mot)return toast('Contá el motivo')}
+  const medio=$('#ncP')?$('#ncP').value:null;const bt=$('#bNC');bt.disabled=true;bt.textContent='Pidiendo a ARCA…';
+  try{const c=await rpc('caja_nc_crear',{p_venta:v.id,p_motivo:mot,p_devolver:$('#ncS').checked,p_medio:medio});
+    const j=await pedirNC(c.nc_id);
+    toast('↩️ '+CBTE_NOM[j.cbte_tipo]+' '+cbteNro(j.pto_vta,j.cbte_nro)+' autorizada'+(j.aviso?' · '+j.aviso:''),6000);
+    imprimirNC(v,{cbte_tipo:j.cbte_tipo,pto_vta:j.pto_vta,cbte_nro:j.cbte_nro,cae:j.cae,cae_vto:j.cae_vto,motivo:mot,reintegro_medio:c.medio,created_at:new Date().toISOString(),qr:j.qr});
+    cerrar();await estadoTurno()}
+  catch(e){toast('⚠️ '+e.message,9000);bt.disabled=false;bt.textContent='Reintentar'}}
+function imprimirNC(v,n){const tot=+v.total;const al=[];Object.entries(v.iva||{}).forEach(([a,b])=>{b=+b;al.push({Id:({0:3,10.5:4,21:5,27:6,5:8,2.5:9})[a],Imp:Math.round((b-b/(1+a/100))*100)/100})});const iv=al.reduce((s,a)=>s+a.Imp,0);
+  let qr=n.qr;if(!qr){const q={ver:1,fecha:diaAR(n.created_at),cuit:+String(CFG.cuit||'').replace(/\D/g,''),ptoVta:n.pto_vta,tipoCmp:n.cbte_tipo,nroCmp:+n.cbte_nro,importe:tot,moneda:'PES',ctz:1,tipoDocRec:99,nroDocRec:0,tipoCodAut:'E',codAut:+n.cae};
+    const d=String(v.cliente_doc||'').replace(/\D/g,'');if(d.length===11){q.tipoDocRec=80;q.nroDocRec=+d}else if(d.length>=7&&d.length<=8){q.tipoDocRec=96;q.nroDocRec=+d}qr='https://www.afip.gob.ar/fe/qr/?p='+btoa(JSON.stringify(q))}
+  imprimirTicket({id:v.id,fecha:new Date(n.created_at||Date.now()),items:(v.items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva})),pagos:[],vuelto:0,total:tot,
+    cliente:{nombre:v.cliente_nombre,doc:v.cliente_doc},fiscal:'autorizada',
+    cbte:{letra:n.cbte_tipo===3?'A':'B',tipo:n.cbte_tipo,pto:n.pto_vta,nro:n.cbte_nro,cae:n.cae,cae_vto:n.cae_vto,qr,neto:Math.round((tot-iv)*100)/100,iva:iv,alicuotas:al},
+    nc:{asoc:CBTE_NOM[v.cbte_tipo]+' '+cbteNro(v.pto_vta,v.cbte_nro),motivo:n.motivo,medio:n.reintegro_medio}})}
 
 // ---------- cuenta corriente ----------
 function cobrarCC(){if(!ES_ADMIN)return toast('Las cobranzas de cuenta corriente las lleva Poly');if(!TURNO)return toast('Primero abrí el turno');const conDeuda=CLIENTES.filter(c=>(SALDOS[c.id]||0)>0.009);

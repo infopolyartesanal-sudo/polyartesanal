@@ -482,6 +482,7 @@ async function cargarTodo(){
     sbGet('tareas','fecha=gte.'+sumaDias(hoy(),-7)+'&order=created_at'),sbGet('alias_pos'),sbGet('equivalencias'),
     sbGet('produccion','fecha=gte.'+sumaDias(hoy(),-60)+'&order=fecha.desc'),sbGet('produccion_mapeo','order=sector,producto'),sbGet('config')]);
   Object.assign(D,{insumos:ins,recetas:rec,proveedores:prov,facturas:fac,cierres:cie,gastos:gas,gastosFijos:gf,pedidos:ped,empleados:emp,fichajes:fic,turnos:tur,tareas:tar,alias:ali,equiv:eq,produccion:pro,mapeo:map,config:Object.fromEntries(cfg.map(c=>[c.clave,c.valor]))});
+  D.difCaja=await polyRPC('caja_diferencias').catch(()=>null);
   indexar();
 }
 
@@ -1031,6 +1032,8 @@ function insights(){
     if(con.length)out.push({t:`${con.length} mayorista${con.length>1?'s':''} para contactar`,d:'Dejaron de comprar a su ritmo: '+con.slice(0,5).map(c=>c.nombre+' ('+c._dias+' d)').join(', '),a:'#mayoristas',al:'Ver'})}
   D.cierres.filter(c=>diaLocal(c.fecha)>=sumaDias(H,-14)&&difCaja(c)!=null&&Math.abs(difCaja(c))>tolCaja()).forEach(c=>{const d=difCaja(c);
     out.push({r:1,t:`Diferencia de caja · ${fechaCorta(diaLocal(c.fecha))} ${turnoTxt(c)}`,d:`Cobrado ${$$(c.total)} vs vendido en Ayres ${$$(c.total_articulos)}: ${d<0?'falta':'sobra'} ${$$(Math.abs(d))}${c.responsable?' · '+c.responsable:''}.`,a:'#finanzas',al:'Ver'})});
+  ((D.difCaja&&D.difCaja.turnos)||[]).filter(t=>diaLocal(t.cerrado_at)>=sumaDias(H,-7)&&Math.abs(difTurno(t))>tolCaja()).forEach(t=>{const d=difTurno(t);
+    out.push({r:1,t:`Caja ${d<0?'con faltante':'con sobrante'} · ${fechaCorta(diaLocal(t.cerrado_at))} ${t.turno||''}`,d:`${esc(nomCajero(t.cerrado_por))}: ${d<0?'faltan':'sobran'} ${$$(Math.abs(d))}${t.notas?' · "'+esc(t.notas)+'"':''}`,a:'#finanzas',al:'Ver'})});
   criticos().forEach(i=>out.push({r:1,t:'Stock crítico · '+i.nombre,d:`Quedan ${fnum(i.stock)} ${i.unidad} (mínimo ${fnum(i.stock_minimo)}).`,a:'#compras',al:'Pedir'}));
   D.gastosFijos.filter(g=>g.activo!==false&&g.proximo_vencimiento).forEach(g=>{const dias=Math.round((new Date(g.proximo_vencimiento+'T12:00:00')-new Date(H+'T12:00:00'))/864e5);
     if(dias<=(+g.dias_aviso||3))out.push({r:dias<0,t:(dias<0?'Vencido: ':'Vence pronto: ')+g.nombre,d:`${$$(g.monto)} · ${dias<0?'venció hace '+(-dias)+' días':dias===0?'vence hoy':'vence en '+dias+' días'}`,a:'#finanzas',al:'Pagar'})});
@@ -2849,6 +2852,7 @@ function vFinanzas(){
     ${cc.map(c=>{const d=difCaja(c),ad=Math.abs(d);const col=ad<=1?'var(--verde)':ad<=tolCaja()?'#a07000':'var(--rojo)';return `<tr style="${ad>tolCaja()?'background:#fff0f0':''}"><td>${fechaCorta(diaLocal(c.fecha))}</td><td>${esc(c.turno||'')}</td><td>${esc(c.responsable||'—')}</td><td class="num">${$$(c.total)}</td><td class="num">${$$(c.total_articulos)}</td><td class="num" style="color:${col};font-weight:700">${ad<=1?'✅ cierra':(d<0?'falta ':'sobra ')+$$(ad)}</td></tr>`}).join('')}</table></div>
     ${malos?`<p style="color:var(--rojo);font-weight:700;margin-top:6px">⚠️ ${malos} turno${malos>1?'s':''} con diferencia mayor a ${$$(tolCaja())}</p>`:''}`
     :'<p class="muted">Todavía no hay turnos cargados con los dos archivos de Ayres (artículos + cierre de caja). Cuando cargues la venta del día con el Excel de artículos, acá vas a ver si la caja cierra.</p>'}</div>`})()}
+  ${cardDifCajeros()}
   <div class="card" style="margin-top:12px"><h3>🧮 Cómo se arma el resultado</h3><table>
    <tr><td>Ventas</td><td class="num">${$$(ing)}</td><td class="num muted">100%</td></tr>
    <tr><td>− Comisiones de cobro (estimadas)</td><td class="num down">${$$(-totCom)}</td><td class="num muted">${ing?fnum(totCom/ing*100,1)+'%':''}</td></tr>
@@ -2893,6 +2897,37 @@ function vFinanzas(){
     <button class="btn sec peq" style="margin-top:8px" onclick="nuevoFijo()">+ gasto fijo</button></div>
   <div class="card scroll"><h3>📋 Movimientos</h3><table>${mov.slice(0,80).map(m=>`<tr><td>${fechaCorta(m.f)}</td><td>${esc(m.d)}</td><td class="num ${m.m>=0?'up':'down'}">${$$(m.m)}</td><td>${m.t==='g'?`<button class="btn sec peq" onclick="confirmar('¿Borrar este gasto?',async()=>{await sbDel('gastos','id=eq.${m.id}');D.gastos=D.gastos.filter(x=>x.id!=='${m.id}');vFinanzas()})">×</button>`:''}</td></tr>`).join('')}</table></div></div>`;
 }
+// ===== Faltantes y sobrantes por cajero (cierres de la caja propia) =====
+function difTurno(t){return (+t.diferencia||0)+(+t.diferencia_online||0)}
+function nomCajero(u){return (D.difCaja&&D.difCaja.usuarios&&D.difCaja.usuarios[u])||u||'—'}
+function txtDif(d){return Math.abs(d)<1?'<span style="color:var(--verde)">✅ cierra</span>':`<span style="color:var(--rojo);font-weight:700">${d<0?'falta':'sobra'} ${$$(Math.abs(d))}</span>`}
+function cardDifCajeros(){const X=D.difCaja;if(!X)return '';const T=X.turnos||[],A=X.ajustes||[];
+  const por={};T.forEach(t=>{const u=t.cerrado_por||'—';const p=por[u]=por[u]||{n:0,falt:0,sobr:0,aj:0,malos:0};const d=difTurno(t);p.n++;if(d<=-1)p.falt+=d;if(d>=1)p.sobr+=d;if(Math.abs(d)>tolCaja())p.malos++});
+  A.forEach(a=>{const p=por[a.usuario]=por[a.usuario]||{n:0,falt:0,sobr:0,aj:0,malos:0};p.aj+=+a.monto||0});
+  const filas=Object.entries(por).map(([u,p])=>({u,...p,saldo:p.falt+p.sobr+p.aj})).sort((a,b)=>a.saldo-b.saldo);
+  return `<div class="card" style="margin-top:12px"><h3>🧑‍💼 Faltantes y sobrantes por cajero <span class="muted">· caja propia, efectivo + online</span></h3>
+  ${filas.length?`<div class="scroll"><table><tr><th>Cajero</th><th class="num">Turnos</th><th class="num">Faltantes</th><th class="num">Sobrantes</th><th class="num">Ajustes</th><th class="num">Acumulado</th><th></th></tr>
+  ${filas.map(f=>`<tr><td><b>${esc(nomCajero(f.u))}</b>${f.malos?` <span class="chip mal">${f.malos} fuera de tolerancia</span>`:''}</td><td class="num">${f.n}</td><td class="num down">${f.falt?$$(f.falt):'—'}</td><td class="num up">${f.sobr?'+'+$$(f.sobr):'—'}</td><td class="num">${f.aj?(f.aj>0?'+':'')+$$(f.aj):'—'}</td>
+    <td class="num">${txtDif(f.saldo)}</td><td><button class="btn sec peq" onclick="ajusteCajero('${esc(f.u)}')">Ajuste</button></td></tr>`).join('')}</table></div>
+  <p class="muted">El acumulado suma la diferencia de efectivo y la de cobros online de cada turno que cerró esa persona. Con "Ajuste" registrás si repuso un faltante (+) o si se le devolvió un sobrante (−).</p>
+  <h3 style="margin-top:12px">Últimos cierres</h3><div class="scroll"><table><tr><th>Cerró</th><th>Turno</th><th>Cajero</th><th class="num">Efectivo esperado</th><th class="num">Contado</th><th class="num">💵 Dif.</th><th class="num">📱 Dif. online</th><th></th></tr>
+  ${T.slice(0,30).map(t=>`<tr style="${Math.abs(difTurno(t))>tolCaja()?'box-shadow:inset 4px 0 0 var(--rojo)':''}"><td>${new Date(t.cerrado_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</td><td>${esc(t.turno||'')}</td><td>${esc(nomCajero(t.cerrado_por))}</td>
+    <td class="num">${$$(t.esperado)}</td><td class="num">${$$(t.contado)}</td><td class="num">${txtDif(+t.diferencia||0)}</td><td class="num">${t.diferencia_online==null?'<span class="muted">no cargó</span>':txtDif(+t.diferencia_online)}</td>
+    <td><button class="btn sec peq" onclick="verTurnoCaja(${t.id})">Ver</button></td></tr>`).join('')}</table></div>`
+  :'<p class="muted">Todavía no hay turnos cerrados con la caja nueva. Cada vez que alguien cierra la caja, acá se va sumando lo que faltó o sobró.</p>'}</div>`}
+function verTurnoCaja(id){const t=((D.difCaja&&D.difCaja.turnos)||[]).find(x=>x.id===id);if(!t)return;const a=t.arqueo||{},co=t.control_online||{};
+  modal(`<h3>🔒 Turno ${esc(t.turno||'')} · ${new Date(t.cerrado_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</h3>
+  <table><tr><td>Abrió</td><td>${esc(nomCajero(t.abierto_por))} · ${new Date(t.abierto_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}</td></tr><tr><td>Cerró</td><td>${esc(nomCajero(t.cerrado_por))}</td></tr>
+  <tr><td>Cambio inicial</td><td class="num">${$$(t.fondo)}</td></tr><tr><td>Efectivo esperado</td><td class="num">${$$(t.esperado)}</td></tr><tr><td>Efectivo contado</td><td class="num">${$$(t.contado)}</td></tr>
+  <tr><td><b>Diferencia efectivo</b></td><td class="num">${txtDif(+t.diferencia||0)}</td></tr></table>
+  ${a.billetes?`<h3 style="margin-top:12px">💵 Arqueo</h3><table>${Object.entries(a.billetes).sort((x,y)=>y[0]-x[0]).map(([b,q])=>`<tr><td>${q} × $${(+b).toLocaleString('es-AR')}</td><td class="num">${$$(b*q)}</td></tr>`).join('')}${a.otros?`<tr><td>Monedas y otros</td><td class="num">${$$(a.otros)}</td></tr>`:''}<tr><td><b>Total arqueo</b></td><td class="num"><b>${$$(a.total)}</b></td></tr></table>${a.editado_a_mano?'<p class="muted">El total contado se cambió a mano después del arqueo.</p>':''}`:'<p class="muted" style="margin-top:8px">No se cargó arqueo por billete.</p>'}
+  ${Object.keys(co).length?`<h3 style="margin-top:12px">📱 Venta online</h3><table><tr><th>Medio</th><th class="num">Según la caja</th><th class="num">Lo que figuraba</th><th class="num">Dif.</th></tr>${Object.entries(co).map(([m,x])=>`<tr><td>${esc(m)}</td><td class="num">${$$(x.sistema)}</td><td class="num">${$$(x.declarado)}</td><td class="num">${txtDif(x.declarado-x.sistema)}</td></tr>`).join('')}</table>`:''}
+  ${t.notas?`<p style="margin-top:10px"><b>Notas:</b> ${esc(t.notas)}</p>`:''}
+  <div class="acciones" style="margin-top:12px"><button class="btn sec" onclick="cerrarModal()">Cerrar</button></div>`)}
+function ajusteCajero(u){modal(`<h3>Ajuste · ${esc(nomCajero(u))}</h3><p class="muted">Positivo si repuso un faltante (ej: 5000). Negativo si se le devolvió un sobrante (ej: -2000).</p>
+  <label>Monto</label><input id="ajM" type="number" step="any"><label>Nota</label><input id="ajN" placeholder="ej: repuso el faltante del 26/11">
+  <div class="acciones" style="margin-top:10px"><button class="btn" id="bAj">Guardar</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>`);
+  $('#bAj').onclick=async()=>{const m=+$('#ajM').value;if(!m)return toast('Poné el monto');try{await polyRPC('caja_dif_ajuste',{p_usuario:u,p_monto:m,p_nota:$('#ajN').value||null});D.difCaja=await polyRPC('caja_diferencias');cerrarModal();toast('Ajuste guardado ✅');vFinanzas()}catch(e){toast('⚠️ '+e.message,5000)}}}
 function editarComisiones(){const c=comisiones();
   modal(`<h3>⚙️ Comisiones e impuestos</h3><p class="muted">Poné el % que te descuenta cada uno (con IVA y retenciones si querés verlo completo). Sirve para ver cuánto te queda de verdad de cada venta online.</p>
   <table>${CANALES.filter(k=>k!=='Efectivo').map(k=>`<tr><td>${k}</td><td><input class="mini com" data-k="${k}" type="number" step="any" value="${c[k]??''}" placeholder="0"> %</td></tr>`).join('')}</table>
