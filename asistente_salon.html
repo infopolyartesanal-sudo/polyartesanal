@@ -2224,6 +2224,15 @@ async function calcularInicialArrastre(fecha,turno){
       }catch(e){ console.warn('inicial desde stock',e); }
       Object.keys(map).forEach(c=>{ if(c.startsWith('__')) return; map[c]=Math.max(0,Math.round(map[c]*1000)/1000); });
     }
+    // Productos del día (facturas, libritos, caseritos, cremonas, chipa…): salen nuevos cada mañana.
+    // Lo que sobró a la noche ya se mandó a merma con el cierre automático, así que el turno mañana arranca en 0.
+    if(turno==='manana'){
+      try{
+        const cf=await sbSelect('config','?select=valor&clave=eq.productos_del_dia');
+        const ids=(cf&&cf[0]&&cf[0].valor&&cf[0].valor.ids)||[];
+        ids.forEach(id=>{ const c=String(id).replace(/^pv:/,''); map[c]=0; });
+      }catch(e){ console.warn('productos del dia',e); }
+    }
   }catch(e){ console.warn('arrastre',e); }
   return map;
 }
