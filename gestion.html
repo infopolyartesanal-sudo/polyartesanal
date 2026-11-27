@@ -1046,7 +1046,7 @@ function insights(){
   return out;
 }
 function vInicio(){
-  setTimeout(ccAlertasInicio,0);setTimeout(solMayPintar,0);setTimeout(ctrlModsInicio,0);
+  setTimeout(ccAlertasInicio,0);setTimeout(solMayPintar,0);setTimeout(ctrlModsInicio,0);setTimeout(egrDifInicio,0);
   if(!CRM.cargado&&!CRM._cargando){CRM._cargando=true;cargarCRM().then(()=>{if(!location.hash||location.hash.startsWith('#inicio'))vInicio()})}
   const H=hoy(),vh=ventasDia(H),vay=ventasDia(sumaDias(H,-1)),vsp=ventasDia(sumaDias(H,-7));
   const [m1,m2]=mesRango(0),[p1,p2]=mesRango(-1);const vm=ventasRango(m1,m2);
@@ -1069,7 +1069,7 @@ function vInicio(){
     <div class="card kpi"><div class="lbl">Stock crítico</div><div class="val" style="color:${criticos().length?'var(--rojo)':'var(--verde)'}">${criticos().length}</div><div class="sub muted">insumos bajo el mínimo</div></div>
   </div>
   <div class="grid g2" style="margin-top:12px">
-    <div class="card"><h3>💡 Alertas y oportunidades</h3><div id="ctrlMods"></div><div id="ccAlertas"></div>${ins.length?ins.map(x=>`<div class="alerta ${x.r?'r':''}"><b>${esc(x.t)}</b><span class="muted">${esc(x.d)}</span>${x.a?` <a href="${x.a}" style="font-weight:700;color:var(--verde2)">${x.al} →</a>`:''}</div>`).join(''):'<p class="muted">Todo en orden 👌</p>'}</div>
+    <div class="card"><h3>💡 Alertas y oportunidades</h3><div id="ctrlMods"></div><div id="egrDif"></div><div id="ccAlertas"></div>${ins.length?ins.map(x=>`<div class="alerta ${x.r?'r':''}"><b>${esc(x.t)}</b><span class="muted">${esc(x.d)}</span>${x.a?` <a href="${x.a}" style="font-weight:700;color:var(--verde2)">${x.al} →</a>`:''}</div>`).join(''):'<p class="muted">Todo en orden 👌</p>'}</div>
     <div class="card"><h3>✅ Tareas de hoy</h3>
       <div class="fila"><input id="nt" placeholder="Nueva tarea…" onkeydown="if(event.key==='Enter')agregarTarea()"><select id="ntp" style="max-width:110px"><option value="alta">Alta</option><option value="media" selected>Media</option><option value="baja">Baja</option></select><button class="btn peq" style="flex:0" onclick="agregarTarea()">Agregar</button></div>
       <div style="margin-top:8px">${tareasHoy.length?tareasHoy.map(t=>`<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #eee"><input type="checkbox" style="width:auto" ${t.hecha?'checked':''} onchange="toggleTarea(${t.id},this.checked)"><span style="flex:1;${t.hecha?'text-decoration:line-through;color:#999':''}">${esc(t.titulo)}</span><span class="chip ${t.prioridad==='alta'?'mal':t.prioridad==='baja'?'neu':'med'}">${t.prioridad}</span><button class="btn sec peq" onclick="borrarTarea(${t.id})">×</button></div>`).join(''):'<p class="muted">No hay tareas para hoy.</p>'}</div>
@@ -1831,6 +1831,26 @@ async function ctrlModsInicio(){const el=$('#ctrlMods');if(!el)return;try{
     return `<div class="alerta r"><b>✏️ Control del salón ${t==='manana'?'mañana':'tarde'} ${fechaCorta(f)}: cambiaron ${ms.length} número${ms.length===1?'':'s'}${resp?' · '+esc(resp.responsable):''}</b>
     ${ms.map(m=>`<div style="font-size:13px;margin-top:4px">• ${esc(m.producto)} · <strong>${esc(m.campo)}</strong>: el sistema decía <strong>${+m.valor_sistema}</strong> y cargaron <strong style="color:var(--rojo,#c62828)">${+m.valor_cargado}</strong> (${+m.valor_cargado-+m.valor_sistema>0?'+':''}${Math.round((+m.valor_cargado-+m.valor_sistema)*1000)/1000})</div>`).join('')}
     <button class="btn sec" style="margin-top:8px;padding:4px 12px;font-size:13px" onclick="ctrlModsVisto([${ms.map(m=>m.id).join(',')}])">✓ Visto</button></div>`}).join('')}catch(e){}}
+// Egresos por diferencia que carga Micaela en el Salón (varios productos de una vez, con motivo)
+async function egrDifInicio(){const el=$('#egrDif');if(!el)return;try{
+  const L=await sbGet('salon_egresos','tipo=eq.diferencia&revisado=eq.false&order=created_at.desc&limit=200');
+  if(!L.length){el.innerHTML=`<div style="margin:6px 0"><button class="btn sec" style="padding:4px 12px;font-size:13px" onclick="egresosCSV()">⬇️ Descargar egresos del Salón del mes (Excel)</button></div>`;return}
+  const g={};L.forEach(m=>{const k=m.lote||m.id;(g[k]=g[k]||[]).push(m)});
+  el.innerHTML=Object.values(g).map(ms=>{const m0=ms[0];
+    return `<div class="alerta r"><b>⚖️ Egresos por diferencia · ${fechaCorta(diaLocal(m0.created_at))} ${new Date(m0.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} · ${esc(m0.registrado_por||'')}</b>
+    <div class="muted" style="font-size:13px">Motivo: ${esc(m0.motivo||'')}</div>
+    ${ms.map(m=>`<div style="font-size:13px;margin-top:3px">• ${esc(m.producto_nombre)}: <strong style="color:var(--rojo,#c62828)">−${String(+m.cantidad).replace('.',',')}</strong></div>`).join('')}
+    <button class="btn sec" style="margin-top:8px;padding:4px 12px;font-size:13px" onclick="egrDifVisto([${ms.map(m=>m.id).join(',')}])">✓ Visto</button></div>`}).join('')
+    +`<div style="margin:6px 0"><button class="btn sec" style="padding:4px 12px;font-size:13px" onclick="egresosCSV()">⬇️ Descargar egresos del Salón del mes (Excel)</button></div>`}catch(e){}}
+async function egrDifVisto(ids){try{await sbUpd('salon_egresos','id=in.('+ids.join(',')+')',{revisado:true});egrDifInicio()}catch(e){alert('No se pudo marcar: '+e.message)}}
+// Archivo con todos los egresos del Salón del mes (degustación, vencidos, consumo interno, devoluciones y diferencias), con motivo y quién
+async function egresosCSV(){try{const d=new Date(),m1=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
+  const L=await sbGet('salon_egresos','created_at=gte.'+m1+'T00:00:00-03:00&order=created_at.asc');
+  const T={degustacion:'Degustación',desperdicio:'Remanente vencido',consumo_empleado:'Consumo interno',devolucion:'Devolución',diferencia:'Diferencia',otro:'Otro'};
+  const f=[['Fecha','Hora','Tipo','Producto','Cantidad','Motivo','Quién se lo llevó','Registró']].concat(L.map(m=>{const t=new Date(m.created_at);
+    return [t.toLocaleDateString('es-AR'),t.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}),T[m.tipo]||m.tipo||'',m.producto_nombre||m.producto_id,String(+m.cantidad).replace('.',','),m.motivo||'',m.quien||'',m.registrado_por||'']}));
+  const csv='\ufeff'+f.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='Egresos_Salon_'+m1.slice(0,7)+'.csv';a.click()}catch(e){alert('No se pudo descargar: '+e.message)}}
 async function ctrlModsVisto(ids){try{await sbUpd('control_modificaciones','id=in.('+ids.join(',')+')',{revisada:true});ctrlModsInicio()}catch(e){alert('No se pudo marcar: '+e.message)}}
 async function ccAlertasInicio(){const el=$('#ccAlertas');if(!el)return;try{
   const mov=await sbGet('cc_movimientos','order=fecha.asc,id.asc');if(!CRM.cargado)await cargarCRM();const por={};mov.forEach(m=>(por[m.cliente_id]=por[m.cliente_id]||[]).push(m));

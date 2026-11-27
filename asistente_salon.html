@@ -670,8 +670,22 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
         <input id="egr-quien" placeholder="¿Quién lo llevó? (nombre y apellido)" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px;border:2px solid var(--danger);border-radius:8px;font-size:14px;outline:none;" />
         <div style="font-size:11px;color:#888;margin-top:4px;">Al registrar sale un ticket para que lo firme quien lo llevó.</div>
       </div>
+      <button id="egr-dif-btn" onclick="abrirEgrDif()" style="display:none;width:100%;margin:0 0 12px;padding:12px;background:#6A1B9A;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">⚖️ Egresos por diferencia (varios productos de una vez)</button>
       <div class="section-title">Egresos de hoy</div>
       <div id="egresos-history"></div>
+      <div id="egr-dif-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:flex-start;justify-content:center;overflow:auto;padding:16px;">
+        <div style="background:#fff;color:#1a1a1a;border-radius:14px;max-width:560px;width:100%;padding:16px;font-family:system-ui,sans-serif;">
+          <div style="font-size:16px;font-weight:800;color:#6A1B9A;">⚖️ Egresos por diferencia</div>
+          <div style="font-size:12px;color:#666;margin:4px 0 10px;">Diferencias de peso o de conteo (ej: la mercadería entró caliente y al enfriarse pesa menos). Poné solo los productos que tienen diferencia. Se descuenta del stock y le llega el detalle a Poly.</div>
+          <label style="font-size:12px;font-weight:700;">Motivo (obligatorio)</label>
+          <input id="egr-dif-motivo" value="Diferencia de peso/conteo del turno anterior" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #ccc;border-radius:8px;margin:4px 0 10px;font-size:14px;">
+          <input id="egr-dif-bus" placeholder="🔍 Buscar producto…" oninput="pintarEgrDif()" style="width:100%;box-sizing:border-box;padding:9px;border:1px solid #ccc;border-radius:8px;margin-bottom:8px;font-size:14px;">
+          <div id="egr-dif-lista" style="max-height:50vh;overflow:auto;border:1px solid #eee;border-radius:8px;"></div>
+          <div id="egr-dif-res" style="font-size:13px;font-weight:700;margin:8px 0;color:#C62828;"></div>
+          <div style="display:flex;gap:8px;"><button onclick="cerrarEgrDif()" style="flex:1;padding:11px;border:1px solid #ccc;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">Cancelar</button>
+          <button id="egr-dif-ok" onclick="guardarEgrDif()" style="flex:2;padding:11px;border:none;background:#C62828;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">Descontar del stock</button></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1494,6 +1508,48 @@ async function registrarEgreso() {
   document.getElementById('egr-producto').value = '';
   egrPhotoFile = null;
   const pv = document.getElementById('egr-foto-preview'); if(pv) pv.innerHTML = '';
+}
+
+// ── Egresos por diferencia (solo Micaela / Poly): varios productos de una vez ──
+let EGR_DIF={};
+function egrDifBtn(){ const b=document.getElementById('egr-dif-btn'); if(b) b.style.display=puedeEditarStock()?'block':'none'; }
+document.addEventListener('poly-usuario', egrDifBtn); setTimeout(egrDifBtn, 1500);
+async function abrirEgrDif(){
+  if(!puedeEditarStock()){ sinPermisoStock(); return; }
+  try{ await cargarCatalogoVenta(); }catch(e){}
+  EGR_DIF={}; document.getElementById('egr-dif-bus').value=''; pintarEgrDif();
+  document.getElementById('egr-dif-ov').style.display='flex';
+}
+function cerrarEgrDif(){ document.getElementById('egr-dif-ov').style.display='none'; }
+function pintarEgrDif(){
+  const q=normCtrl(document.getElementById('egr-dif-bus').value||'');
+  const L=[...CONTROL_CATALOGO].sort((a,b)=>a.n.localeCompare(b.n)).filter(p=>!q||normCtrl(p.n).includes(q)||EGR_DIF[p.c]);
+  document.getElementById('egr-dif-lista').innerHTML=L.map(p=>{ const st=stockState['pv:'+p.c];
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid #f2f2f2;"><div style="flex:1;font-size:13px;">'+p.n
+      +'<div style="font-size:11px;color:#999;">stock: '+(st==null?'—':String(Math.round(st*1000)/1000).replace('.',','))+(p.kg?' kg':' u')+'</div></div>'
+      +'<input inputmode="decimal" placeholder="'+(p.kg?'kg':'u')+'" value="'+(EGR_DIF[p.c]!=null?String(EGR_DIF[p.c].txt):'')+'" oninput="egrDifSet(\''+p.c+'\',this.value,'+(p.kg?1:0)+')" style="width:80px;padding:7px;border:1px solid #ccc;border-radius:6px;text-align:center;font-size:14px;"></div>'; }).join('');
+  egrDifRes();
+}
+function egrDifSet(c,v,kg){ const t=String(v).trim(); if(!t){ delete EGR_DIF[c]; egrDifRes(); return; }
+  const q=kg?leerKgSalon(t,false):parseFloat(t.replace(',','.')); EGR_DIF[c]={txt:t,q:(q>0?(kg&&q>=50?Math.round(q)/1000:q):0)}; egrDifRes(); }
+function egrDifRes(){ const n=Object.values(EGR_DIF).filter(x=>x.q>0).length; const r=document.getElementById('egr-dif-res'); if(r) r.textContent=n?n+' producto'+(n>1?'s':'')+' para descontar':''; }
+async function guardarEgrDif(){
+  const motivo=(document.getElementById('egr-dif-motivo').value||'').trim(); if(!motivo){ alert('Escribí el motivo.'); return; }
+  const items=Object.entries(EGR_DIF).filter(([c,x])=>x.q>0).map(([c,x])=>{ const p=CONTROL_CATALOGO.find(y=>y.c===c)||{}; return {producto_id:'pv:'+c, nombre:p.n||c, cantidad:Math.round(x.q*1000)/1000}; });
+  if(!items.length){ alert('Poné la cantidad en al menos un producto.'); return; }
+  if(!confirm('¿Descontar del stock '+items.length+' producto'+(items.length>1?'s':'')+' por diferencia?\n\n'+items.map(i=>'• '+i.nombre+': '+String(i.cantidad).replace('.',',')).join('\n'))) return;
+  const b=document.getElementById('egr-dif-ok'); b.disabled=true; b.textContent='Guardando…';
+  try{
+    await polyRPC('salon_egresos_diferencia',{p_items:items,p_motivo:motivo});
+    const now=new Date().toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    items.forEach(i=>egresos.unshift({prodId:i.producto_id,nombre:i.nombre,cantidad:i.cantidad,tipo:'diferencia',tipoLabel:'⚖️ Diferencia · '+motivo,time:now}));
+    localStorage.setItem(EGRESOS_KEY, JSON.stringify(egresos));
+    if(typeof addToLog==='function') addToLog('⚖️ Egresos por diferencia: '+items.length+' productos ('+motivo+')');
+    cerrarEgrDif(); renderEgresosHistory();
+    if(typeof syncStockServidor==='function') await syncStockServidor(false);
+    renderStock(); showToast('✅ Descontado del stock · le llegó el detalle a Poly');
+  }catch(e){ alert('⚠️ No se pudo guardar: '+e.message); }
+  b.disabled=false; b.textContent='Descontar del stock';
 }
 
 function renderEgresosHistory() {
