@@ -702,6 +702,7 @@ html.noche .poly-logo-orbe.alerta::before{animation-duration:1.4s;box-shadow:0 0
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;">
         <button onclick="traerIngresos();traerVentasCaja()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">🔄 Actualizar ingresos y ventas</button>
         <button onclick="traerEgresos()" style="flex:1;min-width:120px;padding:10px;border:1px solid #ddd;background:#fff;border-radius:8px;font-weight:600;cursor:pointer;">📤 Traer egresos</button>
+        <button id="ctrl-aplicar" onclick="ctrlAplicar()" style="flex:1;min-width:120px;padding:10px;border:none;background:#2E7D32;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">✅ Aplicar cambios al stock</button>
         <button onclick="guardarControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#6A1B9A;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">💾 Guardar</button>
         <button onclick="cerrarTurnoControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#E65100;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🔒 Cerrar turno</button>
         <button onclick="imprimirControl()" style="flex:1;min-width:120px;padding:10px;border:none;background:#2E7D32;color:#fff;border-radius:8px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Firmar</button>
@@ -2147,6 +2148,8 @@ function cargarCatalogoVenta(forzar){
 }
 
 async function loadControl(){
+  // si quedó un cambio sin guardar, se guarda antes de recargar (si no, volvía al número anterior)
+  if(typeof _ctrlAuto!=='undefined' && _ctrlAuto){ clearTimeout(_ctrlAuto); _ctrlAuto=null; await guardarControl(true); }
   await cargarCatalogoVenta();
   ctrlInitInputs();
   const fecha=document.getElementById('ctrl-fecha').value || fechaHoyISO();
@@ -2282,8 +2285,11 @@ async function traerIngresos(silent){
     else { sinMatch++; }
   });
   let aplicados=0;
-  Object.entries(acum).forEach(([cod,cant])=>{ if(controlState.items[cod]){ controlState.items[cod].g=cant; aplicados++;
-    if(controlState.ref){ controlState.ref[cod]=controlState.ref[cod]||{i:controlState.items[cod].i||0,g:0}; controlState.ref[cod].g=cant; } } });
+  Object.entries(acum).forEach(([cod,cant])=>{ const it=controlState.items[cod]; if(it){
+    // si Micaela corrigió el Ingreso a mano, se respeta su corrección (lo que agregó o sacó) sobre lo que llegue
+    const r=controlState.ref&&controlState.ref[cod]; const manual=r?Math.round(((Number(it.g)||0)-(Number(r.g)||0))*1000)/1000:0;
+    it.g=Math.round((cant+manual)*1000)/1000; aplicados++;
+    if(controlState.ref){ controlState.ref[cod]=controlState.ref[cod]||{i:it.i||0,g:0}; controlState.ref[cod].g=cant; } } });
   if(!silent){
     renderControlTabla(); renderControlPie();
     let msg = aplicados>0 ? ('📥 '+aplicados+' ingresos cargados de despachos') : 'No hubo despachos en este turno';
@@ -2427,6 +2433,24 @@ function ctrlEdit(cod,finalTocado){
     const m=document.getElementById('cim-'+cod); if(m){ m.textContent=cambio?'sistema: '+r:''; m.style.cssText='font-size:9px;color:#E65100;font-weight:700;margin-top:5px;'; } }
   const cg=document.getElementById('cg-'+cod); if(cg){ const mg=ctrlMarcaG(cod,it); cg.style.outline=mg?'3px solid #F57C00':''; cg.style.outlineOffset='1px'; }
   renderControlPie(); // actualiza total
+  ctrlAutoGuardar();
+}
+// Cada cambio se guarda solo a los 2 segundos (así no se pierde al cambiar de pestaña).
+// Si es el Inicial o el Ingreso (Micaela o Poly), al guardarse impacta en el stock del Salón.
+let _ctrlAuto=null;
+function ctrlAutoGuardar(){
+  if(!controlState||controlState.estado==='cerrado') return;
+  const b=document.getElementById('ctrl-aplicar'); if(b){ b.textContent='⏳ Guardando…'; }
+  clearTimeout(_ctrlAuto);
+  _ctrlAuto=setTimeout(async()=>{ _ctrlAuto=null; const ok=await guardarControl(true);
+    if(b) b.textContent='✅ Aplicar cambios al stock';
+    if(ok){ showToast('✅ Guardado'+(puedeEditarStock()?' · los cambios de Inicial/Ingreso ya impactaron en el stock':'')); if(typeof syncStockServidor==='function') syncStockServidor(false); }
+  },2000);
+}
+async function ctrlAplicar(){
+  clearTimeout(_ctrlAuto); _ctrlAuto=null;
+  const ok=await guardarControl(true);
+  if(ok){ showToast('✅ Cambios aplicados al stock del Salón'); if(typeof syncStockServidor==='function') syncStockServidor(false); }
 }
 
 function renderControlPie(){
