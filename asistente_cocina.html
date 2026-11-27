@@ -1390,7 +1390,11 @@ function filterLog(q) {
 
 
 // ── FREEZER → LEUDADO ────────────────────────────────
-const LEUDADO_KEY = 'cocina_leudado_' + new Date(Date.now() - 3*3600*1000).toISOString().split('T')[0]; // fecha de Argentina
+// Fecha del leudado que se está cargando: hoy, o un día anterior si quedó sin cargar (carga atrasada)
+function hoyLeud() { return new Date(Date.now() - 3*3600*1000).toISOString().split('T')[0]; } // fecha de Argentina
+let LEUD_FECHA = hoyLeud();
+function leudKey() { return 'cocina_leudado_' + LEUD_FECHA; }
+function leudAtrasado() { return LEUD_FECHA !== hoyLeud(); }
 const ALARMA_HORA = 14; // 14:00hs
 
 const LEUDADO_SEMANAL = {
@@ -1503,11 +1507,11 @@ let alarmaSound = null;
 
 function getDayKeyLeudado() {
   const dias = ['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
-  return dias[new Date().getDay()];
+  return dias[new Date(LEUD_FECHA + 'T12:00:00').getDay()];
 }
 
 function loadLeudado() {
-  try { leudadoState = JSON.parse(localStorage.getItem(LEUDADO_KEY) || '{}'); } catch(e){ leudadoState = {}; }
+  try { leudadoState = JSON.parse(localStorage.getItem(leudKey()) || '{}'); } catch(e){ leudadoState = {}; }
   syncLeudadoBase();
 }
 function slugLeudado(n) { return 'leud_' + String(n).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,''); }
@@ -1515,6 +1519,7 @@ function slugLeudado(n) { return 'leud_' + String(n).toLowerCase().normalize('NF
 // y se puede cargar la tanda siguiente (antes quedaba tildado lo de la madrugada).
 let _syncLeudOk = false;
 async function syncLeudadoBase() {
+  if (leudAtrasado()) return; // la carga atrasada no se sincroniza con lo que está leudando hoy
   let filas;
   try { filas = await sbSelect('cocina_leudado', '?origen=eq.freezer&estado=eq.leudando&select=id,producto_id,cantidad&order=created_at.asc'); }
   catch (e) { return; }  // sin conexión: queda lo que había en el dispositivo
@@ -1541,7 +1546,27 @@ function noSaleHoy(id) {
   saveLeudado(); renderLeudado();
   addToLog('🚫 Hoy no sale a leudar: ' + def.nombre, 'leudado');
 }
-function saveLeudado() { localStorage.setItem(LEUDADO_KEY, JSON.stringify(leudadoState)); }
+function saveLeudado() { localStorage.setItem(leudKey(), JSON.stringify(leudadoState)); }
+function cambiarFechaLeud(f) {
+  const h = hoyLeud(); if (!f || f > h) f = h;
+  LEUD_FECHA = f; alarmaActivada = false; loadLeudado(); renderLeudado();
+}
+// Guardar: manda de una vez todo lo que tiene cantidad y todavía no se cargó (descuenta del freezer y le aparece a Madrugada).
+// Si era un leudado atrasado (de ayer), después vuelve a la lista de hoy en cero para cargar lo de hoy.
+async function guardarLeudado() {
+  const items = LEUDADO_SEMANAL[getDayKeyLeudado()] || [];
+  const pend = items.filter(def => { const it = getLeudadoItem(def.id, def.cantidad); return !it.sacado && Number(it.cantidad) > 0; });
+  const fechaTxt = LEUD_FECHA.split('-').reverse().join('/');
+  if (!pend.length && !leudAtrasado()) { alert('No hay nada para guardar: todo lo de la lista ya está cargado.'); return; }
+  if (pend.length && !confirm('¿Guardar el leudado del ' + fechaTxt + '?\n\n' + pend.map(d => '• ' + d.nombre + ': ' + getLeudadoItem(d.id, d.cantidad).cantidad).join('\n') + '\n\nSe descuenta del freezer y le aparece a Madrugada para registrar lo que horneó.')) return;
+  const b = document.getElementById('leud-guardar'); if (b) { b.disabled = true; b.textContent = 'Guardando…'; }
+  for (const def of pend) { await toggleSacado(def.id); }
+  const fallaron = pend.filter(def => !(leudadoState[def.id] || {}).sacado);
+  if (fallaron.length) { alert('⚠️ No se guardaron: ' + fallaron.map(d => d.nombre).join(', ') + '. Revisá la conexión y tocá Guardar de nuevo.'); if (b) { b.disabled = false; b.textContent = '💾 Guardar'; } return; }
+  addToLog('💾 Leudado del ' + fechaTxt + ' guardado (' + pend.length + ' productos)', 'leudado');
+  if (leudAtrasado()) { alert('✅ Leudado del ' + fechaTxt + ' guardado. Ahora queda la lista de HOY en cero para cargar lo de hoy.'); cambiarFechaLeud(hoyLeud()); }
+  else { if (typeof showToast === 'function') showToast('✅ Leudado guardado'); else alert('✅ Leudado guardado'); renderLeudado(); }
+}
 
 function getLeudadoItem(id, defaultCantidad) {
   if (!leudadoState[id]) leudadoState[id] = { sacado: false, cantidad: defaultCantidad };
@@ -1569,7 +1594,10 @@ async function toggleSacado(id) {
     // ── AVISAR A MADRUGADA: crear el leudado para que lo horneen ──
     try {
       const slug = slugLeudado(def.nombre);
-      const res = await sbUpsert('cocina_leudado', [{ producto_id: slug, producto_nombre: def.nombre, cantidad: item.cantidad, origen: 'freezer', estado: 'leudando' }]);
+      const fila = { producto_id: slug, producto_nombre: def.nombre, cantidad: item.cantidad, origen: 'freezer', estado: 'leudando' };
+      // carga atrasada: queda con la fecha del día que se sacó (a la tarde), así Madrugada lo ve para registrar lo que horneó
+      if (leudAtrasado()) fila.created_at = LEUD_FECHA + 'T15:00:00-03:00';
+      const res = await sbUpsert('cocina_leudado', [fila]);
       if (res && res[0] && res[0].id != null) { item.leudadoRowId = res[0].id; saveLeudado(); }
       else {
         // No se guardó: se destilda para que no parezca cargado (antes quedaba tildado y Madrugada no se enteraba)
@@ -1777,6 +1805,12 @@ function renderLeudado() {
   </div>`;
 
   const diasLabel = {lunes:'Lunes',martes:'Martes',miercoles:'Miércoles',jueves:'Jueves',viernes:'Viernes',sabado:'Sábado',domingo:'Domingo'};
+  html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 8px;font-family:system-ui,sans-serif;">
+    <label style="font-size:13px;font-weight:700;">📅 Fecha del leudado</label>
+    <input type="date" value="${LEUD_FECHA}" max="${hoyLeud()}" onchange="cambiarFechaLeud(this.value)" style="padding:6px;border:1px solid #FFAB91;border-radius:8px;font-size:14px;">
+    ${leudAtrasado() ? `<button onclick="cambiarFechaLeud(hoyLeud())" style="padding:6px 10px;border:1px solid #ccc;border-radius:8px;background:#fff;font-size:12px;cursor:pointer;">Volver a hoy</button>` : ''}
+  </div>`;
+  if (leudAtrasado()) html += `<div class="leudado-alarm-bar pending" style="margin-bottom:8px"><span class="leudado-alarm-icon">⏪</span><div class="leudado-alarm-text"><strong>Cargando leudado ATRASADO del ${LEUD_FECHA.split('-').reverse().join('/')}</strong>Poné las cantidades que sacaste ese día y tocá 💾 Guardar. Madrugada lo va a ver para registrar lo que horneó y que entre al local.</div></div>`;
   html += `<div style="font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;padding:4px 0 8px;font-family:system-ui,sans-serif;">${diasLabel[dayKey] || dayKey} — Mercadería a sacar</div>`;
 
   for (const def of dayItems) {
@@ -1799,6 +1833,7 @@ function renderLeudado() {
     </div>`;
   }
 
+  html += `<button id="leud-guardar" onclick="guardarLeudado()" style="width:100%;padding:13px;margin:6px 0 10px;background:#E64A19;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;">💾 Guardar${leudAtrasado() ? ' leudado del ' + LEUD_FECHA.split('-').reverse().join('/') : ''}</button>`;
   html += `<button class="leudado-reset-btn" onclick="resetLeudado()">🔄 Reiniciar lista del día</button>`;
   el.innerHTML = html;
 }
