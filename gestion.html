@@ -15,7 +15,7 @@
     var self = this;
     return f0.call(self, u, o2).catch(function (e) {
       // si el navegador rechaza el encabezado, se sigue trabajando como antes
-      if (e && e.name === 'TypeError') { window.__polySinFirma = true; return f0.call(self, u, o); }
+      /* corte de red: falla solo este pedido; ya no se apaga la firma para el resto de la sesión */
       throw e;
     });
   };
