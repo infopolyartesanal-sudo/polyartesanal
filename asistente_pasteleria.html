@@ -2372,10 +2372,19 @@ const _orig_past_adjust = adjustStock;
 adjustStock = async function(name, dep, delta) {
   _orig_past_adjust(name, dep, delta);
   if (delta > 0 && dep === 'local') {
-    try {
-      const prodId = 'pasteleria_' + name.toLowerCase().replace(/\s+/g, '_');
-      await sumarProductoAlSalon(name, prodId, delta, 'pasteleria');
-    } catch(e) { console.warn('pasteleria→salon error:', e); }
+    // Varios toques seguidos de + salen en un solo envío con el total
+    const k = String(name);
+    window._envLocal = window._envLocal || {};
+    const pend = window._envLocal[k] || (window._envLocal[k] = { q: 0, t: null });
+    pend.q = Math.round((pend.q + delta) * 1000) / 1000;
+    clearTimeout(pend.t);
+    pend.t = setTimeout(async function () {
+      const q = pend.q; delete window._envLocal[k];
+      try {
+        const prodId = 'pasteleria_' + k.toLowerCase().replace(/\s+/g, '_');
+        await sumarProductoAlSalon(k, prodId, q, 'pasteleria');
+      } catch(e) { console.warn('pasteleria→salon error:', e); }
+    }, 4000);
   }
 };
 
