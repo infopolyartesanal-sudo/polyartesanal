@@ -258,7 +258,8 @@
   <button onclick="pedidosEntregar()" id="bPed">Pedidos</button>
   <button onclick="verVentas()">Ventas del turno</button>
   <button onclick="notaCredito()">Nota de crédito</button>
-  <button onclick="retiroCaja()">Retiro / Pago a proveedor</button>
+  <button onclick="retiroCaja()">Retiro / Ingreso de efectivo</button>
+  <button onclick="articuloLibre()">Artículo libre</button>
 </div>
 <div id="main">
   <section id="der">
@@ -317,7 +318,7 @@ const COND={cf:'Consumidor final',ri:'Responsable inscripto',mono:'Monotributist
 // Si la caja está adentro del Salón (solapa), no hace falta el botón para volver
 try{if(window.top!==window)document.addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('bSalon');if(b)b.style.display='none'})}catch(e){}
 const ES_ADMIN=(()=>{try{return (JSON.parse(localStorage.getItem('poly_usuario')||'null')||{}).rol==='admin'}catch(e){return false}})();
-let PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''},PEDIDO=null;
+let LIBRE=null,PROD=[],TOP=[],CLIENTES=[],SALDOS={},CFG={},TURNO=null,lista='minorista',carrito=[],cliente={tipo:'cf'},REM={on:false,dir:'',notas:''},PEDIDO=null;
 
 async function cargar(){
   const desde=new Date(Date.now()-30*864e5).toISOString();
@@ -327,6 +328,7 @@ async function cargar(){
     api('crm_clientes?select=id,nombre,razon_social,cuit,tipo,lista,direccion,zona&activo=is.true&order=nombre').catch(()=>[]),
     ES_ADMIN?api('cc_movimientos?select=cliente_id,monto').catch(()=>[]):Promise.resolve([]),
     rpc('caja_mas_vendidos',{p_desde:desde.slice(0,10)}).catch(()=>[])]);
+  LIBRE=(p||[]).find(x=>/^articulo libre$/i.test(norm(x.nombre).trim()))||null;
   PROD=(p||[]).filter(x=>!/^articulo libre$/i.test(norm(x.nombre).trim()));
   CFG=(cfg&&cfg[0]&&cfg[0].valor)||{};
   CLIENTES=cl||[];SALDOS={};(cc||[]).forEach(m=>{SALDOS[m.cliente_id]=(SALDOS[m.cliente_id]||0)+(+m.monto||0)});
@@ -373,6 +375,7 @@ function agregar(cod){
 function pedirKg(p){modal(`<h3>${esc(p.nombre)}</h3><p class="muted">${plata(precio(p))} el kilo · poné lo que marca la balanza</p>
   <label>Kilos</label><input id="kgIn" inputmode="decimal" placeholder="ej: 1,250 o 250 g" autofocus onkeydown="if(event.key==='Enter')okKg('${esc(p.codigo)}')" oninput="{let x=num(this.value);if(x>=50)x=x/1000;$('#kgPr').textContent=plata(x*${precio(p)})}">
   <div class="resu"><span>Importe</span><b id="kgPr">$ 0</b></div>
+  <label>…o poné cuánta plata quiere llevar ($)</label><input id="kgPlata" inputmode="decimal" placeholder="ej: 1000" onkeydown="if(event.key==='Enter')okKg('${esc(p.codigo)}')" oninput="{const m=numP(this.value),pr=${precio(p)};if(m>0&&pr>0){const g=Math.round(m/pr*1000);$('#kgIn').value=kgTxt(g/1000);$('#kgPr').textContent=plata(m)+' → '+g+' g'}}">
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okKg('${esc(p.codigo)}')">Agregar</button></div>`)}
 function okKg(cod){const p=PROD.find(x=>x.codigo===cod);let t=String($('#kgIn').value).trim().toLowerCase(),q,m;if(m=t.match(/^(\d+(?:[.,]\d+)?)\s*(g|gr|grs|gramos)$/))q=num(m[1])/1000;else if(m=t.match(/^(\d+(?:[.,]\d+)?)\s*kg?s?\s*(?:y\s*)?(\d+)\s*(?:g|gr|grs|gramos)?$/))q=num(m[1])+(+m[2])/1000;else q=num(t.replace(/\s*(kg|kgs|kilos?)$/,''));if(!(q>0))return toast('Poné los kilos');
   if(q>=50){if(confirm('Pusiste '+kgTxt(q)+'. ¿Son '+kgTxt(q)+' GRAMOS? Tocá Aceptar y lo cargo como '+kgTxt(q/1000)+' kg.'))q=q/1000;else if(!confirm('¿Seguro que son '+kgTxt(q)+' KILOS?'))return}
@@ -386,13 +389,25 @@ function pintarCli(){const c=cliente;let t='Consumidor Final';
 function pintarCarrito(){pintarCli();
   $('#car').innerHTML=carrito.length?carrito.map((it,k)=>`<div class="li"><div class="cd">${esc(it.codigo||'')}</div><div class="nm">${esc(it.nombre)}<small>${it.unidad==='kg'?'por kilo':'por unidad'}${it.manual?' · precio a mano':''}</small></div>
     <input value="${it.unidad==='kg'?kgTxt(it.cantidad):it.cantidad}" inputmode="decimal" onchange="cantidad(${k},this.value)" title="${it.unidad==='kg'?'kilos':'unidades'}">
-    <input value="${it.precio}" inputmode="decimal" onchange="precioMano(${k},this.value)" title="precio">
-    <div class="st">${plata(it.cantidad*it.precio)}</div>
+    ${ES_ADMIN||it.libre?`<input value="${it.precio}" inputmode="decimal" onchange="precioMano(${k},this.value)" title="precio">`:`<div class="st" style="text-align:center;font-weight:400" title="El precio no se puede cambiar">${plata(it.precio)}</div>`}
+    ${it.unidad==='kg'?`<input value="${Math.round(it.cantidad*it.precio)}" inputmode="decimal" onchange="importeKg(${k},this.value)" title="Poné la plata que quiere llevar y calcula los kilos" style="text-align:right;font-weight:700">`:`<div class="st">${plata(it.cantidad*it.precio)}</div>`}
     <button class="x" onclick="carrito.splice(${k},1);pintarCarrito()" title="Quitar">✕</button></div>`).join(''):`<div id="vacio">${TURNO?'Tocá un artículo a la derecha o buscalo por nombre o código.<br><br><span class="muted">F9 = cobrar · Esc = cancelar</span>':'La caja está cerrada.'}</div>`;
   const t=total();$('#totV').textContent=plata(t);$('#totInfo').innerHTML='Filas: '+carrito.length+' &nbsp; Items: '+kgTxt(carrito.reduce((a,it)=>a+(it.unidad==='kg'?1:it.cantidad),0));
   $('#cobrar').disabled=!carrito.length||!TURNO||carrito.some(it=>!(it.precio>0))}
 function cantidad(k,v){const q=num(v);if(!(q>0)){carrito.splice(k,1)}else carrito[k].cantidad=carrito[k].unidad==='kg'?Math.round(q*1000)/1000:q;pintarCarrito()}
-function precioMano(k,v){const p=numP(v);if(!(p>0))return toast('Precio inválido');carrito[k].precio=p;carrito[k].manual=true;pintarCarrito()}
+// Artículo libre: para facturar algo que no está en la lista (descripción, precio e IVA a mano)
+function articuloLibre(){if(!TURNO)return toast('Primero abrí el turno');if(!LIBRE)return toast('Falta el producto "articulo libre" en Gestión → Productos de venta');
+  modal(`<h3>✍️ Artículo libre</h3><p class="muted" style="font-size:13px">Para facturar algo que no está en la lista. Elegí el cliente antes de cobrar.</p>
+  <label>Descripción (sale en la factura)</label><input id="alD" autofocus placeholder="Ej: Catering evento 28/11">
+  <div class="fila"><div><label>Cantidad</label><input id="alQ" inputmode="decimal" value="1"></div><div><label>Precio unitario final ($, con IVA)</label><input id="alP" inputmode="decimal" placeholder="0" onkeydown="if(event.key==='Enter')okLibre()"></div>
+  <div><label>IVA</label><select id="alI"><option value="21">21%</option><option value="10.5">10,5%</option></select></div></div>
+  <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okLibre()">Agregar</button></div>`)}
+function okLibre(){const d=$('#alD').value.trim(),q=num($('#alQ').value),pr=numP($('#alP').value),iv=+$('#alI').value;
+  if(!d)return toast('Poné la descripción');if(!(q>0))return toast('Poné la cantidad');if(!(pr>0))return toast('Poné el precio');
+  carrito.push({codigo:LIBRE.codigo,nombre:d,cantidad:q,unidad:'u',precio:pr,iva:iv,manual:true,libre:true});cerrar();pintarCarrito()}
+// Por kilo: si el cliente pide "$1000", se pone el importe y calcula cuántos gramos van
+function importeKg(k,v){const it=carrito[k],m=numP(v);if(!(m>0)||!(it.precio>0))return pintarCarrito();it.cantidad=Math.round(m/it.precio*1000)/1000;pintarCarrito();toast('Para '+plata(m)+': '+Math.round(it.cantidad*1000)+' g de '+it.nombre,4000)}
+function precioMano(k,v){if(!ES_ADMIN&&!carrito[k].libre){toast('El precio no se puede cambiar');return pintarCarrito()}const p=numP(v);if(!(p>0))return toast('Precio inválido');carrito[k].precio=p;carrito[k].manual=true;pintarCarrito()}
 
 // ---------- cliente ----------
 function elegirCliente(){modal(`<h3>👤 Cliente</h3>
@@ -505,7 +520,7 @@ async function confirmar(facturar){if(facturar===undefined)facturar=true;if(guar
     pagos:PAGOS.filter(p=>p.monto>0).map(p=>({medio:p.medio,monto:Math.round(p.monto*100)/100,...(p.medio==='Efectivo'&&p.recibe!=null?{recibe:p.recibe}:{})})),
     remito:REM.on,entrega_direccion:REM.on?REM.dir:'',entrega_notas:REM.on?REM.notas:'',
     propina:PROP.medio&&PROP.monto>0?Math.round(PROP.monto*100)/100:0,propina_medio:PROP.medio&&PROP.monto>0?PROP.medio:'',
-    items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio,bultos:REM.on&&it.bultos!=null?it.bultos:'',kg:REM.on&&it.kg!=null?it.kg:''}))};
+    items:carrito.map(it=>({codigo:it.codigo,nombre:it.nombre,cantidad:it.cantidad,unidad:it.unidad,precio:it.precio,iva:it.libre?it.iva:'',bultos:REM.on&&it.bultos!=null?it.bultos:'',kg:REM.on&&it.kg!=null?it.kg:''}))};
   try{const r=await rpc('caja_vender',{p:body});
     const venta={id:r.id,fecha:new Date(),items:carrito.slice(),pagos:body.pagos,vuelto,total:r.total,cliente:Object.assign({},cliente),lista,fiscal:r.fiscal_estado};
     if(cliente.id&&body.pagos.some(p=>p.medio==='Cuenta corriente'))SALDOS[cliente.id]=(SALDOS[cliente.id]||0)+body.pagos.find(p=>p.medio==='Cuenta corriente').monto;
@@ -576,7 +591,7 @@ async function verVentas(){if(!TURNO)return toast('No hay turno abierto');
   modal(`<h3>📋 Ventas del turno (${v.filter(x=>x.estado==='ok').length})</h3><div style="max-height:60vh;overflow:auto">${v.map(x=>`<div class="vt" style="${x.estado==='anulada'?'opacity:.45;text-decoration:line-through':''}"><b>#${x.id}</b><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</span>
     <span style="font-size:13px">${esc((x.ventas_items||[]).map(i=>i.nombre).join(', ').slice(0,70))}${x.cliente_nombre?' · '+esc(x.cliente_nombre):''}<br><span class="muted">${(x.pagos||[]).map(p=>p.medio).join(' + ')}</span>${+x.propina>0?` <span style="color:var(--verde);font-size:12px">🙌 propina ${plata(x.propina)}</span>`:''}${x.fiscal_estado==='sin_facturar'&&x.estado==='ok'?' <span class="tag sf">SIN FACTURA</span>':''}${['error','pendiente'].includes(x.fiscal_estado)&&x.estado==='ok'?` <span class="tag sf" style="background:var(--rojo);color:#fff" title="${esc(x.fiscal_error||'')}">SIN CAE</span>`:''}${x.fiscal_estado==='autorizada'?` <span class="muted" style="font-size:11px">Fact. ${x.cbte_tipo===1?'A':'B'} ${String(x.pto_vta).padStart(5,'0')}-${String(x.cbte_nro).padStart(8,'0')}</span>`:''}</span>
     <b style="text-align:right">${plata(x.total)}</b><span style="text-align:right">${x.estado==='ok'?`${x.remito_nro?`<button class="tb" onclick="reimprimir(${x.id},1)" title="Remito N° ${x.remito_nro}">📦</button> `:''}${x.fiscal_estado==='sin_facturar'?`<button class="tb" onclick="facturarDespues(${x.id})" title="Facturar ahora">🧾</button> `:''}${['error','pendiente'].includes(x.fiscal_estado)?`<button class="tb" onclick="reintentarCAE(${x.id})" title="Reintentar factura en ARCA">🧾</button> `:''}<button class="tb" onclick="reimprimir(${x.id})" title="Reimprimir ticket">🖨️</button> ${x.fiscal_estado==='autorizada'?`<button class="tb" onclick="ncDeVenta(${x.id})" title="Anular con nota de crédito">↩️</button>`:`<button class="tb" onclick="anular(${x.id})" title="Anular">✕</button>`}`:x.anulada_motivo&&/^Nota de crédito/.test(x.anulada_motivo)?'<span class="tag nc">NC</span>':''}</span></div>`).join('')||'<p class="muted">Todavía no hay ventas.</p>'}</div>
-    <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
+    <div class="acc"><button class="b-no" onclick="resumenParcial()">🖨️ Imprimir resumen de ventas</button><button class="b-no" onclick="cerrar()">Cerrar</button></div>`);window._ventas=v}
 function reimprimir(id,rem){const x=(window._ventas||[]).find(v=>v.id===id);if(!x)return;const v={id:x.id,fecha:new Date(x.created_at),items:(x.ventas_items||[]).map(i=>({nombre:i.nombre,cantidad:+i.cantidad,unidad:i.unidad,precio:+i.precio,iva:i.iva,bultos:i.bultos==null?null:+i.bultos,kg:i.kg==null?null:+i.kg})),pagos:x.pagos||[],vuelto:0,total:x.total,cliente:{nombre:x.cliente_nombre,doc:x.cliente_doc},fiscal:x.fiscal_estado};
   if(x.fiscal_estado==='autorizada'){const tot=+x.total;const ivas={};(x.ventas_items||[]).forEach(i=>{const a=i.iva==null?21:+i.iva;ivas[a]=(ivas[a]||0)+i.cantidad*i.precio});
     const al=Object.entries(ivas).map(([a,b])=>({Id:({0:3,10.5:4,21:5,27:6,5:8,2.5:9})[a],Imp:Math.round((b-b/(1+a/100))*100)/100}));const iv=al.reduce((s,a)=>s+a.Imp,0);
@@ -598,43 +613,53 @@ async function anular(id){const x=(window._ventas||[]).find(v=>v.id===id);if(x&&
 // Sale efectivo de la caja durante el turno: se resta del efectivo que tiene que haber al cerrar.
 let RET={tipo:'proveedor'};
 async function retiroCaja(){if(!TURNO)return toast('Primero abrí el turno');let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}
-  const L=r.retiros_lista||[],P=r.proveedores||[];
-  modal(`<h3>💸 Retiro / Pago a proveedor</h3>
-  <p class="muted" style="font-size:13px">Es plata en <b>efectivo</b> que sale de la caja. Se descuenta del efectivo que tiene que haber al cerrar el turno.</p>
-  <div class="medios" style="grid-template-columns:1fr 1fr"><button id="rtP" onclick="RET.tipo='proveedor';tipoRet()">🚚 Pago a proveedor</button><button id="rtR" onclick="RET.tipo='retiro';tipoRet()">💵 Retiro de efectivo</button></div>
+  const L=r.retiros_lista||[],P=r.proveedores||[];window._movs=L;
+  modal(`<h3>💸 Movimientos de efectivo</h3>
+  <p class="muted" style="font-size:13px">Plata en <b>efectivo</b> que sale o entra a la caja (no son ventas). Se tiene en cuenta en el efectivo que tiene que haber al cerrar el turno. Sale un ticket para firmar.</p>
+  <div class="medios" style="grid-template-columns:1fr 1fr 1fr"><button id="rtP" onclick="RET.tipo='proveedor';tipoRet()">🚚 Pago a proveedor</button><button id="rtR" onclick="RET.tipo='retiro';tipoRet()">💵 Retiro de efectivo</button><button id="rtI" onclick="RET.tipo='ingreso';tipoRet()">➕ Ingreso de efectivo (cambio)</button></div>
   <div id="rtProvBox"><label>Proveedor</label><input id="rtProv" list="rtProvL" placeholder="Ej: Emiliano chipa, churrero…" autocomplete="off"><datalist id="rtProvL">${P.map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
   <label>Importe ($)</label><input id="rtM" inputmode="decimal" placeholder="0" onkeydown="if(event.key==='Enter')okRetiro()">
   <label id="rtNl">Detalle (opcional)</label><input id="rtN" placeholder="Ej: factura 0001-123, lo retiró Poly…">
-  ${L.length?`<div class="sec">En este turno</div>${L.map(x=>`<div class="vt" style="grid-template-columns:1fr 110px 40px"><span>${x.tipo==='proveedor'?'🚚 '+esc(x.proveedor||''):'💵 Retiro'}${x.nota?' <span class="muted">· '+esc(x.nota)+'</span>':''}<br><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} · ${esc(x.usuario||'')}</span></span><b style="text-align:right">${plata(x.monto)}</b><button class="tb" onclick="anularRetiro(${x.id})" title="Anular (se cargó mal)">✕</button></div>`).join('')}<div class="resu"><b>Total salido</b><b>${plata(r.retiros)}</b></div>`:''}
+  ${L.length?`<div class="sec">En este turno</div>${L.map(x=>`<div class="vt" style="grid-template-columns:1fr 110px 80px"><span>${x.tipo==='proveedor'?'🚚 '+esc(x.proveedor||''):x.tipo==='ingreso'?'➕ Ingreso':'💵 Retiro'}${x.nota?' <span class="muted">· '+esc(x.nota)+'</span>':''}<br><span class="muted">${new Date(x.created_at).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})} · ${esc(x.usuario||'')}</span></span><b style="text-align:right;color:${x.tipo==='ingreso'?'var(--verde)':'var(--rojo)'}">${x.tipo==='ingreso'?'+':'−'}${plata(x.monto)}</b><span><button class="tb" onclick="ticketMovimiento(window._movs.find(m=>m.id===${x.id}))" title="Reimprimir ticket">🖨️</button><button class="tb" onclick="anularRetiro(${x.id})" title="Anular (se cargó mal)">✕</button></span></div>`).join('')}<div class="resu"><b>Salió</b><b>${plata(r.retiros)}</b></div>${+r.ingresos?`<div class="resu"><b>Entró</b><b>${plata(r.ingresos)}</b></div>`:''}`:''}
   <div class="acc"><button class="b-no" onclick="cerrar()">Cerrar</button><button class="b-ok" onclick="okRetiro()">Guardar</button></div>`);tipoRet()}
-function tipoRet(){const p=RET.tipo==='proveedor';$('#rtP').style.outline=p?'3px solid var(--oro)':'';$('#rtR').style.outline=p?'':'3px solid var(--oro)';
-  $('#rtProvBox').style.display=p?'':'none';$('#rtNl').textContent=p?'Detalle (opcional)':'Motivo / quién lo retira (obligatorio)';setTimeout(()=>(p?$('#rtProv'):$('#rtM')).focus(),30)}
+function tipoRet(){const p=RET.tipo==='proveedor';['rtP','rtR','rtI'].forEach(i=>$('#'+i).style.outline='');$('#'+({proveedor:'rtP',retiro:'rtR',ingreso:'rtI'})[RET.tipo]).style.outline='3px solid var(--oro)';
+  $('#rtProvBox').style.display=p?'':'none';$('#rtNl').textContent=p?'Detalle (opcional)':RET.tipo==='ingreso'?'Quién trae la plata / para qué (obligatorio)':'Motivo / quién lo retira (obligatorio)';setTimeout(()=>(p?$('#rtProv'):$('#rtM')).focus(),30)}
 async function okRetiro(){const m=numP($('#rtM').value),pv=RET.tipo==='proveedor'?$('#rtProv').value.trim():'',nt=$('#rtN').value.trim();
-  if(!(m>0))return toast('Poné el importe');if(RET.tipo==='proveedor'&&!pv)return toast('Poné a qué proveedor');if(RET.tipo==='retiro'&&!nt)return toast('Poné el motivo o quién lo retira');
-  if(!confirm('¿Sale '+plata(m)+' en efectivo de la caja'+(pv?' para '+pv:'')+'?'))return;
-  try{await rpc('caja_retiro',{p_tipo:RET.tipo,p_monto:m,p_proveedor:pv||null,p_nota:nt||null});cerrar();toast('✅ Guardado: '+plata(m)+(pv?' a '+pv:' retiro'),3500)}catch(e){toast('⚠️ '+e.message,5000)}}
+  if(!(m>0))return toast('Poné el importe');if(RET.tipo==='proveedor'&&!pv)return toast('Poné a qué proveedor');if(RET.tipo!=='proveedor'&&!nt)return toast(RET.tipo==='ingreso'?'Poné quién trae la plata':'Poné el motivo o quién lo retira');
+  if(!confirm(RET.tipo==='ingreso'?'¿Entra '+plata(m)+' en efectivo a la caja?':'¿Sale '+plata(m)+' en efectivo de la caja'+(pv?' para '+pv:'')+'?'))return;
+  try{const x=await rpc('caja_retiro',{p_tipo:RET.tipo,p_monto:m,p_proveedor:pv||null,p_nota:nt||null});cerrar();toast('✅ Guardado: '+plata(m),3500);ticketMovimiento(x)}catch(e){toast('⚠️ '+e.message,5000)}}
+// Ticket del movimiento de efectivo (con lugar para firmar)
+function ticketMovimiento(x){if(!x)return;const L=[],c=(t,s,b)=>L.push({t,a:'c',s,b}),l=(t,s,b)=>L.push({t,s,b}),lr=(a,b,s)=>L.push({l:a,r:b,s}),hr=()=>L.push({hr:1});
+  const tit={proveedor:'PAGO A PROVEEDOR',retiro:'RETIRO DE EFECTIVO',ingreso:'INGRESO DE EFECTIVO'}[x.tipo]||'MOVIMIENTO';
+  c(CFG.nombre_fantasia||'Poly Artesanal',34);c('COMPROBANTE INTERNO · NO VÁLIDO COMO FACTURA',20);hr();c(tit,32,true);
+  l('N° '+x.id+' · '+new Date(x.created_at||Date.now()).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}));
+  if(TURNO&&TURNO.turno)l('Turno '+TURNO.turno.turno+' · cajero: '+(x.usuario||''));
+  if(x.proveedor)l('Proveedor: '+x.proveedor,26,true);if(x.nota)l('Detalle: '+x.nota);
+  hr();lr(x.tipo==='ingreso'?'ENTRA A LA CAJA':'SALE DE LA CAJA',plata(x.monto),34);hr();
+  L.push({gap:60});c('______________________________');c('Firma y aclaración',22);L.push({gap:30});
+  imprimirRaster(L)}
 async function anularRetiro(id){if(!confirm('¿Anular este movimiento? (vuelve a contar como efectivo en la caja)'))return;
   try{await rpc('caja_retiro_anular',{p_id:id});toast('Anulado');retiroCaja()}catch(e){toast('⚠️ '+e.message,5000)}}
 
 // ---------- turno ----------
 function turnoBtn(){TURNO?cerrarTurno():abrirTurno()}
-function abrirTurno(){const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});const sug=h>=5&&h<13?'Mañana':h>=13&&h<21?'Tarde':'Noche';
+async function abrirTurno(){let ant=null;try{ant=await rpc('caja_resumen')}catch(e){}const ca=ant&&ant.cambio_anterior!=null?+ant.cambio_anterior:null;window._cambioAnt=ca;const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});const sug=h>=5&&h<13?'Mañana':h>=13&&h<21?'Tarde':'Noche';
   modal(`<h3>🔓 Abrir turno</h3><div class="fila"><div><label>Turno</label><select id="tT">${['Mañana','Tarde','Noche'].map(t=>`<option ${t===sug?'selected':''}>${t}</option>`).join('')}</select></div>
-  <div><label>Efectivo en la caja al abrir (cambio)</label><input id="tF" inputmode="decimal" placeholder="ej: 122.090" autofocus onkeydown="if(event.key==='Enter')okAbrir()" oninput="$('#tFv').textContent=this.value.trim()?'Se carga: '+plata(numP(this.value)):''"><div id="tFv" class="muted" style="font-size:13px;margin-top:4px;font-weight:700"></div></div></div>
+  <div><label>Efectivo en la caja al abrir (cambio)</label><input id="tF" inputmode="decimal" placeholder="ej: 122.090" value="${ca!=null?ca:''}" autofocus onkeydown="if(event.key==='Enter')okAbrir()" oninput="$('#tFv').textContent=this.value.trim()?'Se carga: '+plata(numP(this.value)):''"><div id="tFv" class="muted" style="font-size:13px;margin-top:4px;font-weight:700">${ca!=null?'El turno anterior'+(ant.turno_anterior?' ('+esc(ant.turno_anterior)+')':'')+' dejó '+plata(ca)+'. Contalo: si hay otra cantidad, corregilo.':''}</div></div></div>
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-ok" onclick="okAbrir()">Abrir</button></div>`)}
-async function okAbrir(){try{await rpc('caja_abrir',{p_turno:$('#tT').value,p_fondo:numP($('#tF').value)});cerrar();await estadoTurno();toast('✅ Turno abierto')}catch(e){toast('⚠️ '+e.message,6000)}}
+async function okAbrir(){const f=numP($('#tF').value),ca=window._cambioAnt;if(ca!=null&&Math.abs(f-ca)>=1&&!confirm('El turno anterior dejó '+plata(ca)+' y vos pusiste '+plata(f)+' (diferencia '+plata(f-ca)+'). ¿Abrir igual?'))return;try{await rpc('caja_abrir',{p_turno:$('#tT').value,p_fondo:numP($('#tF').value)});cerrar();await estadoTurno();toast('✅ Turno abierto')}catch(e){toast('⚠️ '+e.message,6000)}}
 const BILLETES=[20000,10000,2000,1000,500,200,100];
 const MEDIOS_ON=['Mercado Pago / QR','Transferencia','Débito','Crédito'];
 let CIERRE=null;
 async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}if(!r.abierto)return estadoTurno();
   const pm=r.por_medio||{},cc=r.cc_cobrado||{},nc=r.nc_reintegros||{};
   const ef=(+pm['Efectivo']||0)-(+r.vuelto||0);const ccef=+cc['Efectivo']||0;const ncef=+nc['Efectivo']||0;
-  const ret=+r.retiros||0,pr=r.propinas||{},totProp=Object.values(pr).reduce((a,b)=>a+(+b||0),0);
+  const ing=+r.ingresos||0,ret=(+r.retiros||0)-ing,pr=r.propinas||{},totProp=Object.values(pr).reduce((a,b)=>a+(+b||0),0);
   const esperado=(+r.turno.fondo_inicial||0)+ef+ccef-ncef-ret;
   const sis={};MEDIOS_ON.forEach(m=>sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0)+(+pr[m]||0));
   Object.keys(pm).concat(Object.keys(pr)).forEach(m=>{if(!['Efectivo','Cuenta corriente'].includes(m)&&!(m in sis))sis[m]=(+pm[m]||0)+(+cc[m]||0)-(+nc[m]||0)+(+pr[m]||0)});
   const totOn=Object.values(sis).reduce((a,b)=>a+b,0);
-  CIERRE={esperado,sis};
+  CIERRE={esperado,sis,r};
   const desde=new Date(r.turno.abierto_at);const dias=Math.floor((Date.now()-desde)/864e5);
   modal(`<h3>🔒 Cerrar turno ${esc(r.turno.turno)}</h3>
   ${dias>=1?`<p style="background:#fff4d6;border:1px solid #e8c46a;padding:8px;border-radius:4px;font-size:13px">⚠️ Este turno está abierto desde el ${desde.toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})}. Se van a cerrar juntas todas las ventas desde ese momento.</p>`:''}
@@ -643,7 +668,8 @@ async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){retu
   <div class="resu"><span>📱 Venta online (QR, transferencia, tarjetas)</span><span>${plata(Object.keys(sis).reduce((a,m)=>a+(+pm[m]||0),0))}</span></div>
   ${pm['Cuenta corriente']?`<div class="resu"><span class="muted">A cuenta corriente (no entra plata)</span><span>${plata(pm['Cuenta corriente'])}</span></div>`:''}
   ${Object.keys(cc).length?`<div class="resu"><span class="muted">Cobros de cuenta corriente</span><span>${Object.entries(cc).map(([m,v])=>esc(m)+' '+plata(v)).join(' · ')}</span></div>`:''}
-  ${ret?`<div class="resu"><span class="muted">Retiros y pagos a proveedores (salió efectivo)</span><span style="color:var(--rojo)">−${plata(ret)}</span></div>`:''}
+  ${+r.retiros?`<div class="resu"><span class="muted">Retiros y pagos a proveedores (salió efectivo)</span><span style="color:var(--rojo)">−${plata(r.retiros)}</span></div>`:''}
+  ${ing?`<div class="resu"><span class="muted">Ingresos de efectivo (cambio)</span><span style="color:var(--verde)">+${plata(ing)}</span></div>`:''}
   ${totProp?`<div class="resu"><span class="muted">🙌 Propinas online (no son venta)</span><span>${plata(totProp)}</span></div>`:''}
   ${Object.keys(nc).length?`<div class="resu"><span class="muted">Devoluciones por nota de crédito</span><span style="color:var(--rojo)">${Object.entries(nc).map(([m,v])=>esc(m)+' −'+plata(v)).join(' · ')}</span></div>`:''}
 
@@ -651,7 +677,7 @@ async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){retu
   <p class="muted" style="font-size:12px;margin:4px 0 8px">Contá cuántos billetes hay de cada uno. El total se suma solo.</p>
   <div class="arq">${BILLETES.map(b=>`<div><b>$ ${b.toLocaleString('es-AR')}</b><input class="bil" data-b="${b}" inputmode="numeric" placeholder="0" oninput="sumarArqueo()"><small id="bs${b}"></small></div>`).join('')}
     <div><b>Monedas y otros ($)</b><input id="arqOtros" inputmode="decimal" placeholder="0" oninput="sumarArqueo()"><small></small></div></div>
-  <div class="resu" style="margin-top:8px"><span>Efectivo que tiene que haber <span class="muted">(cambio ${plata(r.turno.fondo_inicial)} + ventas${ccef?' + cobros':''}${ncef?' − devoluciones':''}${ret?' − retiros':''})</span></span><b>${plata(esperado)}</b></div>
+  <div class="resu" style="margin-top:8px"><span>Efectivo que tiene que haber <span class="muted">(cambio ${plata(r.turno.fondo_inicial)} + ventas${ccef?' + cobros':''}${ncef?' − devoluciones':''}${+r.retiros?' − retiros':''}${ing?' + ingresos':''})</span></span><b>${plata(esperado)}</b></div>
   <label>Efectivo contado en la caja</label><input id="cE" inputmode="decimal" oninput="CIERRE.manual=true;difCierre()">
   <div id="cDif" style="margin-top:6px;font-weight:700"></div>
 
@@ -661,6 +687,8 @@ async function cerrarTurno(){let r;try{r=await rpc('caja_resumen')}catch(e){retu
   ${Object.keys(sis).map((m,k)=>`<div class="onl"><span>${esc(m)}</span><span style="text-align:right">${plata(sis[m])}</span><input class="onIn" data-m="${esc(m)}" data-k="${k}" inputmode="decimal" oninput="difCierre()"><span id="od${k}" style="text-align:right;font-weight:700"></span></div>`).join('')}
   <div class="onl" style="border:0"><b>Total online</b><b style="text-align:right">${plata(totOn)}</b><span></span><span id="odT" style="text-align:right;font-weight:700"></span></div>
 
+  <div class="sec">🔁 Cambio para el próximo turno</div>
+  <label>¿Cuánto efectivo queda en la caja para el próximo turno? <span class="muted">(si no sacás nada, es lo mismo que contaste)</span></label><input id="cQ" inputmode="decimal" placeholder="igual a lo contado">
   <label id="cNl">Notas (opcional)</label><input id="cN" placeholder="">
   <div class="acc"><button class="b-no" onclick="cerrar()">Cancelar</button><button class="b-rojo" onclick="okCerrar()">Cerrar turno</button></div>`);
   setTimeout(()=>{const b=document.querySelector('.bil');if(b)b.focus()},80)}
@@ -676,7 +704,10 @@ async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efec
   const arq={};BILLETES.forEach(b=>{const q=Math.floor(num(document.querySelector('.bil[data-b="'+b+'"]').value));if(q>0)arq[b]=q});const ot=numP($('#arqOtros').value);
   const pArq=Object.keys(arq).length||ot?{billetes:arq,otros:ot,total:CIERRE.arqueoTotal||0,editado_a_mano:!!CIERRE.manual}:null;
   const on={};document.querySelectorAll('.onIn').forEach(i=>{if(i.value.trim())on[i.dataset.m]=numP(i.value)});
+  const queda=$('#cQ').value.trim()?numP($('#cQ').value):numP($('#cE').value);const res=CIERRE.r;
   try{const r=await rpc('caja_cerrar',{p_efectivo:numP($('#cE').value),p_notas:$('#cN').value||null,p_arqueo:pArq,p_online:Object.keys(on).length?on:null});
+    try{await rpc('caja_dejar_cambio',{p_monto:queda})}catch(e){}
+    window._ultCierre={res,r,queda,on};
     const don=r.diferencia_online;
     modal(`<h3>✅ Turno cerrado</h3><div class="resu"><span>Total vendido</span><b>${plata(r.total)}</b></div><div class="resu"><span>Ventas</span><b>${r.tickets}</b></div>
     <div class="resu"><span>Efectivo esperado</span><b>${plata(r.efectivo_esperado)}</b></div><div class="resu"><span>Efectivo contado</span><b>${plata(r.efectivo_contado)}</b></div>
@@ -684,8 +715,29 @@ async function okCerrar(){if(!$('#cE').value.trim())return toast('Contá el efec
     ${don!=null?`<div class="resu grande" style="color:${Math.abs(don)<1?'var(--verde)':'var(--rojo)'}"><span>📱 ${Math.abs(don)<1?'Online cierra':'Online'}</span><span>${plata(don)}</span></div>`:''}
     ${+r.retiros?`<div class="resu"><span>Retiros / pagos a proveedores</span><b>${plata(r.retiros)}</b></div>`:''}
     ${r.propinas&&Object.keys(r.propinas).length?`<div class="resu"><span>🙌 Propinas del turno</span><b>${plata(Object.values(r.propinas).reduce((a,b)=>a+(+b||0),0))}</b></div>`:''}
-    <p class="muted" style="margin-top:10px">La venta del turno ya quedó cargada en Gestión → Finanzas.</p><div class="acc"><button class="b-ok" onclick="cerrar()">Listo</button></div>`);
+    <div class="resu"><span>🔁 Queda de cambio para el próximo turno</span><b>${plata(queda)}</b></div>
+    <p class="muted" style="margin-top:10px">La venta del turno ya quedó cargada en Gestión → Finanzas.</p><div class="acc"><button class="b-no" onclick="imprimirResumen(window._ultCierre)">🖨️ Imprimir resumen</button><button class="b-ok" onclick="cerrar()">Listo</button></div>`);
+    imprimirResumen(window._ultCierre);
     await estadoTurno()}catch(e){toast('⚠️ '+e.message,6000)}}
+
+// Ticket "resumen de ventas" del turno (al cerrar sale solo; también se puede sacar en cualquier momento desde Ventas del turno)
+function imprimirResumen(d){if(!d||!d.res)return;const R=d.res,C=d.r;const L=[],c=(t,s,b)=>L.push({t,a:'c',s,b}),l=(t,s,b)=>L.push({t,s,b}),lr=(a,b,s)=>L.push({l:a,r:b,s}),hr=()=>L.push({hr:1});
+  const pm=R.por_medio||{},cc=R.cc_cobrado||{},pr=R.propinas||{};
+  c(CFG.nombre_fantasia||'Poly Artesanal',34);c(C?'CIERRE DE TURNO':'RESUMEN PARCIAL (turno abierto)',30,true);
+  l('Turno '+R.turno.turno+' · abrió '+(R.turno.abierto_por||'')+' '+new Date(R.turno.abierto_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}));
+  l((C?'Cerró ':'Impreso ')+new Date().toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'}));hr();
+  lr('Ventas',String(R.ventas));lr('TOTAL VENDIDO',plata(R.total),32);hr();
+  Object.entries(pm).forEach(([m,v])=>lr(m,plata(m==='Efectivo'?v-(+R.vuelto||0):v)));
+  if(Object.keys(cc).length){hr();l('Cobros de cuenta corriente',24,true);Object.entries(cc).forEach(([m,v])=>lr(m,plata(v)))}
+  if(Object.keys(pr).length){hr();l('Propinas (no son venta)',24,true);Object.entries(pr).forEach(([m,v])=>lr(m,plata(v)))}
+  const movs=R.retiros_lista||[];if(movs.length){hr();l('Movimientos de efectivo',24,true);movs.forEach(x=>lr((x.tipo==='proveedor'?'Pago '+(x.proveedor||''):x.tipo==='ingreso'?'Ingreso':'Retiro')+(x.nota?' · '+x.nota:''),(x.tipo==='ingreso'?'+':'−')+plata(x.monto),22))}
+  hr();lr('Cambio inicial',plata(R.turno.fondo_inicial));
+  if(C){lr('Efectivo esperado',plata(C.efectivo_esperado));lr('Efectivo contado',plata(C.efectivo_contado));lr(Math.abs(C.diferencia)<1?'Cierra justo':(C.diferencia<0?'FALTA':'SOBRA'),plata(Math.abs(C.diferencia)),30);
+    if(C.diferencia_online!=null)lr('Online '+(Math.abs(C.diferencia_online)<1?'cierra':'dif.'),plata(C.diferencia_online));lr('Queda de cambio',plata(d.queda),28)}
+  const its=R.items||[];if(its.length){hr();l('Artículos vendidos',24,true);its.forEach(i=>lr((i.unidad==='kg'?kgTxt(+i.cantidad)+' kg':(+i.cantidad)+' u')+' '+i.nombre,plata(i.total),22))}
+  hr();L.push({gap:50});c('______________________________');c('Firma cajero',22);L.push({gap:20});
+  imprimirRaster(L)}
+async function resumenParcial(){let r;try{r=await rpc('caja_resumen')}catch(e){return toast('⚠️ '+e.message)}if(!r.abierto)return toast('No hay turno abierto');imprimirResumen({res:r})}
 
 // ---------- nota de crédito ----------
 async function pedirNC(id){const r=await fetch(SB.replace('/rest/v1/','/functions/v1/arca-fe'),{method:'POST',headers:H,body:JSON.stringify({accion:'nc',nc_id:id})});
