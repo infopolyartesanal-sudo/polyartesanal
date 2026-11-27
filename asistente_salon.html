@@ -2205,8 +2205,9 @@ async function calcularInicialArrastre(fecha,turno){
       // mañana: tomar el último turno del día anterior (tarde, si no mañana)
       const d=new Date(fecha+'T12:00:00'); d.setDate(d.getDate()-1);
       const ayer=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-      let r=await sbSelect('control_stock_turno','?fecha=eq.'+ayer+'&turno=eq.tarde');
-      if(!(r&&r.length)) r=await sbSelect('control_stock_turno','?fecha=eq.'+ayer+'&turno=eq.manana');
+      // Solo sirve el turno TARDE de ayer: si no se hizo, el de la mañana de ayer no incluye las ventas de la tarde,
+      // así que se calcula desde el stock del Salón (que ya descontó todo lo vendido)
+      const r=await sbSelect('control_stock_turno','?fecha=eq.'+ayer+'&turno=eq.tarde');
       if(r && r.length) prev=r[0];
     }
     // si el turno anterior se cerró sin contar el Final (todo en 0), no sirve de arrastre: se usa el stock del local

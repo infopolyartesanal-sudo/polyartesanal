@@ -3082,11 +3082,21 @@ const _orig_cocina_adjust = adjustStock;
 adjustStock = async function(name, dep, delta) {
   _orig_cocina_adjust(name, dep, delta);
   // Si se suma stock al depósito "local", notificar al salón
-  if (delta > 0 && dep === 'local') {
-    try {
-      const prodId = 'cocina_' + name.toLowerCase().replace(/\s+/g, '_');
-      await sumarProductoAlSalon(name, prodId, delta, 'cocina');
-    } catch(e) { console.warn('cocina→salon error:', e); }
+  // Rellenos, tapas, masas, almíbar y crema son insumos de Cocina: nunca van al Salón
+  if (delta > 0 && dep === 'local' && !/^(relleno|tapa|masa|almibar|almíbar|crema)/i.test(String(name).trim())) {
+    // Si tocan + varias veces seguidas, se manda UN solo envío con el total (antes salía uno por cada toque)
+    const k = String(name);
+    window._envLocal = window._envLocal || {};
+    const pend = window._envLocal[k] || (window._envLocal[k] = { q: 0, t: null });
+    pend.q = Math.round((pend.q + delta) * 1000) / 1000;
+    clearTimeout(pend.t);
+    pend.t = setTimeout(async function () {
+      const q = pend.q; delete window._envLocal[k];
+      try {
+        const prodId = 'cocina_' + k.toLowerCase().replace(/\s+/g, '_');
+        await sumarProductoAlSalon(k, prodId, q, 'cocina');
+      } catch(e) { console.warn('cocina→salon error:', e); }
+    }, 4000);
   }
 };
 
