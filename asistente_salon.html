@@ -2575,6 +2575,13 @@ async function guardarControl(silent){
 
 async function cerrarTurnoControl(){
   if(!controlState) return;
+  // No se puede cerrar un turno recién empezado (pasaba que a la madrugada se cerraba el turno Mañana del día nuevo
+  // y Micaela lo encontraba bloqueado). Mañana: se cierra desde las 12. Tarde: desde las 18. Poly puede siempre.
+  if((window.POLY_USUARIO||{}).rol!=='admin' && controlState.fecha===fechaHoyISO()){
+    const h=+new Date().toLocaleString('en-US',{timeZone:'America/Argentina/Buenos_Aires',hour:'numeric',hour12:false});
+    const desde=controlState.turno==='manana'?12:18;
+    if(h<desde){ alert('⛔ Todavía no se puede cerrar el turno '+turnoLabel(controlState.turno)+' del '+controlState.fecha.split('-').reverse().join('/')+'.\nEse turno recién empieza: lo cierra quien lo trabaja, desde las '+desde+':00.\n\nSi estás terminando el turno de la noche, fijate que esté elegido el turno y la fecha correctos.'); return; }
+  }
   await traerIngresos(true); await traerEgresos(true); await traerVentasCaja(true);
   const negs=CONTROL_CATALOGO.filter(p=>{ const it=controlState.items[p.c]; return it&&!it.fm&&ctrlFinalCalc(it)<0; }).map(p=>p.n);
   if(negs.length&&!confirm('⚠️ Estos productos dan Final negativo (se vendió más de lo que figuraba): '+negs.slice(0,8).join(', ')+(negs.length>8?'…':'')+'.\nContalos y corregí el Final, o tocá Aceptar para cerrar igual (quedan en 0).')) { renderControlTabla(); renderControlPie(); return; }
