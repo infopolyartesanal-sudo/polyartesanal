@@ -18,8 +18,8 @@
     return r.json();
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  var UB = { camara: '❄️ Cámara', fermentadora: '🌡️ Fermentadora', panaderia: '🥖 Panadería' };
-  var UBT = { camara: 'Cámara', fermentadora: 'Fermentadora', panaderia: 'Panadería' };
+  var UB = { camara: '❄️ Cámara', fermentadora: '🌡️ Fermentadora', panaderia: '🥖 Panadería', freezer: '🧊 Freezer' };
+  var UBT = { camara: 'Cámara', fermentadora: 'Fermentadora', panaderia: 'Panadería', freezer: 'Freezer' };
   var DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
   function fecha(d) { d = new Date(d); return DIAS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function dur(min) {
@@ -37,16 +37,18 @@
     naranja: { bg: '#ffd9b0', bd: '#d35f00', tx: '#4a2100', et: 'Casi lista' },
     rojo: { bg: '#ffd1d1', bd: '#c62828', tx: '#5c0000', et: 'TIEMPO CUMPLIDO' },
     sin: { bg: '#eeeeee', bd: '#757575', tx: '#1a1a1a', et: 'Sin tiempo' },
-    cocinar: { bg: '#e3f2fd', bd: '#1565c0', tx: '#0d2a4a', et: '🔥 PARA COCINAR' }
+    cocinar: { bg: '#e3f2fd', bd: '#1565c0', tx: '#0d2a4a', et: '🔥 PARA COCINAR' },
+    freezer: { bg: '#e0f7fa', bd: '#00838f', tx: '#00363a', et: '🧊 En freezer' }
   };
   function estado(r) {
     if (r.estado === 'a_cocinar') return { n: 'cocinar', tr: (Date.now() - new Date(r.a_cocinar_at || r.ingreso_at)) / 60000 };
     var tr = (Date.now() - new Date(r.ingreso_at)) / 60000;
+    if (r.ubicacion === 'freezer') return { n: 'freezer', tr: tr };   // en el freezer no fermenta: el tiempo no corre
     if (!(r.fermentar_horas > 0)) return { n: 'sin', tr: tr };
     var tot = r.fermentar_horas * 60, p = tr / tot;
     return { n: p >= 1 ? 'rojo' : p >= 0.8 ? 'naranja' : p >= 0.5 ? 'amarillo' : 'blanco', tr: tr, falta: tot - tr, p: p, vence: new Date(new Date(r.ingreso_at).getTime() + tot * 60000) };
   }
-  var ORDEN = { cocinar: 5, rojo: 4, naranja: 3, amarillo: 2, blanco: 1, sin: 0 };
+  var ORDEN = { cocinar: 5, rojo: 4, naranja: 3, amarillo: 2, blanco: 1, sin: 0, freezer: -1 };
   var EN_MADRUGADA = /madrugada/i.test(location.pathname);
 
   var css = document.createElement('style');
@@ -121,7 +123,7 @@
   function ingresar(receta, rendimiento, opc) {
     opc = opc || {}; var ub = 'camara';
     modal('<h3>🫧 A fermentar: ' + esc(receta) + '</h3>' +
-      '<label>¿Dónde queda?</label><div class="fermSeg" id="fUb"><button type="button" data-ub="camara" class="on">❄️ Cámara</button><button type="button" data-ub="fermentadora">🌡️ Fermentadora</button><button type="button" data-ub="panaderia">🥖 Panadería</button></div>' +
+      '<label>¿Dónde queda?</label><div class="fermSeg" id="fUb"><button type="button" data-ub="camara" class="on">❄️ Cámara</button><button type="button" data-ub="fermentadora">🌡️ Fermentadora</button><button type="button" data-ub="panaderia">🥖 Panadería</button><button type="button" data-ub="freezer">🧊 Freezer</button></div>' +
       selTiempo('fT', ultimoTiempo(receta)) +
       '<label>¿Cuántas masas / bolsas? (cada una lleva su código)</label><input id="fCant" type="number" inputmode="numeric" min="1" max="60" value="1">' +
       '<label>¿Qué tiene cada bolsa? (opcional)</label><input id="fCont" placeholder="' + esc(rendimiento ? 'ej: ' + String(rendimiento).split('—')[0].trim() : 'ej: 8 kg, 10 panes, 1 tanda') + '">' +
@@ -189,7 +191,7 @@
   // ── Panel con todas las masas
   var FILTRO = 'todas', DATA = [];
   async function panel() {
-    var o = modal('<h3>🫧 Masas fermentando y para cocinar</h3><div class="fermSeg" style="margin-bottom:8px"><button type="button" data-f="todas">Todas</button><button type="button" data-f="camara">❄️ Cámara</button><button type="button" data-f="fermentadora">🌡️ Ferment.</button><button type="button" data-f="panaderia">🥖 Panadería</button></div>' +
+    var o = modal('<h3>🫧 Masas fermentando y para cocinar</h3><div class="fermSeg" style="margin-bottom:8px"><button type="button" data-f="todas">Todas</button><button type="button" data-f="camara">❄️ Cámara</button><button type="button" data-f="fermentadora">🌡️ Ferment.</button><button type="button" data-f="panaderia">🥖 Panadería</button><button type="button" data-f="freezer">🧊 Freezer</button></div>' +
       '<input id="fBus" placeholder="Buscar por código o masa…" style="margin-bottom:4px"><div id="fLis"><p class="muted">Cargando…</p></div><button type="button" class="fermSec" id="fCer">Cerrar</button>');
     document.getElementById('fCer').onclick = cerrar;
     function pintar() {
@@ -212,7 +214,8 @@
             '<div class="fermAcc">' + (EN_MADRUGADA && window.cocinarMasa ? '<button type="button" data-a="hornear" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Hornear y mandar al Salón</button>' : '') +
             '<button type="button" data-a="volver" data-id="' + r.id + '">↩ Volver a fermentar</button>' +
             '<button type="button" data-a="print" data-id="' + r.id + '">🖨 Etiqueta</button><button type="button" data-a="descartada" data-id="' + r.id + '" style="color:#b71c1c!important;border-color:#b71c1c!important">🗑 Tirar</button></div></div>';
-          var tiempo = e.n === 'sin' ? 'Entró hace <b>' + dur(e.tr) + '</b> · <b>tocá ⏱ y cargale el tiempo</b>'
+          var tiempo = e.n === 'freezer' ? 'En el freezer el tiempo no corre · entró ' + fecha(r.ingreso_at) + '. Al sacarla con <b>↔ Mover</b> arranca a fermentar desde cero.'
+            : e.n === 'sin' ? 'Entró hace <b>' + dur(e.tr) + '</b> · <b>tocá ⏱ y cargale el tiempo</b>'
             : e.n === 'rojo' ? '⏰ Cumplió su tiempo hace <b>' + dur(-e.falta) + '</b> → usarla ya o tirarla'
             : 'Faltan <b>' + dur(e.falta) + '</b> · lista ' + fecha(e.vence);
           return '<div class="fermCard" style="background:' + N.bg + '!important;border-color:' + N.bd + '!important;color:' + N.tx + '!important">' +
@@ -242,7 +245,7 @@
       if (a === 'mover') return mover(r);
       if (a === 'descartada') { var n = prompt('¿Por qué se tira ' + r.codigo + '? (opcional)', estado(r).n === 'rojo' ? 'Se pasó de fermentación' : ''); if (n === null) return; p.nota = n; }
       if (a === 'a_cocinar' && !confirm('¿Mandar ' + r.codigo + ' (' + r.receta + ') a Madrugada para que la cocine y la despache al Salón?')) return;
-      if (a === 'volver' && !confirm('¿Volver ' + r.codigo + ' a la lista de fermentación?')) return;
+      if (a === 'volver') return volver(r);
       b.disabled = true;
       try {
         await rpc('masa_actualizar', p);
@@ -262,6 +265,20 @@
       b.disabled = true;
       try { await rpc('masa_actualizar', { id: r.id, accion: 'mover', ubicacion: b.dataset.mv });
         if (window.addToLog) try { addToLog('↔ Movió masa ' + r.codigo + ' a ' + UBT[b.dataset.mv], 'receta'); } catch (e2) {}
+        panel(); } catch (e) { b.disabled = false; alert(e.message); }
+    }; });
+  }
+
+  // Volver a fermentar una masa que se mandó a cocinar: se elige dónde queda (también el freezer)
+  function volver(r) {
+    modal('<h3>↩ Volver ' + esc(r.codigo) + ' a fermentar</h3><p class="muted" style="margin:0 0 8px;font-size:14px">' + esc(r.receta) + ' · estaba en ' + (UB[r.ubicacion] || '') + '. ¿Dónde queda?</p>' +
+      '<div class="fermSeg">' + Object.keys(UB).map(function (k) { return '<button type="button" data-vu="' + k + '"' + (k === r.ubicacion ? ' class="on"' : '') + '>' + UB[k] + '</button>'; }).join('') + '</div>' +
+      '<button type="button" class="fermSec" id="vuNo">Cancelar</button>');
+    document.getElementById('vuNo').onclick = panel;
+    document.querySelectorAll('#fermOv [data-vu]').forEach(function (b) { b.onclick = async function () {
+      b.disabled = true;
+      try { await rpc('masa_actualizar', { id: r.id, accion: 'volver', ubicacion: b.dataset.vu });
+        if (window.addToLog) try { addToLog('↩ Volvió a fermentar ' + r.codigo + ' · ' + r.receta + ' (' + UBT[b.dataset.vu] + ')', 'receta'); } catch (e2) {}
         panel(); } catch (e) { b.disabled = false; alert(e.message); }
     }; });
   }
