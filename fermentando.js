@@ -13,13 +13,13 @@
     return j;
   }
   async function lista() {
-    var r = await fetch(URL_ + 'masas_fermentando?estado=in.(fermentando,a_cocinar)&order=ingreso_at.asc', { headers: hdr() });
+    var r = await fetch(URL_ + 'masas_fermentando?order=ingreso_at.asc' + FILTRO_API, { headers: hdr() });
     if (!r.ok) throw new Error('No se pudo leer la lista');
     return r.json();
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  var UB = { camara: '❄️ Cámara', fermentadora: '🌡️ Fermentadora', panaderia: '🥖 Panadería', freezer: '🧊 Freezer' };
-  var UBT = { camara: 'Cámara', fermentadora: 'Fermentadora', panaderia: 'Panadería', freezer: 'Freezer' };
+  var UB = { camara: '❄️ Cámara', fermentadora: '🌡️ Fermentadora', panaderia: '🥖 Panadería' };
+  var UBT = { camara: 'Cámara', fermentadora: 'Fermentadora', panaderia: 'Panadería' };
   var DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
   function fecha(d) { d = new Date(d); return DIAS[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
   function dur(min) {
@@ -37,19 +37,23 @@
     naranja: { bg: '#ffd9b0', bd: '#d35f00', tx: '#4a2100', et: 'Casi lista' },
     rojo: { bg: '#ffd1d1', bd: '#c62828', tx: '#5c0000', et: 'TIEMPO CUMPLIDO' },
     sin: { bg: '#eeeeee', bd: '#757575', tx: '#1a1a1a', et: 'Sin tiempo' },
-    cocinar: { bg: '#e3f2fd', bd: '#1565c0', tx: '#0d2a4a', et: '🔥 PARA COCINAR' },
-    freezer: { bg: '#e0f7fa', bd: '#00838f', tx: '#00363a', et: '🧊 En freezer' }
+    cocinar: { bg: '#e3f2fd', bd: '#1565c0', tx: '#0d2a4a', et: '🔥 PARA COCINAR' }
   };
   function estado(r) {
     if (r.estado === 'a_cocinar') return { n: 'cocinar', tr: (Date.now() - new Date(r.a_cocinar_at || r.ingreso_at)) / 60000 };
     var tr = (Date.now() - new Date(r.ingreso_at)) / 60000;
-    if (r.ubicacion === 'freezer') return { n: 'freezer', tr: tr };   // en el freezer no fermenta: el tiempo no corre
     if (!(r.fermentar_horas > 0)) return { n: 'sin', tr: tr };
     var tot = r.fermentar_horas * 60, p = tr / tot;
     return { n: p >= 1 ? 'rojo' : p >= 0.8 ? 'naranja' : p >= 0.5 ? 'amarillo' : 'blanco', tr: tr, falta: tot - tr, p: p, vence: new Date(new Date(r.ingreso_at).getTime() + tot * 60000) };
   }
-  var ORDEN = { cocinar: 5, rojo: 4, naranja: 3, amarillo: 2, blanco: 1, sin: 0, freezer: -1 };
+  var ORDEN = { cocinar: 5, rojo: 4, naranja: 3, amarillo: 2, blanco: 1, sin: 0 };
   var EN_MADRUGADA = /madrugada/i.test(location.pathname);
+  var EN_COCINA = /cocina/i.test(location.pathname);
+  // Panadería: solo lo que todavía tiene (fermentadora / panadería). Lo que va a la cámara lo sigue Cocina (Leudado),
+  // lo que se manda a cocinar lo ve Madrugada y lo que va al freezer pasa a ser stock del freezer.
+  var MODO = EN_MADRUGADA ? 'madrugada' : EN_COCINA ? 'cocina' : 'panaderia';
+  var FILTRO_API = { panaderia: '&estado=eq.fermentando&ubicacion=in.(fermentadora,panaderia)', cocina: '&estado=eq.fermentando&ubicacion=eq.camara', madrugada: '&estado=in.(fermentando,a_cocinar)' }[MODO];
+  var TITULO = { panaderia: '🫧 Masas fermentando en Panadería', cocina: '🫧 Masas en la cámara (leudado)', madrugada: '🫧 Masas fermentando y para cocinar' }[MODO];
 
   var css = document.createElement('style');
   css.textContent =
@@ -89,9 +93,11 @@
     modal('<h3>✅ ' + esc(receta) + '</h3><p class="muted" style="margin:0 0 6px;font-size:14px">¿Qué hacés con esta tanda?</p>' +
       '<button type="button" class="fermOk" id="fermA">🫧 Poner a fermentar</button>' +
       '<button type="button" class="fermSec" id="fermB">📦 Ya está lista (va a stock, como siempre)</button>' +
+      '<button type="button" class="fermSec" id="fermF">🧊 Va al freezer</button>' +
       '<button type="button" class="fermSec" id="fermC">Cancelar</button>');
     document.getElementById('fermA').onclick = function () { ingresar(receta, rendimiento, { onOk: alFermentar }); };
     document.getElementById('fermB').onclick = function () { cerrar(); if (alStock) alStock(); };
+    document.getElementById('fermF').onclick = function () { aFreezer(receta, null, function () { cerrar(); if (alFermentar) try { alFermentar([]); } catch (e) {} }); };
     document.getElementById('fermC').onclick = cerrar;
   }
 
@@ -124,13 +130,16 @@
     opc = opc || {}; var ub = 'camara';
     modal('<h3>🫧 A fermentar: ' + esc(receta) + '</h3>' +
       '<label>¿Dónde queda?</label><div class="fermSeg" id="fUb"><button type="button" data-ub="camara" class="on">❄️ Cámara</button><button type="button" data-ub="fermentadora">🌡️ Fermentadora</button><button type="button" data-ub="panaderia">🥖 Panadería</button><button type="button" data-ub="freezer">🧊 Freezer</button></div>' +
+      '<p class="muted" id="fUbAy" style="font-size:12px;margin:4px 0 0">La cámara la sigue Cocina (Leudado).</p>' +
       selTiempo('fT', ultimoTiempo(receta)) +
       '<label>¿Cuántas masas / bolsas? (cada una lleva su código)</label><input id="fCant" type="number" inputmode="numeric" min="1" max="60" value="1">' +
       '<label>¿Qué tiene cada bolsa? (opcional)</label><input id="fCont" placeholder="' + esc(rendimiento ? 'ej: ' + String(rendimiento).split('—')[0].trim() : 'ej: 8 kg, 10 panes, 1 tanda') + '">' +
       '<label>Nota (opcional)</label><input id="fNota" placeholder="ej: para el pedido de mañana">' +
       '<button type="button" class="fermOk" id="fOk">🫧 Poner a fermentar</button><button type="button" class="fermSec" id="fNo">Cancelar</button>');
     var ubBox = document.getElementById('fUb');
-    ubBox.onclick = function (e) { var b = e.target.closest('button[data-ub]'); if (!b) return; ub = b.dataset.ub; ubBox.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); }); };
+    ubBox.onclick = function (e) { var b = e.target.closest('button[data-ub]'); if (!b) return;
+      if (b.dataset.ub === 'freezer') return aFreezer(receta, null, function () { cerrar(); if (opc.onOk) try { opc.onOk([]); } catch (e2) {} });
+      ub = b.dataset.ub; ubBox.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); }); };
     if (opc.contenido) document.getElementById('fCont').value = opc.contenido;
     var leerT = engancharTiempo('fT');
     document.getElementById('fNo').onclick = cerrar;
@@ -191,7 +200,8 @@
   // ── Panel con todas las masas
   var FILTRO = 'todas', DATA = [];
   async function panel() {
-    var o = modal('<h3>🫧 Masas fermentando y para cocinar</h3><div class="fermSeg" style="margin-bottom:8px"><button type="button" data-f="todas">Todas</button><button type="button" data-f="camara">❄️ Cámara</button><button type="button" data-f="fermentadora">🌡️ Ferment.</button><button type="button" data-f="panaderia">🥖 Panadería</button><button type="button" data-f="freezer">🧊 Freezer</button></div>' +
+    var filtros = MODO === 'cocina' ? '' : '<div class="fermSeg" style="margin-bottom:8px"><button type="button" data-f="todas">Todas</button>' + (MODO === 'madrugada' ? '<button type="button" data-f="camara">❄️ Cámara</button>' : '') + '<button type="button" data-f="fermentadora">🌡️ Ferment.</button><button type="button" data-f="panaderia">🥖 Panadería</button></div>';
+    var o = modal('<h3>' + TITULO + '</h3>' + (MODO === 'panaderia' ? '<p class="muted" style="margin:0 0 8px;font-size:12px">Lo que pasa a la cámara lo sigue Cocina (Leudado); lo que mandás a cocinar, Madrugada; lo que va al freezer queda como stock.</p>' : '') + filtros +
       '<input id="fBus" placeholder="Buscar por código o masa…" style="margin-bottom:4px"><div id="fLis"><p class="muted">Cargando…</p></div><button type="button" class="fermSec" id="fCer">Cerrar</button>');
     document.getElementById('fCer').onclick = cerrar;
     function pintar() {
@@ -214,8 +224,7 @@
             '<div class="fermAcc">' + (EN_MADRUGADA && window.cocinarMasa ? '<button type="button" data-a="hornear" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Hornear y mandar al Salón</button>' : '') +
             '<button type="button" data-a="volver" data-id="' + r.id + '">↩ Volver a fermentar</button>' +
             '<button type="button" data-a="print" data-id="' + r.id + '">🖨 Etiqueta</button><button type="button" data-a="descartada" data-id="' + r.id + '" style="color:#b71c1c!important;border-color:#b71c1c!important">🗑 Tirar</button></div></div>';
-          var tiempo = e.n === 'freezer' ? 'En el freezer el tiempo no corre · entró ' + fecha(r.ingreso_at) + '. Al sacarla con <b>↔ Mover</b> arranca a fermentar desde cero.'
-            : e.n === 'sin' ? 'Entró hace <b>' + dur(e.tr) + '</b> · <b>tocá ⏱ y cargale el tiempo</b>'
+          var tiempo = e.n === 'sin' ? 'Entró hace <b>' + dur(e.tr) + '</b> · <b>tocá ⏱ y cargale el tiempo</b>'
             : e.n === 'rojo' ? '⏰ Cumplió su tiempo hace <b>' + dur(-e.falta) + '</b> → usarla ya o tirarla'
             : 'Faltan <b>' + dur(e.falta) + '</b> · lista ' + fecha(e.vence);
           return '<div class="fermCard" style="background:' + N.bg + '!important;border-color:' + N.bd + '!important;color:' + N.tx + '!important">' +
@@ -227,7 +236,7 @@
             (r.notas ? '<div style="font-size:13px;margin-top:2px">📝 ' + esc(r.notas) + '</div>' : '') +
             '<div class="fermAcc">' + (EN_MADRUGADA && window.cocinarMasa ? '<button type="button" data-a="hornear" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Hornear y mandar al Salón</button>'
               : '<button type="button" data-a="a_cocinar" data-id="' + r.id + '" style="background:#1565c0!important;color:#fff!important;border-color:#1565c0!important;font-weight:700">🔥 Mandar a cocinar</button>') + '<button type="button" data-a="tiempo" data-id="' + r.id + '">⏱ Tiempo</button>' +
-            '<button type="button" data-a="mover" data-id="' + r.id + '">↔ Mover</button>' +
+            '<button type="button" data-a="mover" data-id="' + r.id + '">↔ Mover</button><button type="button" data-a="freezer" data-id="' + r.id + '">🧊 Al freezer</button>' +
             '<button type="button" data-a="print" data-id="' + r.id + '">🖨 Etiqueta</button><button type="button" data-a="descartada" data-id="' + r.id + '" style="color:#b71c1c!important;border-color:#b71c1c!important">🗑 Tirar</button></div></div>';
         }).join('');
     }
@@ -243,6 +252,7 @@
       if (a === 'hornear') { cerrar(); return window.cocinarMasa(r); }
       var p = { id: r.id, accion: a };
       if (a === 'mover') return mover(r);
+      if (a === 'freezer') return aFreezer(r.receta, r, panel);
       if (a === 'descartada') { var n = prompt('¿Por qué se tira ' + r.codigo + '? (opcional)', estado(r).n === 'rojo' ? 'Se pasó de fermentación' : ''); if (n === null) return; p.nota = n; }
       if (a === 'a_cocinar' && !confirm('¿Mandar ' + r.codigo + ' (' + r.receta + ') a Madrugada para que la cocine y la despache al Salón?')) return;
       if (a === 'volver') return volver(r);
@@ -258,8 +268,10 @@
 
   function mover(r) {
     modal('<h3>↔ Mover ' + esc(r.codigo) + '</h3><p class="muted" style="margin:0 0 8px;font-size:14px">' + esc(r.receta) + ' · ahora en ' + (UB[r.ubicacion] || '') + '</p>' +
-      '<div class="fermSeg">' + Object.keys(UB).filter(function (k) { return k !== r.ubicacion; }).map(function (k) { return '<button type="button" data-mv="' + k + '">' + UB[k] + '</button>'; }).join('') + '</div>' +
+      '<div class="fermSeg">' + Object.keys(UB).filter(function (k) { return k !== r.ubicacion; }).map(function (k) { return '<button type="button" data-mv="' + k + '">' + UB[k] + '</button>'; }).join('') + '<button type="button" id="mvFz">🧊 Freezer</button></div>' +
+      (MODO === 'panaderia' ? '<p class="muted" style="font-size:12px">A la cámara: pasa a Cocina (Leudado). Al freezer: se suma al stock del freezer.</p>' : '') +
       '<button type="button" class="fermSec" id="mvNo">Volver</button>');
+    document.getElementById('mvFz').onclick = function () { aFreezer(r.receta, r, panel); };
     document.getElementById('mvNo').onclick = panel;
     document.querySelectorAll('#fermOv [data-mv]').forEach(function (b) { b.onclick = async function () {
       b.disabled = true;
@@ -269,12 +281,49 @@
     }; });
   }
 
+  // ── Al freezer: elegir producto del freezer de panadería (y variedad) + unidades. Se suma al stock y la masa sale de la lista.
+  function nrm(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' '); }
+  function parecido(a, b) { var w = nrm(a).split(' ').filter(function (x) { return x.length > 3; }); var t = nrm(b); return w.filter(function (x) { return t.indexOf(x.replace(/s$/, '')) >= 0; }).length; }
+  async function aFreezer(receta, r, alVolver) {
+    var o = modal('<h3>🧊 Al freezer' + (r ? ': ' + esc(r.codigo) : '') + '</h3><p class="muted" style="margin:0;font-size:14px">' + esc(receta) + (r && r.contenido ? ' · ' + esc(r.contenido) : '') + '</p><div id="fzBody"><p class="muted">Cargando productos del freezer…</p></div>');
+    var L = [];
+    try { var res = await fetch(URL_ + 'freezer_panaderia?select=id,nombre,total,subtipos&order=nombre.asc', { headers: hdr() }); L = await res.json(); } catch (e) {}
+    if (!document.getElementById('fzBody')) return;
+    if (!L.length) { document.getElementById('fzBody').innerHTML = '<p style="color:#b71c1c">No pude leer los productos del freezer.</p><button type="button" class="fermSec" id="fzNo">Volver</button>'; document.getElementById('fzNo').onclick = alVolver || cerrar; return; }
+    var mejor = L.map(function (x) { return [parecido(receta, x.nombre), x]; }).sort(function (a, b) { return b[0] - a[0]; })[0];
+    var sel = mejor && mejor[0] > 0 ? mejor[1].id : '';
+    document.getElementById('fzBody').innerHTML = '<label>¿Qué producto del freezer es?</label><select id="fzProd"><option value="">Elegí…</option>' +
+      L.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === sel ? ' selected' : '') + '>' + esc(x.nombre) + ' (hay ' + (+x.total || 0) + ')</option>'; }).join('') + '</select>' +
+      '<div id="fzSubW"></div><label>¿Cuántas unidades van al freezer?</label><input id="fzQ" type="number" inputmode="decimal" min="0" step="1" placeholder="unidades">' +
+      '<p class="muted" style="font-size:12px">Se suman al stock del freezer' + (r ? ' y la masa sale de la lista de fermentación' : '') + '.</p>' +
+      '<button type="button" class="fermOk" id="fzOk">🧊 Mandar al freezer</button><button type="button" class="fermSec" id="fzNo">Volver</button>';
+    function subs() { var x = L.find(function (y) { return y.id === document.getElementById('fzProd').value; }); var k = x && x.subtipos ? Object.keys(x.subtipos) : [];
+      document.getElementById('fzSubW').innerHTML = k.length ? '<label>¿Qué variedad?</label><select id="fzSub"><option value="">Elegí…</option>' + k.map(function (s) { return '<option value="' + esc(s) + '"' + (parecido(receta, s.replace(/_/g, ' ')) ? ' selected' : '') + '>' + esc(s.replace(/_/g, ' ')) + '</option>'; }).join('') + '</select>' : ''; }
+    document.getElementById('fzProd').onchange = subs; subs();
+    document.getElementById('fzNo').onclick = alVolver || cerrar;
+    document.getElementById('fzOk').onclick = async function () {
+      var fid = document.getElementById('fzProd').value, q = parseFloat(String(document.getElementById('fzQ').value).replace(',', '.')), se = document.getElementById('fzSub');
+      if (!fid) { alert('Elegí el producto del freezer.'); return; }
+      if (se && !se.value) { alert('Elegí la variedad.'); return; }
+      if (!(q > 0)) { alert('Poné cuántas unidades van al freezer.'); return; }
+      var b = this; b.disabled = true; b.textContent = 'Guardando…';
+      try {
+        await rpc('masa_a_freezer', { id: r ? r.id : null, freezer_id: fid, unidades: q, subtipo: se ? se.value : null });
+        var nom = (L.find(function (y) { return y.id === fid; }) || {}).nombre || fid;
+        if (window.addToLog) try { addToLog('🧊 Al freezer: ' + q + ' u de ' + nom + (se ? ' (' + se.value.replace(/_/g, ' ') + ')' : '') + (r ? ' · masa ' + r.codigo : ' · ' + receta), 'receta'); } catch (e2) {}
+        if (r) { await refrescar(); panel(); } else if (alVolver) alVolver();
+        alert('✅ ' + q + ' u de ' + nom + ' sumadas al freezer.');
+      } catch (e) { b.disabled = false; b.textContent = '🧊 Mandar al freezer'; alert(e.message); }
+    };
+  }
+
   // Volver a fermentar una masa que se mandó a cocinar: se elige dónde queda (también el freezer)
   function volver(r) {
     modal('<h3>↩ Volver ' + esc(r.codigo) + ' a fermentar</h3><p class="muted" style="margin:0 0 8px;font-size:14px">' + esc(r.receta) + ' · estaba en ' + (UB[r.ubicacion] || '') + '. ¿Dónde queda?</p>' +
-      '<div class="fermSeg">' + Object.keys(UB).map(function (k) { return '<button type="button" data-vu="' + k + '"' + (k === r.ubicacion ? ' class="on"' : '') + '>' + UB[k] + '</button>'; }).join('') + '</div>' +
+      '<div class="fermSeg">' + Object.keys(UB).map(function (k) { return '<button type="button" data-vu="' + k + '"' + (k === r.ubicacion ? ' class="on"' : '') + '>' + UB[k] + '</button>'; }).join('') + '<button type="button" id="vuFz">🧊 Freezer</button></div>' +
       '<button type="button" class="fermSec" id="vuNo">Cancelar</button>');
     document.getElementById('vuNo').onclick = panel;
+    document.getElementById('vuFz').onclick = function () { aFreezer(r.receta, r, panel); };
     document.querySelectorAll('#fermOv [data-vu]').forEach(function (b) { b.onclick = async function () {
       b.disabled = true;
       try { await rpc('masa_actualizar', { id: r.id, accion: 'volver', ubicacion: b.dataset.vu });
@@ -347,7 +396,7 @@
   }
 
   // ── Botón flotante con la cantidad y el color de la peor masa
-  var btn = document.createElement('button'); btn.id = 'fermBtn'; btn.type = 'button'; btn.textContent = '🫧 Fermentando'; btn.onclick = panel;
+  var btn = document.createElement('button'); btn.id = 'fermBtn'; btn.type = 'button'; btn.textContent = MODO === 'cocina' ? '🫧 Cámara' : '🫧 Fermentando'; btn.onclick = panel;
   function poner() { if (document.body && !document.getElementById('fermBtn')) document.body.appendChild(btn); }
   async function refrescar() { DATA = await lista(); pintarBoton(); alarmas(DATA); return DATA; }
   function pintarBoton() {
@@ -355,7 +404,7 @@
     var col = { rojo: ['#c62828', '#fff'], naranja: ['#d35f00', '#fff'], amarillo: ['#ffd60a', '#1a1a1a'], blanco: ['#ffffff', '#1a1a1a'], sin: ['#534AB7', '#fff'] }[DATA.length ? peor : 'sin'];
     btn.style.setProperty('background', col[0], 'important'); btn.style.setProperty('color', col[1], 'important');
     var nc = DATA.filter(function (r) { return r.estado === 'a_cocinar'; }).length, nf = DATA.length - nc;
-    btn.textContent = '🫧 Fermentando' + (nf ? ' · ' + nf : '') + (nc ? ' · 🔥 ' + nc + ' para cocinar' : '');
+    btn.textContent = (MODO === 'cocina' ? '🫧 Cámara' : '🫧 Fermentando') + (nf ? ' · ' + nf : '') + (nc ? ' · 🔥 ' + nc + ' para cocinar' : '');
     if (nc && EN_MADRUGADA) { btn.style.setProperty('background', '#1565c0', 'important'); btn.style.setProperty('color', '#fff', 'important'); }
     btn.classList.toggle('parpadea', peor === 'rojo' && DATA.length > 0);
   }
